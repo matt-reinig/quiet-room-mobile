@@ -39,3 +39,22 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# local env files
+.env
+.env.*
+!.env.example
+
+# local test and emulator artifacts
+/artifacts/
+/test-artifacts/
+/emulator-*.png
+/emulator-*.jpg
+/screen*.png
+/window_dump*.xml
+/expo-*.log
+/start-dev-client*.log
+/start-dev-client*.out.log
+/start-dev-client*.err.log
+/tmp-android.bundle.js
+/src/screens/*.bak-*

@@ -1,20 +1,22 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { AuthProvider } from "./src/contexts/AuthContext";
+import FeatureFlagsGate from "./src/components/FeatureFlagsGate";
+import { FeatureFlagsProvider } from "./src/contexts/FeatureFlagsContext";
+import { RENDER_MODE } from "./src/config/env";
+import QuietRoomScreen from "./src/screens/QuietRoomScreen";
+import QuietRoomWebParityScreen from "./src/screens/QuietRoomWebParityScreen";
 
 export default function App() {
+  if (RENDER_MODE === "webview") {
+    return <QuietRoomWebParityScreen />;
+  }
+
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <AuthProvider>
+      <FeatureFlagsProvider>
+        <FeatureFlagsGate>
+          <QuietRoomScreen />
+        </FeatureFlagsGate>
+      </FeatureFlagsProvider>
+    </AuthProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
