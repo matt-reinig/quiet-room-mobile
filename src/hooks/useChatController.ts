@@ -10,6 +10,12 @@ import {
 import type { ChatMessage, Conversation, ConversationsById } from "../types/chat";
 
 const STREAM_FLUSH_INTERVAL_MS = 120;
+const CONVERSATIONS_PAGE_SIZE = 20;
+
+type ConversationListPage = {
+  items: Record<string, unknown>[];
+  nextCursor: string | null;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -37,6 +43,63 @@ function normalizeMessage(raw: unknown): ChatMessage | null {
     model: typeof raw.model === "string" ? raw.model : undefined,
     role,
   };
+}
+
+function normalizeConversationListPayload(payload: unknown): ConversationListPage {
+  if (Array.isArray(payload)) {
+    return {
+      items: payload.filter((item): item is Record<string, unknown> => isRecord(item)),
+      nextCursor: null,
+    };
+  }
+
+  if (!isRecord(payload) || !Array.isArray(payload.items)) {
+    return { items: [], nextCursor: null };
+  }
+
+  return {
+    items: payload.items.filter((item): item is Record<string, unknown> => isRecord(item)),
+    nextCursor: typeof payload.nextCursor === "string" ? payload.nextCursor : null,
+  };
+}
+
+function mergeConversationPage(
+  previous: ConversationsById,
+  items: Record<string, unknown>[]
+): ConversationsById {
+  const next: ConversationsById = { ...previous };
+
+  for (const item of items) {
+    const id = typeof item.id === "string" ? item.id : "";
+
+    if (!id) {
+      continue;
+    }
+
+    const existing = previous[id];
+
+    next[id] = {
+      ...existing,
+      createdAt:
+        typeof item.createdAt === "number"
+          ? item.createdAt
+          : existing?.createdAt,
+      currentModel:
+        typeof item.currentModel === "string"
+          ? item.currentModel
+          : existing?.currentModel || DEFAULT_MODEL,
+      id,
+      messages: existing?.messages || [],
+      messagesLoaded: existing?.messagesLoaded ?? false,
+      title: typeof item.title === "string" ? item.title : existing?.title || "New Chat",
+      updatedAt:
+        typeof item.updatedAt === "number"
+          ? item.updatedAt
+          : existing?.updatedAt,
+    };
+  }
+
+  return next;
 }
 
 function decodeSseChunk(data: string): string {
@@ -171,9 +234,12 @@ type UseChatControllerResult = {
   currentId: string | null;
   currentModel: string;
   deleteConversation: (conversationId: string) => Promise<void>;
+  hasMoreConversations: boolean;
   input: string;
   isNewChat: boolean;
+  loadMoreConversations: () => Promise<void>;
   loading: boolean;
+  loadingMoreConversations: boolean;
   messages: ChatMessage[];
   modelOptions: string[];
   renameConversation: (conversationId: string, title: string) => Promise<void>;
@@ -199,6 +265,8 @@ export function useChatController({
   const [streamingModel, setStreamingModel] = useState<string | null>(null);
   const [showThinking, setShowThinking] = useState(false);
   const [sidebarLoading, setSidebarLoading] = useState(false);
+  const [loadingMoreConversations, setLoadingMoreConversations] = useState(false);
+  const [nextConversationCursor, setNextConversationCursor] = useState<string | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
   const [currentModel, setCurrentModel] = useState(DEFAULT_MODEL);
 
@@ -210,6 +278,8 @@ export function useChatController({
       setCurrentId(null);
       setCurrentModel(DEFAULT_MODEL);
       setSidebarLoading(false);
+      setLoadingMoreConversations(false);
+      setNextConversationCursor(null);
       setConversationsHydrated(false);
       return;
     }
@@ -219,6 +289,8 @@ export function useChatController({
       setCurrentId(null);
       setCurrentModel(DEFAULT_MODEL);
       setSidebarLoading(false);
+      setLoadingMoreConversations(false);
+      setNextConversationCursor(null);
       setConversationsHydrated(true);
       return;
     }
@@ -245,49 +317,20 @@ export function useChatController({
           return;
         }
 
-        const payload = (await response.json()) as unknown;
-        const items = Array.isArray(payload)
-          ? payload.filter((item) => isRecord(item))
-          : [];
-
-        const sorted = [...items].sort(
-          (a, b) =>
-            (typeof b.updatedAt === "number" ? b.updatedAt : 0) -
-            (typeof a.updatedAt === "number" ? a.updatedAt : 0)
+        const payload = normalizeConversationListPayload((await response.json()) as unknown);
+        const mapped = mergeConversationPage({}, payload.items);
+        const sorted = Object.values(mapped).sort(
+          (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)
         );
 
-        const mapped: ConversationsById = {};
-
-        for (const item of sorted) {
-          const id = typeof item.id === "string" ? item.id : "";
-
-          if (!id) {
-            continue;
-          }
-
-          mapped[id] = {
-            createdAt:
-              typeof item.createdAt === "number" ? item.createdAt : undefined,
-            currentModel:
-              typeof item.currentModel === "string"
-                ? item.currentModel
-                : DEFAULT_MODEL,
-            id,
-            messages: [],
-            messagesLoaded: false,
-            title: typeof item.title === "string" ? item.title : "New Chat",
-            updatedAt:
-              typeof item.updatedAt === "number" ? item.updatedAt : undefined,
-          };
-        }
-
         setConversations(mapped);
+        setNextConversationCursor(payload.nextCursor);
         setCurrentId((previous) => {
           if (previous && mapped[previous]) {
             return previous;
           }
 
-          return typeof sorted[0]?.id === "string" ? sorted[0].id : null;
+          return sorted[0]?.id || null;
         });
       } catch (error) {
         console.error("Failed to load conversations", error);
@@ -646,6 +689,42 @@ export function useChatController({
     [conversations, currentId, currentModel, input, user]
   );
 
+  const loadMoreConversations = useCallback(async () => {
+    if (
+      !user ||
+      isAnon ||
+      !nextConversationCursor ||
+      sidebarLoading ||
+      loadingMoreConversations
+    ) {
+      return;
+    }
+
+    setLoadingMoreConversations(true);
+
+    try {
+      const idToken = await user.getIdToken(true);
+      const query = `limit=${CONVERSATIONS_PAGE_SIZE}&cursor=${encodeURIComponent(nextConversationCursor)}`;
+      const response = await fetch(`${API_BASE}/api/conversations?${query}`, {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+
+      if (!response.ok) {
+        console.error("Failed to load more conversations:", response.status);
+        return;
+      }
+
+      const payload = normalizeConversationListPayload((await response.json()) as unknown);
+
+      setConversations((previous) => mergeConversationPage(previous, payload.items));
+      setNextConversationCursor(payload.nextCursor);
+    } catch (error) {
+      console.error("Failed to load more conversations", error);
+    } finally {
+      setLoadingMoreConversations(false);
+    }
+  }, [isAnon, loadingMoreConversations, nextConversationCursor, sidebarLoading, user]);
+
   const renameConversation = useCallback(
     async (conversationId: string, title: string) => {
       if (!user || !conversationId) {
@@ -785,9 +864,12 @@ export function useChatController({
     currentId,
     currentModel,
     deleteConversation,
+    hasMoreConversations: Boolean(nextConversationCursor),
     input,
     isNewChat: currentId == null,
+    loadMoreConversations,
     loading,
+    loadingMoreConversations,
     messages,
     modelOptions: MODEL_OPTIONS,
     renameConversation,
@@ -800,9 +882,4 @@ export function useChatController({
     sidebarLoading,
   };
 }
-
-
-
-
-
 

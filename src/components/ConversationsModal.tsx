@@ -26,10 +26,13 @@ import Spinner from "./Spinner";
 type ConversationsModalProps = {
   conversations: Conversation[];
   currentId: string | null;
+  hasMoreConversations: boolean;
   loading: boolean;
+  loadingMore: boolean;
   onClose: () => void;
   onCreateNew: () => void;
   onDeleteConversation: (conversationId: string) => Promise<void>;
+  onLoadMore: () => Promise<void>;
   onRenameConversation: (conversationId: string, title: string) => Promise<void>;
   onSelectConversation: (conversationId: string) => void;
   visible: boolean;
@@ -62,10 +65,13 @@ function formatTimestamp(value: number | undefined): string {
 export default function ConversationsModal({
   conversations,
   currentId,
+  hasMoreConversations,
   loading,
+  loadingMore,
   onClose,
   onCreateNew,
   onDeleteConversation,
+  onLoadMore,
   onRenameConversation,
   onSelectConversation,
   visible,
@@ -177,11 +183,24 @@ export default function ConversationsModal({
                 contentContainerStyle={styles.listContent}
                 data={sortedConversations}
                 keyboardShouldPersistTaps="handled"
+                onEndReached={() => {
+                  if (!loadingMore && hasMoreConversations) {
+                    void onLoadMore();
+                  }
+                }}
+                onEndReachedThreshold={0.35}
                 testID={testIds.conversationsList}
                 ListEmptyComponent={
                   <View style={styles.emptyWrap}>
                     <Text style={styles.emptyText}>No conversations yet.</Text>
                   </View>
+                }
+                ListFooterComponent={
+                  loadingMore ? (
+                    <View style={styles.loadingMoreWrap}>
+                      <Spinner label="Loading more conversations..." tone="accent" />
+                    </View>
+                  ) : null
                 }
                 renderItem={({ item }) => {
                   const isActive = item.id === currentId;
@@ -387,6 +406,10 @@ const styles = StyleSheet.create({
   },
   loadingWrap: {
     paddingVertical: 24,
+  },
+  loadingMoreWrap: {
+    paddingBottom: 8,
+    paddingTop: 2,
   },
   menuActionButton: {
     borderRadius: 8,

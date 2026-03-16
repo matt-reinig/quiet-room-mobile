@@ -93,9 +93,12 @@ export default function QuietRoomScreen() {
     currentId,
     currentModel,
     deleteConversation,
+    hasMoreConversations,
     input,
     isNewChat,
+    loadMoreConversations,
     loading,
+    loadingMoreConversations,
     messages,
     modelOptions,
     renameConversation,
@@ -984,8 +987,11 @@ export default function QuietRoomScreen() {
         <ConversationsModal
           conversations={conversationList}
           currentId={currentId}
+          hasMoreConversations={hasMoreConversations}
           loading={sidebarLoading}
+          loadingMore={loadingMoreConversations}
           onClose={() => setShowConversations(false)}
+          onLoadMore={loadMoreConversations}
           onCreateNew={() => {
             createNewChat();
             setShowConversations(false);
