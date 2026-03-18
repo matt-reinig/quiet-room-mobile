@@ -38,6 +38,10 @@ const VOICE_MODE_STORAGE_KEY = "gabriel.voiceModeEnabled";
 const USER_ANCHOR_TOP_OFFSET = 6;
 const MESSAGE_LIST_PADDING_TOP = 0;
 const MESSAGE_LIST_PADDING_BOTTOM = 12;
+const COMPOSER_ROW_PADDING_TOP = 12;
+const COMPOSER_ROW_PADDING_BOTTOM = 16;
+const OPENING_MESSAGE_TOP_OFFSET = 16;
+const ANDROID_KEYBOARD_CLEARANCE = 20;
 
 const QUIET_ROOM_OPENING_GREETING = `Welcome to Quiet Room.
 
@@ -120,6 +124,7 @@ export default function QuietRoomScreen() {
   const [showLogin, setShowLogin] = useState(false);
   const [voiceModeEnabled, setVoiceModeEnabled] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [keyboardInset, setKeyboardInset] = useState(0);
 
   const [voiceAutoPlayTarget, setVoiceAutoPlayTarget] = useState<VoiceAutoPlayTarget | null>(null);
 
@@ -132,6 +137,7 @@ export default function QuietRoomScreen() {
   const prevLoadingRef = useRef(loading);
   const prevMessagesRef = useRef<ChatMessage[]>(messages);
   const inputValueRef = useRef(input);
+  const composerInputRef = useRef<TextInput>(null);
   const listRef = useRef<ScrollView>(null);
   const isNearBottomRef = useRef(true);
   const scrollAnchorTopRef = useRef<number | null>(null);
@@ -147,8 +153,15 @@ export default function QuietRoomScreen() {
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
     const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-    const showSubscription = Keyboard.addListener(showEvent, () => setIsKeyboardVisible(true));
-    const hideSubscription = Keyboard.addListener(hideEvent, () => setIsKeyboardVisible(false));
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      setIsKeyboardVisible(true);
+      setKeyboardInset(event.endCoordinates.height);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      composerInputRef.current?.blur();
+      setIsKeyboardVisible(false);
+      setKeyboardInset(0);
+    });
     return () => {
       showSubscription.remove();
       hideSubscription.remove();
@@ -567,6 +580,7 @@ export default function QuietRoomScreen() {
   }, [armSendAnchor, loading, sendMessage]);
 
   const dismissKeyboard = useCallback(() => {
+    composerInputRef.current?.blur();
     Keyboard.dismiss();
   }, []);
   const handleProfilePress = useCallback(() => {
@@ -594,11 +608,7 @@ export default function QuietRoomScreen() {
     <SafeAreaView style={styles.safeArea} testID={testIds.screen}>
       <StatusBar style="dark" />
 
-      <KeyboardAvoidingView
-        style={styles.root}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
-      >
+      <View style={styles.root}>
         {(showProfileMenu || showChatOptions) ? (
           <Pressable
             onPress={() => {
@@ -661,7 +671,7 @@ export default function QuietRoomScreen() {
             </Pressable>
 
             {showProfileMenu ? (
-              <View style={styles.profileMenu}>
+              <View style={styles.profileMenu} testID={testIds.profileMenu}>
                 {isAnon ? (
                   <>
                     <Text style={styles.profileMenuName}>Signed in as Guest</Text>
@@ -672,6 +682,7 @@ export default function QuietRoomScreen() {
                         setShowLogin(true);
                       }}
                       style={styles.profileMenuButton}
+                      testID={testIds.profileSignInButton}
                     >
                       <Text style={styles.profileMenuButtonLabel}>Sign In</Text>
                     </Pressable>
@@ -718,6 +729,7 @@ export default function QuietRoomScreen() {
           ) : (
             <ScrollView
               contentContainerStyle={styles.messageListContent}
+              style={styles.messageList}
               keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
               keyboardShouldPersistTaps="handled"
               onContentSizeChange={(_, contentHeight) => {
@@ -765,6 +777,7 @@ export default function QuietRoomScreen() {
                     <View
                       collapsable={false}
                       key={item.id}
+                      style={index === 0 ? styles.openingMessageWrap : null}
                       onLayout={(event: LayoutChangeEvent) => {
                         messageOffsetsRef.current[item.id] = event.nativeEvent.layout.y;
 
@@ -777,6 +790,7 @@ export default function QuietRoomScreen() {
                     >
                       <MessageBubble
                         autoPlayVoice={item.autoPlayVoice}
+                        conversationId={index === 0 ? null : currentId}
                         message={item.message}
                         testID={index === 0 ? testIds.openingMessage : messageBubbleTestId(item.message.role, index - 1)}
                         testIndex={index === 0 ? undefined : index - 1}
@@ -812,7 +826,14 @@ export default function QuietRoomScreen() {
             </View>
           </View>
         ) : null}
-        <View style={styles.inputRow}>
+        <View
+          style={[
+            styles.inputRow,
+            Platform.OS === "android" && keyboardInset > 0
+              ? { paddingBottom: COMPOSER_ROW_PADDING_BOTTOM + keyboardInset + ANDROID_KEYBOARD_CLEARANCE }
+              : null,
+          ]}
+        >
             <View style={styles.modelColumn}>
               <Text style={styles.modelCaption}>{modelLabel(currentModel)}</Text>
               <Pressable
@@ -875,6 +896,9 @@ export default function QuietRoomScreen() {
                 onChangeText={handleInputChange}
                 onContentSizeChange={handleComposerSizeChange}
                 placeholder="Share what is present..."
+                placeholderTextColor={mobileWeb.colors.gray500}
+                selectionColor={mobileWeb.colors.blue600}
+                ref={composerInputRef}
                 style={styles.composerInput}
                 testID={testIds.composerInput}
                 value={input}
@@ -929,6 +953,8 @@ export default function QuietRoomScreen() {
                 multiline
                 onChangeText={handleInputChange}
                 placeholder="Share what is present..."
+                placeholderTextColor={mobileWeb.colors.gray500}
+                selectionColor={mobileWeb.colors.blue600}
                 style={styles.fullscreenInput}
                 testID={testIds.composerFullscreenInput}
                 value={input}
@@ -961,23 +987,35 @@ export default function QuietRoomScreen() {
 
         <Modal
           animationType="fade"
-          transparent
+          transparent={false}
           visible={showCrucifix}
           onRequestClose={() => setShowCrucifix(false)}
         >
-          <View style={styles.crucifixModalBackdrop}>
-            <Pressable onPress={() => setShowCrucifix(false)} style={StyleSheet.absoluteFill} />
-            <View style={styles.crucifixModalCard}>
+          <SafeAreaView style={styles.crucifixModalScreen} testID={testIds.crucifixModal}>
+            <View style={styles.crucifixModalHeader}>
+              <View style={styles.crucifixModalHeaderSpacer} />
+              <Pressable
+                accessibilityLabel="Close crucifix"
+                onPress={() => setShowCrucifix(false)}
+                style={({ pressed }) => [
+                  styles.crucifixModalCloseButton,
+                  pressed && styles.crucifixModalCloseButtonPressed,
+                ]}
+                testID={testIds.crucifixClose}
+              >
+                <Ionicons name="close" size={28} color={mobileWeb.colors.white} />
+              </Pressable>
+            </View>
+
+            <View style={styles.crucifixModalImageWrap}>
               <Image
                 source={require("../../assets/crucifix-web.png")}
                 style={styles.crucifixModalImage}
                 resizeMode="contain"
+                testID={testIds.crucifixImage}
               />
-              <Pressable onPress={() => setShowCrucifix(false)} style={styles.crucifixModalClose}>
-                <Text style={styles.crucifixModalCloseText}>Close</Text>
-              </Pressable>
             </View>
-          </View>
+          </SafeAreaView>
         </Modal>
 
         <LoginModal onClose={() => setShowLogin(false)} visible={showLogin} />
@@ -1004,7 +1042,7 @@ export default function QuietRoomScreen() {
           }}
           visible={!isAnon && showConversations}
         />
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -1020,6 +1058,7 @@ const styles = StyleSheet.create({
     borderColor: mobileWeb.colors.gray300,
     borderRadius: mobileWeb.radii.lg,
     borderWidth: 1,
+    color: mobileWeb.colors.gray900,
     fontSize: 15,
     lineHeight: 24,
     maxHeight: 192,
@@ -1043,38 +1082,39 @@ const styles = StyleSheet.create({
     height: 128,
     width: 96,
   },
-  crucifixModalBackdrop: {
+  crucifixModalCloseButton: {
     alignItems: "center",
-    backgroundColor: "rgba(17, 24, 39, 0.35)",
-    flex: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderRadius: 999,
+    height: 44,
     justifyContent: "center",
-    padding: 16,
+    width: 44,
   },
-  crucifixModalCard: {
-    backgroundColor: mobileWeb.colors.white,
-    borderColor: mobileWeb.colors.gray200,
-    borderRadius: mobileWeb.radii.lg,
-    borderWidth: 1,
-    padding: 12,
-    width: "100%",
+  crucifixModalCloseButtonPressed: {
+    backgroundColor: "rgba(255, 255, 255, 0.18)",
   },
-  crucifixModalClose: {
+  crucifixModalHeader: {
     alignItems: "center",
-    borderColor: mobileWeb.colors.gray200,
-    borderRadius: mobileWeb.radii.lg,
-    borderWidth: 1,
-    marginTop: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
-  crucifixModalCloseText: {
-    color: mobileWeb.colors.gray700,
-    fontSize: 14,
-    fontWeight: "600",
+  crucifixModalHeaderSpacer: {
+    width: 44,
   },
   crucifixModalImage: {
-    height: 420,
+    height: "100%",
     width: "100%",
+  },
+  crucifixModalImageWrap: {
+    flex: 1,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+  },
+  crucifixModalScreen: {
+    backgroundColor: "#0F0F10",
+    flex: 1,
   },
   crucifixWrap: {
     alignItems: "center",
@@ -1165,6 +1205,7 @@ const styles = StyleSheet.create({
     borderColor: mobileWeb.colors.gray300,
     borderRadius: mobileWeb.radii.lg,
     borderWidth: 1,
+    color: mobileWeb.colors.gray900,
     flex: 1,
     fontSize: 15,
     lineHeight: 24,
@@ -1274,9 +1315,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     flexDirection: "row",
     gap: 8,
-    paddingBottom: MESSAGE_LIST_PADDING_BOTTOM,
+    paddingBottom: COMPOSER_ROW_PADDING_BOTTOM,
     paddingHorizontal: 16,
-    paddingTop: 0,
+    paddingTop: COMPOSER_ROW_PADDING_TOP,
     position: "relative",
     zIndex: 25,
   },
@@ -1286,6 +1327,9 @@ const styles = StyleSheet.create({
     minHeight: 200,
     padding: 16,
   },
+  messageList: {
+    marginTop: 0,
+  },
   messageListContent: {
     paddingBottom: MESSAGE_LIST_PADDING_BOTTOM,
     paddingHorizontal: 16,
@@ -1293,6 +1337,9 @@ const styles = StyleSheet.create({
   },
   messageSeparator: {
     height: 16,
+  },
+  openingMessageWrap: {
+    marginTop: OPENING_MESSAGE_TOP_OFFSET,
   },
   messageListInner: {
     minWidth: "100%",
@@ -1544,141 +1591,6 @@ const styles = StyleSheet.create({
     paddingTop: 0,
   },
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

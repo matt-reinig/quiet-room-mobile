@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Alert,
   FlatList,
@@ -36,6 +36,15 @@ type ConversationsModalProps = {
   onRenameConversation: (conversationId: string, title: string) => Promise<void>;
   onSelectConversation: (conversationId: string) => void;
   visible: boolean;
+};
+
+const MENU_PANEL_HEIGHT = 96;
+const MENU_PANEL_WIDTH = 156;
+
+type OpenMenuState = {
+  id: string;
+  left: number;
+  top: number;
 };
 
 function formatConversationTitle(conversation: Conversation): string {
@@ -80,14 +89,17 @@ export default function ConversationsModal({
     return [...conversations].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   }, [conversations]);
 
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [openMenu, setOpenMenu] = useState<OpenMenuState | null>(null);
+  const [panelHeight, setPanelHeight] = useState(0);
+  const [panelWidth, setPanelWidth] = useState(0);
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
+  const menuButtonRefs = useRef<Record<string, View | null>>({});
   const [renameValue, setRenameValue] = useState("");
   const [renameBusy, setRenameBusy] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
 
   const closePanel = () => {
-    setOpenMenuId(null);
+    setOpenMenu(null);
     onClose();
   };
 
@@ -99,7 +111,7 @@ export default function ConversationsModal({
   };
 
   const openRename = (conversation: Conversation) => {
-    setOpenMenuId(null);
+    setOpenMenu(null);
     setRenameTargetId(conversation.id);
     setRenameValue(formatConversationTitle(conversation));
     setRenameBusy(false);
@@ -149,13 +161,53 @@ export default function ConversationsModal({
     ]);
   };
 
+  const openConversationMenu = useCallback((conversationId: string) => {
+    if (openMenu?.id === conversationId) {
+      setOpenMenu(null);
+      return;
+    }
+
+    const button = menuButtonRefs.current[conversationId];
+    if (!button || typeof button.measureInWindow !== "function") {
+      return;
+    }
+
+    button.measureInWindow((x, y, width, height) => {
+      const maxLeft = Math.max(12, panelWidth - MENU_PANEL_WIDTH - 12);
+      const maxTop = Math.max(12, panelHeight - MENU_PANEL_HEIGHT - 12);
+      const left = Math.max(12, Math.min(x + width - MENU_PANEL_WIDTH, maxLeft));
+      const top = Math.max(12, Math.min(y + height + 8, maxTop));
+
+      setOpenMenu({
+        id: conversationId,
+        left,
+        top,
+      });
+    });
+  }, [openMenu?.id, panelHeight, panelWidth]);
+
+  const openMenuConversation = useMemo(() => {
+    if (!openMenu) {
+      return null;
+    }
+
+    return sortedConversations.find((conversation) => conversation.id === openMenu.id) ?? null;
+  }, [openMenu, sortedConversations]);
+
   return (
     <>
       <Modal animationType="fade" onRequestClose={closePanel} transparent visible={visible}>
         <View style={styles.backdrop}>
-          <Pressable onPress={closePanel} style={styles.overlay} />
+          <Pressable onPress={closePanel} style={StyleSheet.absoluteFill} />
 
-          <SafeAreaView style={styles.panel} testID={testIds.conversationsPanel}>
+          <SafeAreaView
+            onLayout={(event) => {
+              setPanelHeight(event.nativeEvent.layout.height);
+              setPanelWidth(event.nativeEvent.layout.width);
+            }}
+            style={styles.panel}
+            testID={testIds.conversationsPanel}
+          >
             <View style={styles.headerRow}>
               <Text style={styles.headerTitle}>Conversations</Text>
               <Pressable hitSlop={14} onPress={closePanel} style={styles.closeButton} testID={testIds.conversationsClose}>
@@ -165,7 +217,7 @@ export default function ConversationsModal({
 
             <Pressable
               onPress={() => {
-                setOpenMenuId(null);
+                setOpenMenu(null);
                 onCreateNew();
               }}
               style={styles.newChatButton}
@@ -182,6 +234,7 @@ export default function ConversationsModal({
               <FlatList
                 contentContainerStyle={styles.listContent}
                 data={sortedConversations}
+                removeClippedSubviews={false}
                 keyboardShouldPersistTaps="handled"
                 onEndReached={() => {
                   if (!loadingMore && hasMoreConversations) {
@@ -204,13 +257,19 @@ export default function ConversationsModal({
                 }
                 renderItem={({ item }) => {
                   const isActive = item.id === currentId;
-                  const isMenuOpen = openMenuId === item.id;
+                  const isMenuOpen = openMenu?.id === item.id;
 
                   return (
-                    <View style={[styles.itemRow, isActive && styles.itemRowActive]}>
+                    <View
+                      style={[
+                        styles.itemRow,
+                        isActive && styles.itemRowActive,
+                        isMenuOpen && styles.itemRowMenuOpen,
+                      ]}
+                    >
                       <Pressable
                         onPress={() => {
-                          setOpenMenuId(null);
+                          setOpenMenu(null);
                           onSelectConversation(item.id);
                         }}
                         style={styles.itemMainButton}
@@ -227,9 +286,12 @@ export default function ConversationsModal({
                       <Pressable
                         accessibilityLabel="Conversation options"
                         hitSlop={8}
-                        onPress={() =>
-                          setOpenMenuId((prev) => (prev === item.id ? null : item.id))
-                        }
+                        onPress={() => {
+                          void openConversationMenu(item.id);
+                        }}
+                        ref={(node) => {
+                          menuButtonRefs.current[item.id] = node;
+                        }}
                         style={styles.itemMenuButton}
                         testID={conversationMenuButtonTestId(item.id)}
                       >
@@ -239,33 +301,46 @@ export default function ConversationsModal({
                           size={16}
                         />
                       </Pressable>
-
-                      {isMenuOpen ? (
-                        <View style={styles.menuPanel}>
-                          <Pressable
-                            onPress={() => openRename(item)}
-                            style={styles.menuActionButton}
-                            testID={conversationRenameButtonTestId(item.id)}
-                          >
-                            <Text style={styles.menuActionLabel}>Rename</Text>
-                          </Pressable>
-                          <Pressable
-                            onPress={() => {
-                              setOpenMenuId(null);
-                              confirmDelete(item.id);
-                            }}
-                            style={styles.menuActionButton}
-                            testID={conversationDeleteButtonTestId(item.id)}
-                          >
-                            <Text style={styles.menuDeleteLabel}>Delete</Text>
-                          </Pressable>
-                        </View>
-                      ) : null}
                     </View>
                   );
                 }}
               />
             )}
+
+            {openMenuConversation && openMenu ? (
+              <View pointerEvents="box-none" style={styles.menuOverlay}>
+                <Pressable onPress={() => setOpenMenu(null)} style={StyleSheet.absoluteFill} />
+
+                <View
+                  style={[
+                    styles.menuPanel,
+                    {
+                      left: openMenu.left,
+                      top: openMenu.top,
+                      width: MENU_PANEL_WIDTH,
+                    },
+                  ]}
+                >
+                  <Pressable
+                    onPress={() => openRename(openMenuConversation)}
+                    style={styles.menuActionButton}
+                    testID={conversationRenameButtonTestId(openMenuConversation.id)}
+                  >
+                    <Text style={styles.menuActionLabel}>Rename</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      setOpenMenu(null);
+                      confirmDelete(openMenuConversation.id);
+                    }}
+                    style={styles.menuActionButton}
+                    testID={conversationDeleteButtonTestId(openMenuConversation.id)}
+                  >
+                    <Text style={styles.menuDeleteLabel}>Delete</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
           </SafeAreaView>
         </View>
       </Modal>
@@ -324,7 +399,6 @@ export default function ConversationsModal({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    flexDirection: "row",
   },
   closeButton: {
     alignItems: "center",
@@ -387,6 +461,7 @@ const styles = StyleSheet.create({
     borderRadius: mobileWeb.radii.lg,
     borderWidth: 1,
     flexDirection: "row",
+    overflow: "visible",
     paddingHorizontal: 12,
     paddingVertical: 10,
     position: "relative",
@@ -394,6 +469,10 @@ const styles = StyleSheet.create({
   itemRowActive: {
     backgroundColor: mobileWeb.colors.blue50,
     borderColor: mobileWeb.colors.blue200,
+  },
+  itemRowMenuOpen: {
+    elevation: 12,
+    zIndex: 20,
   },
   itemTitle: {
     color: mobileWeb.colors.gray900,
@@ -426,16 +505,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
   },
+  menuOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    elevation: 30,
+    zIndex: 60,
+  },
   menuPanel: {
     backgroundColor: mobileWeb.colors.white,
     borderColor: mobileWeb.colors.gray200,
     borderRadius: 12,
     borderWidth: 1,
+    elevation: 30,
     padding: 6,
     position: "absolute",
-    right: 8,
-    top: 50,
-    zIndex: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+    zIndex: 70,
   },
   newChatButton: {
     alignItems: "center",
@@ -450,14 +537,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
   },
-  overlay: {
-    flex: 1,
-  },
   panel: {
     alignSelf: "stretch",
     backgroundColor: mobileWeb.colors.white,
-    borderLeftColor: mobileWeb.colors.gray200,
-    borderLeftWidth: 1,
+    borderRightColor: mobileWeb.colors.gray200,
+    borderRightWidth: 1,
     maxWidth: Platform.OS === "ios" ? 420 : 380,
     paddingBottom: 20,
     paddingHorizontal: 14,
@@ -531,3 +615,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 });
+
+
+
+
+
+

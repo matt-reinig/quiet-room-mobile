@@ -1,35 +1,40 @@
 {
-  "expo": {
-    "name": "quiet-room-mobile",
-    "slug": "quiet-room-mobile",
-    "version": "1.0.0",
-    "scheme": "quietroommobile",
-    "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
-    "newArchEnabled": false,
-    "splash": {
-      "image": "./assets/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.quietroom.mobile"
-    },
-    "android": {
-      "package": "com.quietroom.mobile",
-      "softwareKeyboardLayoutMode": "resize",
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
-    },
-    "plugins": ["expo-web-browser"]
-  }
+    "expo":  {
+                 "name":  "quiet-room-mobile",
+                 "slug":  "quiet-room-mobile",
+                 "version":  "1.0.0",
+                 "scheme":  "quietroommobile",
+                 "orientation":  "portrait",
+                 "icon":  "./assets/icon.png",
+                 "userInterfaceStyle":  "light",
+                 "newArchEnabled":  false,
+                 "splash":  {
+                                "image":  "./assets/splash-icon.png",
+                                "resizeMode":  "contain",
+                                "backgroundColor":  "#ffffff"
+                            },
+                 "ios":  {
+                             "supportsTablet":  true,
+                             "bundleIdentifier":  "com.quietroom.mobile"
+                         },
+                 "android":  {
+                                 "package":  "com.quietroom.mobile",
+                                 "softwareKeyboardLayoutMode":  "pan",
+                                 "adaptiveIcon":  {
+                                                      "foregroundImage":  "./assets/adaptive-icon.png",
+                                                      "backgroundColor":  "#ffffff"
+                                                  },
+                                 "edgeToEdgeEnabled":  true,
+                                 "predictiveBackGestureEnabled":  false,
+                                 "googleServicesFile":  "./google-services.json"
+                             },
+                 "web":  {
+                             "favicon":  "./assets/favicon.png"
+                         },
+                 "plugins":  [
+                                 "expo-web-browser",
+                                 "@react-native-google-signin/google-signin"
+                             ]
+             }
 }
+

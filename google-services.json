@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "767113712839",
+    "project_id": "gabriel-qa-89f20",
+    "storage_bucket": "gabriel-qa-89f20.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:767113712839:android:27a716cea43db3478c1ae2",
+        "android_client_info": {
+          "package_name": "com.quietroom.mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "767113712839-7ahjoabpir0e94b8hm3ui23bj34uolj5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.quietroom.mobile",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "767113712839-rgm53jen52dve4l9o0bbs72tn4478o8v.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBwtjahNmGb3dgHJI7DgToJH50BaKFvLFA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "767113712839-rgm53jen52dve4l9o0bbs72tn4478o8v.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "767113712839-1gostbqdntoid4qhafcjsq8mmcav9nc1.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.quietroom.mobile"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

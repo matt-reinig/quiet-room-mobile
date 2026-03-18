@@ -1,9 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
+import { makeRedirectUri } from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
+import {
+  GoogleSignin,
+  isErrorWithCode,
+  isSuccessResponse,
+  statusCodes,
+} from "@react-native-google-signin/google-signin";
 import * as WebBrowser from "expo-web-browser";
 import {
   Alert,
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -28,6 +38,10 @@ type LoginModalProps = {
 
 WebBrowser.maybeCompleteAuthSession();
 
+const browserGoogleRedirectUri = makeRedirectUri({
+  native: "quietroommobile:/oauthredirect",
+});
+
 function mapAuthError(code: string | undefined, kind: "login" | "signup") {
   switch (code) {
     case "auth/invalid-email":
@@ -51,6 +65,25 @@ function mapAuthError(code: string | undefined, kind: "login" | "signup") {
   }
 }
 
+const ANDROID_KEYBOARD_CLEARANCE = 36;
+
+function mapGoogleNativeError(rawError: unknown) {
+  if (isErrorWithCode(rawError)) {
+    switch (rawError.code) {
+      case statusCodes.IN_PROGRESS:
+        return "Google sign-in is already in progress.";
+      case statusCodes.PLAY_SERVICES_NOT_AVAILABLE:
+        return "Google Play Services is unavailable on this device.";
+      case statusCodes.SIGN_IN_REQUIRED:
+        return "Google sign-in could not be completed. Please try again.";
+      default:
+        return rawError.message || "Google sign-in failed.";
+    }
+  }
+
+  return rawError instanceof Error ? rawError.message : "Google sign-in failed.";
+}
+
 export default function LoginModal({ onClose, visible }: LoginModalProps) {
   const { loading, loginWithEmail, loginWithGoogle, requestPasswordReset, signUpWithEmail } =
     useAuth();
@@ -63,19 +96,58 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
   const [signupError, setSignupError] = useState<string | null>(null);
   const [googleBusy, setGoogleBusy] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+
+  const nativeGoogleWebClientId =
+    GOOGLE_AUTH_CONFIG.webClientId || GOOGLE_AUTH_CONFIG.clientId || "";
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     androidClientId: GOOGLE_AUTH_CONFIG.androidClientId || undefined,
     clientId: GOOGLE_AUTH_CONFIG.clientId || undefined,
     iosClientId: GOOGLE_AUTH_CONFIG.iosClientId || undefined,
+    redirectUri: Platform.OS === "android" ? browserGoogleRedirectUri : undefined,
     selectAccount: true,
     webClientId: GOOGLE_AUTH_CONFIG.webClientId || undefined,
   });
 
-  const googleAvailable = useMemo(
-    () => GOOGLE_AUTH_ENABLED && Boolean(request),
-    [request]
-  );
+  useEffect(() => {
+    if (Platform.OS !== "android") {
+      return;
+    }
+
+    GoogleSignin.configure({
+      webClientId: nativeGoogleWebClientId || undefined,
+    });
+  }, [nativeGoogleWebClientId]);
+
+  useEffect(() => {
+    if (!visible) {
+      setKeyboardInset(0);
+      return;
+    }
+
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardInset(event.endCoordinates.height);
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setKeyboardInset(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [visible]);
+
+  const googleAvailable = useMemo(() => {
+    if (Platform.OS === "android") {
+      return Boolean(nativeGoogleWebClientId);
+    }
+
+    return GOOGLE_AUTH_ENABLED && Boolean(request);
+  }, [nativeGoogleWebClientId, request]);
 
   const resetAll = () => {
     setEmail("");
@@ -95,7 +167,7 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
   }, [visible]);
 
   useEffect(() => {
-    if (!response) {
+    if (Platform.OS === "android" || !response) {
       return;
     }
 
@@ -124,8 +196,7 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
         await loginWithGoogle(idToken);
         onClose?.();
       } catch (rawError) {
-        const message =
-          rawError instanceof Error ? rawError.message : "Google sign-in failed.";
+        const message = rawError instanceof Error ? rawError.message : "Google sign-in failed.";
         setGoogleError(message);
       } finally {
         setGoogleBusy(false);
@@ -175,18 +246,36 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
     }
   };
 
-  const doGoogleSignIn = async () => {
-    if (!googleAvailable) {
-      Alert.alert(
-        "Google Sign-In",
-        "Google OAuth is not configured yet. Add EXPO_PUBLIC_GOOGLE_* client IDs first."
-      );
-      return;
+  const doNativeGoogleSignIn = async () => {
+    try {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+
+      if (GoogleSignin.hasPreviousSignIn()) {
+        await GoogleSignin.signOut().catch(() => null);
+      }
+
+      const result = await GoogleSignin.signIn();
+
+      if (!isSuccessResponse(result)) {
+        return;
+      }
+
+      const idToken = result.data.idToken || (await GoogleSignin.getTokens()).idToken;
+
+      if (!idToken) {
+        throw new Error("Google sign-in did not return an id token.");
+      }
+
+      await loginWithGoogle(idToken);
+      onClose?.();
+    } catch (rawError) {
+      setGoogleError(mapGoogleNativeError(rawError));
+    } finally {
+      setGoogleBusy(false);
     }
+  };
 
-    setGoogleBusy(true);
-    setGoogleError(null);
-
+  const doBrowserGoogleSignIn = async () => {
     try {
       const result = await promptAsync();
 
@@ -194,11 +283,32 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
         setGoogleBusy(false);
       }
     } catch (rawError) {
-      const message =
-        rawError instanceof Error ? rawError.message : "Google sign-in failed.";
+      const message = rawError instanceof Error ? rawError.message : "Google sign-in failed.";
       setGoogleError(message);
       setGoogleBusy(false);
     }
+  };
+
+  const doGoogleSignIn = async () => {
+    if (!googleAvailable) {
+      const configHint =
+        Platform.OS === "android"
+          ? "Google sign-in is not configured yet. Add EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID first."
+          : "Google OAuth is not configured yet. Add EXPO_PUBLIC_GOOGLE_* client IDs first.";
+
+      Alert.alert("Google Sign-In", configHint);
+      return;
+    }
+
+    setGoogleBusy(true);
+    setGoogleError(null);
+
+    if (Platform.OS === "android") {
+      await doNativeGoogleSignIn();
+      return;
+    }
+
+    await doBrowserGoogleSignIn();
   };
 
   if (!visible) {
@@ -210,118 +320,164 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
       <View style={styles.backdrop}>
         <Pressable onPress={closeModal} style={StyleSheet.absoluteFill} />
 
-        <View style={styles.sheet} testID={testIds.loginModal}>
-          <View style={styles.headerRow}>
-            <View style={styles.tabs}>
-              <Pressable onPress={() => setMode("signin")} testID={testIds.loginTabSignin}>
-                <Text style={[styles.tab, mode === "signin" && styles.tabActive]}>Sign in</Text>
-              </Pressable>
-              <Pressable onPress={() => setMode("signup")} testID={testIds.loginTabSignup}>
-                <Text style={[styles.tab, mode === "signup" && styles.tabActive]}>
-                  Create account
-                </Text>
-              </Pressable>
-              <Pressable onPress={() => setMode("reset")} testID={testIds.loginTabReset}>
-                <Text style={[styles.tab, mode === "reset" && styles.tabActive]}>
-                  Reset password
-                </Text>
+        <KeyboardAvoidingView
+          enabled={Platform.OS === "ios"}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}
+          pointerEvents="box-none"
+          style={[
+            styles.keyboardFrame,
+            Platform.OS === "android" && keyboardInset > 0
+              ? { justifyContent: "flex-end", paddingBottom: keyboardInset + ANDROID_KEYBOARD_CLEARANCE }
+              : null,
+          ]}
+        >
+          <View
+            style={[
+              styles.sheet,
+              Platform.OS === "android" && keyboardInset > 0 ? styles.sheetLifted : null,
+            ]}
+            testID={testIds.loginModal}
+          >
+            <View style={styles.headerRow}>
+              <View style={styles.tabs}>
+                <Pressable onPress={() => setMode("signin")} testID={testIds.loginTabSignin}>
+                  <Text style={[styles.tab, mode === "signin" && styles.tabActive]}>Sign in</Text>
+                </Pressable>
+                <Pressable onPress={() => setMode("signup")} testID={testIds.loginTabSignup}>
+                  <Text style={[styles.tab, mode === "signup" && styles.tabActive]}>
+                    Create account
+                  </Text>
+                </Pressable>
+                <Pressable onPress={() => setMode("reset")} testID={testIds.loginTabReset}>
+                  <Text style={[styles.tab, mode === "reset" && styles.tabActive]}>
+                    Reset password
+                  </Text>
+                </Pressable>
+              </View>
+              <Pressable onPress={closeModal} style={styles.closeButton} testID={testIds.loginClose}>
+                <Text style={styles.closeLabel}>X</Text>
               </Pressable>
             </View>
-            <Pressable onPress={closeModal} style={styles.closeButton} testID={testIds.loginClose}>
-              <Text style={styles.closeLabel}>X</Text>
-            </Pressable>
+
+            {mode === "signin" ? (
+              <>
+                <Pressable
+                  disabled={loading || googleBusy || !googleAvailable}
+                  onPress={() => {
+                    void doGoogleSignIn();
+                  }}
+                  style={[
+                    styles.primaryOutlineButton,
+                    (loading || googleBusy || !googleAvailable) && styles.disabledButton,
+                  ]}
+                  testID={testIds.loginGoogleButton}
+                >
+                  <Text style={styles.primaryOutlineButtonLabel}>
+                    {googleBusy
+                      ? Platform.OS === "android"
+                        ? "Opening Google..."
+                        : "Opening Google..."
+                      : "Sign in with Google"}
+                  </Text>
+                </Pressable>
+
+                {!googleAvailable ? (
+                  <Text style={styles.helperCopy}>
+                    {Platform.OS === "android"
+                      ? "Google sign-in is disabled until EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is set."
+                      : "Google sign-in is disabled until EXPO_PUBLIC_GOOGLE client IDs are set."}
+                  </Text>
+                ) : (
+                  <Text style={styles.helperCopy}>or use email and password</Text>
+                )}
+
+                {googleError ? <Text style={styles.error}>{googleError}</Text> : null}
+              </>
+            ) : null}
+
+            {(mode === "signin" || mode === "signup") && (
+              <>
+                <TextInput
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  onChangeText={setEmail}
+                  placeholder="Email"
+                  placeholderTextColor={mobileWeb.colors.gray500}
+                  selectionColor={mobileWeb.colors.blue600}
+                  style={styles.input}
+                  testID={testIds.loginEmailInput}
+                  value={email}
+                />
+
+                <TextInput
+                  autoCapitalize="none"
+                  onChangeText={setPassword}
+                  placeholder="Password"
+                  placeholderTextColor={mobileWeb.colors.gray500}
+                  secureTextEntry
+                  selectionColor={mobileWeb.colors.blue600}
+                  style={styles.input}
+                  testID={testIds.loginPasswordInput}
+                  value={password}
+                />
+              </>
+            )}
+
+            {mode === "signin" ? (
+              <>
+                {error ? <Text style={styles.error}>{error}</Text> : null}
+                <Pressable
+                  disabled={loading}
+                  onPress={() => void doSignin()}
+                  style={styles.primaryButton}
+                  testID={testIds.loginSigninButton}
+                >
+                  <Text style={styles.primaryButtonLabel}>Sign in</Text>
+                </Pressable>
+              </>
+            ) : null}
+
+            {mode === "signup" ? (
+              <>
+                {signupError ? <Text style={styles.error}>{signupError}</Text> : null}
+                <Pressable
+                  disabled={loading}
+                  onPress={() => void doSignup()}
+                  style={styles.successButton}
+                  testID={testIds.loginSignupButton}
+                >
+                  <Text style={styles.successButtonLabel}>Create account</Text>
+                </Pressable>
+              </>
+            ) : null}
+
+            {mode === "reset" ? (
+              <>
+                <TextInput
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  onChangeText={setEmail}
+                  placeholder="Email"
+                  placeholderTextColor={mobileWeb.colors.gray500}
+                  selectionColor={mobileWeb.colors.blue600}
+                  style={styles.input}
+                  testID={testIds.loginEmailInput}
+                  value={email}
+                />
+                {resetMsg ? <Text style={styles.successText}>{resetMsg}</Text> : null}
+                <Pressable
+                  disabled={loading}
+                  onPress={() => void doReset()}
+                  style={styles.primaryButton}
+                  testID={testIds.loginResetButton}
+                >
+                  <Text style={styles.primaryButtonLabel}>Send reset link</Text>
+                </Pressable>
+              </>
+            ) : null}
           </View>
-
-          {mode === "signin" ? (
-            <>
-              <Pressable
-                disabled={loading || googleBusy || !googleAvailable}
-                onPress={() => {
-                  void doGoogleSignIn();
-                }}
-                style={[
-                  styles.primaryOutlineButton,
-                  (loading || googleBusy || !googleAvailable) && styles.disabledButton,
-                ]}
-                testID={testIds.loginGoogleButton}
-              >
-                <Text style={styles.primaryOutlineButtonLabel}>
-                  {googleBusy ? "Opening Google..." : "Sign in with Google"}
-                </Text>
-              </Pressable>
-
-              {!googleAvailable ? (
-                <Text style={styles.helperCopy}>
-                  Google sign-in is disabled until EXPO_PUBLIC_GOOGLE client IDs are set.
-                </Text>
-              ) : (
-                <Text style={styles.helperCopy}>or use email and password</Text>
-              )}
-
-              {googleError ? <Text style={styles.error}>{googleError}</Text> : null}
-            </>
-          ) : null}
-
-          {(mode === "signin" || mode === "signup") && (
-            <>
-              <TextInput
-                autoCapitalize="none"
-                keyboardType="email-address"
-                onChangeText={setEmail}
-                placeholder="Email"
-                style={styles.input}
-                testID={testIds.loginEmailInput}
-                value={email}
-              />
-
-              <TextInput
-                autoCapitalize="none"
-                onChangeText={setPassword}
-                placeholder="Password"
-                secureTextEntry
-                style={styles.input}
-                testID={testIds.loginPasswordInput}
-                value={password}
-              />
-            </>
-          )}
-
-          {mode === "signin" ? (
-            <>
-              {error ? <Text style={styles.error}>{error}</Text> : null}
-              <Pressable disabled={loading} onPress={() => void doSignin()} style={styles.primaryButton} testID={testIds.loginSigninButton}>
-                <Text style={styles.primaryButtonLabel}>Sign in</Text>
-              </Pressable>
-            </>
-          ) : null}
-
-          {mode === "signup" ? (
-            <>
-              {signupError ? <Text style={styles.error}>{signupError}</Text> : null}
-              <Pressable disabled={loading} onPress={() => void doSignup()} style={styles.successButton} testID={testIds.loginSignupButton}>
-                <Text style={styles.successButtonLabel}>Create account</Text>
-              </Pressable>
-            </>
-          ) : null}
-
-          {mode === "reset" ? (
-            <>
-              <TextInput
-                autoCapitalize="none"
-                keyboardType="email-address"
-                onChangeText={setEmail}
-                placeholder="Email"
-                style={styles.input}
-                testID={testIds.loginEmailInput}
-                value={email}
-              />
-              {resetMsg ? <Text style={styles.successText}>{resetMsg}</Text> : null}
-              <Pressable disabled={loading} onPress={() => void doReset()} style={styles.primaryButton} testID={testIds.loginResetButton}>
-                <Text style={styles.primaryButtonLabel}>Send reset link</Text>
-              </Pressable>
-            </>
-          ) : null}
-        </View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
@@ -329,8 +485,11 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
 
 const styles = StyleSheet.create({
   backdrop: {
-    alignItems: "center",
     backgroundColor: "rgba(17, 24, 39, 0.35)",
+    flex: 1,
+  },
+  keyboardFrame: {
+    alignItems: "center",
     flex: 1,
     justifyContent: "center",
     padding: 20,
@@ -408,9 +567,13 @@ const styles = StyleSheet.create({
     backgroundColor: mobileWeb.colors.white,
     borderRadius: 20,
     gap: 12,
+    maxHeight: "88%",
     maxWidth: 420,
     padding: 18,
     width: "100%",
+  },
+  sheetLifted: {
+    marginBottom: 12,
   },
   successButton: {
     alignItems: "center",
@@ -444,4 +607,8 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
 });
+
+
+
+
 

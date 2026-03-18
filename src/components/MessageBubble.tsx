@@ -14,15 +14,54 @@ const COPY_RESET_MS = 1500;
 
 type CopyState = "copied" | "error" | "idle";
 
+type TextSegment = {
+  bold: boolean;
+  text: string;
+};
+
 type MessageBubbleProps = {
   autoPlayVoice?: boolean;
+  conversationId?: string | null;
   message: ChatMessage;
   testID?: string;
   testIndex?: number;
 };
 
+function parseInlineMarkdown(content: string): TextSegment[] {
+  const segments: TextSegment[] = [];
+  const pattern = /\*\*(.+?)\*\*/gs;
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(content))) {
+    if (match.index > cursor) {
+      segments.push({
+        bold: false,
+        text: content.slice(cursor, match.index),
+      });
+    }
+
+    segments.push({
+      bold: true,
+      text: match[1],
+    });
+
+    cursor = match.index + match[0].length;
+  }
+
+  if (cursor < content.length) {
+    segments.push({
+      bold: false,
+      text: content.slice(cursor),
+    });
+  }
+
+  return segments.length > 0 ? segments : [{ bold: false, text: content }];
+}
+
 export default function MessageBubble({
   autoPlayVoice = false,
+  conversationId,
   message,
   testID,
   testIndex,
@@ -33,6 +72,7 @@ export default function MessageBubble({
 
   const isUser = message.role === "user";
   const content = typeof message.content === "string" ? message.content : "";
+  const contentSegments = parseInlineMarkdown(content);
 
   const showCopyButton =
     !isUser && content.trim().length > 0 && !message.isStreaming && !message.audioSrc;
@@ -81,7 +121,16 @@ export default function MessageBubble({
   return (
     <View testID={testID} style={[styles.row, isUser ? styles.rowUser : styles.rowAssistant]}>
       <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
-        <Text style={styles.content}>{content}</Text>
+        <Text style={styles.content}>
+          {contentSegments.map((segment, index) => (
+            <Text
+              key={`${segment.bold ? "bold" : "plain"}-${index}`}
+              style={segment.bold ? styles.contentBold : null}
+            >
+              {segment.text}
+            </Text>
+          ))}
+        </Text>
 
         {showCopyButton || showVoiceButton ? (
           <View style={styles.actionsRow}>
@@ -128,6 +177,8 @@ export default function MessageBubble({
               <MessageVoiceButton
                 audioSrc={message.audioSrc}
                 autoPlay={autoPlayVoice}
+                conversationId={conversationId}
+                messageIndex={testIndex}
                 testID={voiceButtonTestID}
                 text={content}
               />
@@ -187,6 +238,9 @@ const styles = StyleSheet.create({
     fontSize: mobileWeb.typography.body.fontSize,
     lineHeight: mobileWeb.typography.body.lineHeight,
   },
+  contentBold: {
+    fontWeight: "700",
+  },
   row: {
     width: "100%",
   },
@@ -201,3 +255,4 @@ const styles = StyleSheet.create({
     borderColor: mobileWeb.colors.blue200,
   },
 });
+
