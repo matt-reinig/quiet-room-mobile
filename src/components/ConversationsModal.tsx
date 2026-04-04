@@ -194,6 +194,12 @@ export default function ConversationsModal({
     return sortedConversations.find((conversation) => conversation.id === openMenu.id) ?? null;
   }, [openMenu, sortedConversations]);
 
+  const maybeLoadMore = useCallback(() => {
+    if (!loadingMore && hasMoreConversations) {
+      void onLoadMore();
+    }
+  }, [hasMoreConversations, loadingMore, onLoadMore]);
+
   return (
     <>
       <Modal animationType="fade" onRequestClose={closePanel} transparent visible={visible}>
@@ -231,31 +237,41 @@ export default function ConversationsModal({
                 <Spinner label="Loading conversations..." tone="accent" />
               </View>
             ) : (
-              <FlatList
-                contentContainerStyle={styles.listContent}
-                data={sortedConversations}
-                removeClippedSubviews={false}
-                keyboardShouldPersistTaps="handled"
-                onEndReached={() => {
-                  if (!loadingMore && hasMoreConversations) {
-                    void onLoadMore();
-                  }
-                }}
-                onEndReachedThreshold={0.35}
-                testID={testIds.conversationsList}
-                ListEmptyComponent={
-                  <View style={styles.emptyWrap}>
-                    <Text style={styles.emptyText}>No conversations yet.</Text>
-                  </View>
-                }
-                ListFooterComponent={
-                  loadingMore ? (
-                    <View style={styles.loadingMoreWrap}>
-                      <Spinner label="Loading more conversations..." tone="accent" />
+              <View style={styles.listWrap}>
+                <FlatList
+                  contentContainerStyle={styles.listContent}
+                  data={sortedConversations}
+                  keyboardShouldPersistTaps="handled"
+                  onEndReached={() => {
+                    maybeLoadMore();
+                  }}
+                  onEndReachedThreshold={0.35}
+                  onScroll={({ nativeEvent }) => {
+                    const distanceFromBottom =
+                      nativeEvent.contentSize.height -
+                      (nativeEvent.contentOffset.y + nativeEvent.layoutMeasurement.height);
+
+                    if (distanceFromBottom <= 160) {
+                      maybeLoadMore();
+                    }
+                  }}
+                  removeClippedSubviews={false}
+                  scrollEventThrottle={16}
+                  style={styles.list}
+                  testID={testIds.conversationsList}
+                  ListEmptyComponent={
+                    <View style={styles.emptyWrap}>
+                      <Text style={styles.emptyText}>No conversations yet.</Text>
                     </View>
-                  ) : null
-                }
-                renderItem={({ item }) => {
+                  }
+                  ListFooterComponent={
+                    loadingMore ? (
+                      <View style={styles.listFooterLoading} testID={testIds.conversationsLoadingMore}>
+                        <Spinner label="Loading more conversations..." tone="accent" />
+                      </View>
+                    ) : null
+                  }
+                  renderItem={({ item }) => {
                   const isActive = item.id === currentId;
                   const isMenuOpen = openMenu?.id === item.id;
 
@@ -265,6 +281,7 @@ export default function ConversationsModal({
                         styles.itemRow,
                         isActive && styles.itemRowActive,
                         isMenuOpen && styles.itemRowMenuOpen,
+                        isActive && isMenuOpen && styles.itemRowActiveMenuOpen,
                       ]}
                     >
                       <Pressable
@@ -292,7 +309,7 @@ export default function ConversationsModal({
                         ref={(node) => {
                           menuButtonRefs.current[item.id] = node;
                         }}
-                        style={styles.itemMenuButton}
+                        style={[styles.itemMenuButton, isMenuOpen && styles.itemMenuButtonOpen]}
                         testID={conversationMenuButtonTestId(item.id)}
                       >
                         <Ionicons
@@ -304,7 +321,8 @@ export default function ConversationsModal({
                     </View>
                   );
                 }}
-              />
+                />
+              </View>
             )}
 
             {openMenuConversation && openMenu ? (
@@ -398,6 +416,7 @@ export default function ConversationsModal({
 
 const styles = StyleSheet.create({
   backdrop: {
+    backgroundColor: "rgba(17, 24, 39, 0.18)",
     flex: 1,
   },
   closeButton: {
@@ -451,6 +470,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 36,
   },
+  itemMenuButtonOpen: {
+    backgroundColor: "rgba(255, 255, 255, 0.72)",
+  },
   itemMeta: {
     color: mobileWeb.colors.gray500,
     fontSize: 11,
@@ -470,8 +492,11 @@ const styles = StyleSheet.create({
     backgroundColor: mobileWeb.colors.blue50,
     borderColor: mobileWeb.colors.blue200,
   },
+  itemRowActiveMenuOpen: {
+    backgroundColor: mobileWeb.colors.white,
+    borderColor: mobileWeb.colors.gray300,
+  },
   itemRowMenuOpen: {
-    elevation: 12,
     zIndex: 20,
   },
   itemTitle: {
@@ -479,16 +504,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
+  list: {
+    flex: 1,
+  },
+  listWrap: {
+    flex: 1,
+    minHeight: 0,
+  },
   listContent: {
     gap: 10,
     paddingBottom: 16,
   },
   loadingWrap: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
     paddingVertical: 24,
   },
-  loadingMoreWrap: {
-    paddingBottom: 8,
-    paddingTop: 2,
+  listFooterLoading: {
+    alignItems: "center",
+    paddingBottom: 12,
+    paddingTop: 8,
   },
   menuActionButton: {
     borderRadius: 8,
@@ -542,6 +578,7 @@ const styles = StyleSheet.create({
     backgroundColor: mobileWeb.colors.white,
     borderRightColor: mobileWeb.colors.gray200,
     borderRightWidth: 1,
+    flex: 1,
     maxWidth: Platform.OS === "ios" ? 420 : 380,
     paddingBottom: 20,
     paddingHorizontal: 14,

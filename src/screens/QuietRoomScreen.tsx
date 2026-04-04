@@ -67,8 +67,8 @@ function modelLabel(model: string): string {
     return "GPT-5.1";
   }
 
-  if (model === "gpt-4.1") {
-    return "GPT-4.1";
+  if (model === "gpt-5.3-chat-latest") {
+    return "GPT-5.3";
   }
 
   return model;
@@ -125,6 +125,8 @@ export default function QuietRoomScreen() {
   const [voiceModeEnabled, setVoiceModeEnabled] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
+  const [showNewestButton, setShowNewestButton] = useState(false);
+  const [showScrollTopButton, setShowScrollTopButton] = useState(false);
 
   const [voiceAutoPlayTarget, setVoiceAutoPlayTarget] = useState<VoiceAutoPlayTarget | null>(null);
 
@@ -150,21 +152,48 @@ export default function QuietRoomScreen() {
   const listViewportHeightRef = useRef(0);
   const listContentHeightRef = useRef(0);
   const anchorContentMinHeightRef = useRef(0);
+  const newestButtonTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
     const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+
+    const maybeKeepLatestVisible = () => {
+      if (
+        !isNearBottomRef.current ||
+        pendingSendScrollRef.current ||
+        pendingAnchorScrollRef.current ||
+        typeof scrollAnchorTopRef.current === "number" ||
+        anchorContentMinHeightRef.current > 0
+      ) {
+        return;
+      }
+
+      requestAnimationFrame(() => {
+        scrollToLatest(false);
+      });
+    };
+
     const showSubscription = Keyboard.addListener(showEvent, (event) => {
       setIsKeyboardVisible(true);
       setKeyboardInset(event.endCoordinates.height);
+      maybeKeepLatestVisible();
     });
     const hideSubscription = Keyboard.addListener(hideEvent, () => {
-      composerInputRef.current?.blur();
       setIsKeyboardVisible(false);
       setKeyboardInset(0);
+      maybeKeepLatestVisible();
     });
     return () => {
       showSubscription.remove();
       hideSubscription.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (newestButtonTimeoutRef.current) {
+        clearTimeout(newestButtonTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -220,6 +249,14 @@ export default function QuietRoomScreen() {
     anchorScrollRetryCountRef.current = 0;
     anchorContentMinHeightRef.current = 0;
     setAnchorContentMinHeight(0);
+    setShowScrollTopButton(false);
+
+    if (newestButtonTimeoutRef.current) {
+      clearTimeout(newestButtonTimeoutRef.current);
+      newestButtonTimeoutRef.current = null;
+    }
+
+    setShowNewestButton(false);
   }, [currentId]);
 
   useEffect(() => {
@@ -238,6 +275,34 @@ export default function QuietRoomScreen() {
       prevLastMessage?.isStreaming &&
       lastMessage?.role === "assistant" &&
       !lastMessage?.isStreaming;
+
+    const finishedReply = finishedLoading || finishedStreaming;
+    const shouldReleaseSendAnchor =
+      finishedReply &&
+      (pendingSendScrollRef.current ||
+        pendingAnchorScrollRef.current ||
+        typeof scrollAnchorTopRef.current === "number" ||
+        anchorContentMinHeightRef.current > 0);
+
+    if (shouldReleaseSendAnchor) {
+      clearAnchorState();
+
+      const hasMeasuredViewport =
+        listContentHeightRef.current > 0 && listViewportHeightRef.current > 0;
+      const nearBottom = hasMeasuredViewport
+        ? listContentHeightRef.current - (currentScrollOffsetRef.current + listViewportHeightRef.current) < 80
+        : isNearBottomRef.current;
+
+      isNearBottomRef.current = nearBottom;
+      setShowScrollTopButton(currentScrollOffsetRef.current > 40);
+
+      if (newestButtonTimeoutRef.current) {
+        clearTimeout(newestButtonTimeoutRef.current);
+        newestButtonTimeoutRef.current = null;
+      }
+
+      setShowNewestButton(!nearBottom);
+    }
 
     if (
       voiceModeAvailable &&
@@ -263,7 +328,7 @@ export default function QuietRoomScreen() {
 
     prevLoadingRef.current = loading;
     prevMessagesRef.current = currentMessages;
-  }, [currentId, loading, messages, voiceModeAvailable, voiceModeEnabled]);
+  }, [clearAnchorState, currentId, loading, messages, scrollToLatest, voiceModeAvailable, voiceModeEnabled]);
 
   const renderedMessages = useMemo<RenderMessage[]>(() => {
     const opening: RenderMessage = {
@@ -295,7 +360,27 @@ export default function QuietRoomScreen() {
 
   const showPromptCues = Boolean(isNewChat) && !chatLoading && messages.length === 0;
 
-  const clearAnchorState = useCallback(() => {
+  const hideNewestButton = useCallback(() => {
+    if (newestButtonTimeoutRef.current) {
+      clearTimeout(newestButtonTimeoutRef.current);
+      newestButtonTimeoutRef.current = null;
+    }
+
+    setShowNewestButton(false);
+  }, []);
+
+  const queueNewestButton = useCallback(() => {
+    if (newestButtonTimeoutRef.current) {
+      return;
+    }
+
+    newestButtonTimeoutRef.current = setTimeout(() => {
+      newestButtonTimeoutRef.current = null;
+      setShowNewestButton(true);
+    }, 400);
+  }, []);
+
+  function clearAnchorState() {
     scrollAnchorTopRef.current = null;
     pendingAnchorScrollRef.current = false;
     pendingSendScrollRef.current = false;
@@ -303,7 +388,22 @@ export default function QuietRoomScreen() {
     anchorScrollRetryCountRef.current = 0;
     anchorContentMinHeightRef.current = 0;
     setAnchorContentMinHeight(0);
-  }, []);
+  }
+
+  const isEffectivelyNearBottom = useCallback(
+    (
+      contentHeight = listContentHeightRef.current,
+      viewportHeight = listViewportHeightRef.current,
+      offsetY = currentScrollOffsetRef.current
+    ) => {
+      if (contentHeight <= 0 || viewportHeight <= 0) {
+        return isNearBottomRef.current;
+      }
+
+      return contentHeight - (offsetY + viewportHeight) < 80;
+    },
+    []
+  );
 
   const syncAnchorMinHeight = useCallback((anchorTop: number | null = scrollAnchorTopRef.current) => {
     if (typeof anchorTop !== "number") {
@@ -494,7 +594,9 @@ export default function QuietRoomScreen() {
   }, [setInput]);
 
   const handleMessagesWrapLayout = useCallback((event: LayoutChangeEvent) => {
-    listViewportHeightRef.current = event.nativeEvent.layout.height;
+    const nextHeight = event.nativeEvent.layout.height;
+    const wasNearBottom = isNearBottomRef.current;
+    listViewportHeightRef.current = nextHeight;
 
     if (pendingSendScrollRef.current) {
       requestAnimationFrame(() => {
@@ -509,8 +611,15 @@ export default function QuietRoomScreen() {
         pendingAnchorScrollRef.current = true;
         syncAnchorScroll(false);
       });
+      return;
     }
-  }, [syncAnchorMinHeight, syncAnchorScroll, tryResolvePendingSendAnchor]);
+
+    if (wasNearBottom || isEffectivelyNearBottom(listContentHeightRef.current, nextHeight)) {
+      requestAnimationFrame(() => {
+        scrollToLatest(false);
+      });
+    }
+  }, [isEffectivelyNearBottom, scrollToLatest, syncAnchorMinHeight, syncAnchorScroll, tryResolvePendingSendAnchor]);
 
   const handleMessageListInnerLayout = useCallback((event: LayoutChangeEvent) => {
     const innerHeight = event.nativeEvent.layout.height;
@@ -536,9 +645,20 @@ export default function QuietRoomScreen() {
     currentScrollOffsetRef.current = contentOffset.y;
     listContentHeightRef.current = contentSize.height;
     listViewportHeightRef.current = layoutMeasurement.height;
-    const distanceFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
-    isNearBottomRef.current = distanceFromBottom < 80;
-  }, []);
+    isNearBottomRef.current = isEffectivelyNearBottom(
+      contentSize.height,
+      layoutMeasurement.height,
+      contentOffset.y
+    );
+    setShowScrollTopButton(contentOffset.y > 40);
+
+    if (isNearBottomRef.current) {
+      hideNewestButton();
+      return;
+    }
+
+    queueNewestButton();
+  }, [hideNewestButton, isEffectivelyNearBottom, queueNewestButton]);
 
   const handleListScrollBeginDrag = useCallback(() => {
     if (
@@ -565,9 +685,12 @@ export default function QuietRoomScreen() {
     }
   }, [clearAnchorState]);
 
-  const scrollToLatest = useCallback((animated: boolean) => {
+  function scrollToLatest(animated: boolean) {
+    hideNewestButton();
+    isNearBottomRef.current = true;
+    currentScrollOffsetRef.current = Math.max(0, listContentHeightRef.current - listViewportHeightRef.current);
     listRef.current?.scrollToEnd({ animated });
-  }, []);
+  }
 
   const handleSendPress = useCallback(() => {
     const nextInput = inputValueRef.current.trim();
@@ -593,6 +716,14 @@ export default function QuietRoomScreen() {
     setShowProfileMenu(false);
     void logout();
   }, [logout]);
+
+  const showScrollButtons =
+    (showScrollTopButton || showNewestButton) &&
+    !chatLoading &&
+    !isKeyboardVisible &&
+    !showComposerFullscreen;
+
+  const scrollButtonsBottom = 16;
 
   if (shouldBlockForConversations) {
     return (
@@ -663,11 +794,9 @@ export default function QuietRoomScreen() {
               accessibilityLabel="Open profile"
               hitSlop={8}
             >
-              <Image
-                source={require("../../assets/profile-web.png")}
-                style={styles.headerProfileImage}
-                resizeMode="contain"
-              />
+              <View style={styles.headerProfileAvatar}>
+                <Ionicons name="person-outline" size={18} color={mobileWeb.colors.blue600} />
+              </View>
             </Pressable>
 
             {showProfileMenu ? (
@@ -692,8 +821,8 @@ export default function QuietRoomScreen() {
                     <Text numberOfLines={1} style={styles.profileMenuName}>
                       {user?.displayName || user?.email || "Signed in"}
                     </Text>
-                    <Pressable onPress={handleContinueAsGuest} style={styles.profileMenuButtonDanger}>
-                      <Text style={styles.profileMenuButtonDangerLabel}>Continue as Guest</Text>
+                    <Pressable onPress={handleContinueAsGuest} style={styles.profileMenuButton}>
+                      <Text style={styles.profileMenuButtonLabel}>Continue as Guest</Text>
                     </Pressable>
                   </>
                 )}
@@ -727,85 +856,128 @@ export default function QuietRoomScreen() {
               <Spinner label="Loading conversation..." tone="accent" />
             </View>
           ) : (
-            <ScrollView
-              contentContainerStyle={styles.messageListContent}
-              style={styles.messageList}
-              keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
-              keyboardShouldPersistTaps="handled"
-              onContentSizeChange={(_, contentHeight) => {
-                listContentHeightRef.current = contentHeight;
+            <>
+              <ScrollView
+                contentContainerStyle={styles.messageListContent}
+                style={styles.messageList}
+                keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "none"}
+                keyboardShouldPersistTaps="handled"
+                onContentSizeChange={(_, contentHeight) => {
+                  listContentHeightRef.current = contentHeight;
 
-                if (pendingSendScrollRef.current) {
-                  void tryResolvePendingSendAnchor();
-                  return;
-                }
+                  if (pendingSendScrollRef.current) {
+                    void tryResolvePendingSendAnchor();
+                    return;
+                  }
 
-                if (pendingAnchorScrollRef.current) {
-                  syncAnchorScroll(false);
-                  return;
-                }
+                  if (pendingAnchorScrollRef.current) {
+                    syncAnchorScroll(false);
+                    return;
+                  }
 
-                if (typeof scrollAnchorTopRef.current === "number") {
-                  syncAnchorMinHeight();
-                  pendingAnchorScrollRef.current = true;
-                  syncAnchorScroll(false);
-                  return;
-                }
+                  if (typeof scrollAnchorTopRef.current === "number") {
+                    syncAnchorMinHeight();
+                    pendingAnchorScrollRef.current = true;
+                    syncAnchorScroll(false);
+                    return;
+                  }
 
-                if (isNearBottomRef.current) {
-                  scrollToLatest(true);
-                }
-              }}
-              onScroll={handleListScroll}
-              onScrollBeginDrag={handleListScrollBeginDrag}
-              onStartShouldSetResponderCapture={handleListResponderCapture}
-              onTouchStart={handleListTouchStart}
-              ref={listRef}
-              testID={testIds.messageList}
-              scrollEventThrottle={16}
-              showsVerticalScrollIndicator={false}
-            >
-              <View
-                collapsable={false}
-                onLayout={handleMessageListInnerLayout}
-                style={[styles.messageListInner, anchorContentMinHeight > 0 ? { minHeight: anchorContentMinHeight } : null]}
+                  if (isEffectivelyNearBottom(contentHeight, listViewportHeightRef.current)) {
+                    scrollToLatest(false);
+                  }
+                }}
+                onScroll={handleListScroll}
+                onScrollBeginDrag={handleListScrollBeginDrag}
+                onStartShouldSetResponderCapture={handleListResponderCapture}
+                onTouchStart={handleListTouchStart}
+                ref={listRef}
+                testID={testIds.messageList}
+                scrollEventThrottle={16}
+                showsVerticalScrollIndicator={false}
               >
-                {renderedMessages.map((item, index) => {
-                  const shouldShowSeparator = index < renderedMessages.length - 1;
+                <View
+                  collapsable={false}
+                  onLayout={handleMessageListInnerLayout}
+                  style={[styles.messageListInner, anchorContentMinHeight > 0 ? { minHeight: anchorContentMinHeight } : null]}
+                >
+                  {renderedMessages.map((item, index) => {
+                    const shouldShowSeparator = index < renderedMessages.length - 1;
 
-                  return (
-                    <View
-                      collapsable={false}
-                      key={item.id}
-                      style={index === 0 ? styles.openingMessageWrap : null}
-                      onLayout={(event: LayoutChangeEvent) => {
-                        messageOffsetsRef.current[item.id] = event.nativeEvent.layout.y;
+                    return (
+                      <View
+                        collapsable={false}
+                        key={item.id}
+                        style={index === 0 ? styles.openingMessageWrap : null}
+                        onLayout={(event: LayoutChangeEvent) => {
+                          messageOffsetsRef.current[item.id] = event.nativeEvent.layout.y;
 
-                        if (pendingSendScrollRef.current && item.message.role === "user") {
-                          requestAnimationFrame(() => {
-                            void tryResolvePendingSendAnchor();
-                          });
-                        }
-                      }}
-                    >
-                      <MessageBubble
-                        autoPlayVoice={item.autoPlayVoice}
-                        conversationId={index === 0 ? null : currentId}
-                        message={item.message}
-                        testID={index === 0 ? testIds.openingMessage : messageBubbleTestId(item.message.role, index - 1)}
-                        testIndex={index === 0 ? undefined : index - 1}
-                      />
-                      {shouldShowSeparator ? <View style={styles.messageSeparator} /> : null}
+                          if (pendingSendScrollRef.current && item.message.role === "user") {
+                            requestAnimationFrame(() => {
+                              void tryResolvePendingSendAnchor();
+                            });
+                          }
+                        }}
+                      >
+                        <MessageBubble
+                          autoPlayVoice={item.autoPlayVoice}
+                          conversationId={index === 0 ? null : currentId}
+                          message={item.message}
+                          testID={index === 0 ? testIds.openingMessage : messageBubbleTestId(item.message.role, index - 1)}
+                          testIndex={index === 0 ? undefined : index - 1}
+                        />
+                        {shouldShowSeparator ? <View style={styles.messageSeparator} /> : null}
+                      </View>
+                    );
+                  })}
+                  <View style={styles.footerWrap}>
+                    <View style={[styles.thinkingRow, { opacity: showThinking ? 1 : 0 }]} testID={testIds.thinkingRow}>
+                      <Spinner label="Please wait while your response is prepared." tone="accent" size="sm" />
                     </View>
-                  );
-                })}
-                <View style={styles.footerWrap}>
-                  <View style={[styles.thinkingRow, { opacity: showThinking ? 1 : 0 }]} testID={testIds.thinkingRow}> 
-                    <Spinner label="Please wait while your response is prepared." tone="accent" size="sm" />
                   </View>
                 </View>
+              </ScrollView>
+
+              <View pointerEvents="box-none" style={styles.scrollButtonsOverlay}>
+                {showScrollButtons ? (
+                  <View style={[styles.scrollButtonsStack, { bottom: scrollButtonsBottom }]}>
+                    {showScrollTopButton ? (
+                      <Pressable
+                        onPress={() => {
+                          hideNewestButton();
+                          listRef.current?.scrollTo({ animated: true, x: 0, y: 0 });
+                        }}
+                        style={({ pressed }) => [
+                          styles.scrollActionButton,
+                          pressed && styles.scrollActionButtonPressed,
+                        ]}
+                        testID={testIds.scrollTopButton}
+                      >
+                        <Text style={styles.scrollActionLabel}>Top</Text>
+                      </Pressable>
+                    ) : (
+                      <View pointerEvents="none" style={styles.scrollActionPlaceholder} />
+                    )}
+
+                    {showNewestButton ? (
+                      <Pressable
+                        onPress={() => {
+                          scrollToLatest(true);
+                        }}
+                        style={({ pressed }) => [
+                          styles.scrollActionButton,
+                          pressed && styles.scrollActionButtonPressed,
+                        ]}
+                        testID={testIds.scrollNewestButton}
+                      >
+                        <Text style={styles.scrollActionLabel}>Newest</Text>
+                      </Pressable>
+                    ) : (
+                      <View pointerEvents="none" style={styles.scrollActionPlaceholder} />
+                    )}
+                  </View>
+                ) : null}
               </View>
-            </ScrollView>
+            </>
           )}
         </View>
 
@@ -826,6 +998,7 @@ export default function QuietRoomScreen() {
             </View>
           </View>
         ) : null}
+
         <View
           style={[
             styles.inputRow,
@@ -851,7 +1024,12 @@ export default function QuietRoomScreen() {
               {showChatOptions ? (
                 <View style={styles.modelMenu}>
                   {voiceModeAvailable ? (
-                    <Pressable onPress={() => setVoiceModeEnabled((previous) => !previous)} style={styles.modelMenuVoiceRow}>
+                    <Pressable
+                      onPress={() => {
+                        setVoiceModeEnabled((previous) => !previous);
+                      }}
+                      style={styles.modelMenuVoiceRow}
+                    >
                       <View style={styles.modelMenuVoiceCopy}>
                         <Text style={styles.modelMenuVoiceTitle}>Voice mode</Text>
                         <Text style={styles.modelMenuVoiceSubtitle}>Auto-play replies</Text>
@@ -890,6 +1068,52 @@ export default function QuietRoomScreen() {
             </View>
 
             <View style={styles.composerWrap}>
+              {(voiceModeAvailable || (!showComposerFullscreen && composerVisibleLines > 3)) ? (
+                <View style={styles.composerMetaRow}>
+                  {voiceModeAvailable ? (
+                    <View style={styles.voiceModeBadgeSlot}>
+                      {voiceModeEnabled ? (
+                        <Pressable
+                          accessibilityLabel="Turn off voice mode"
+                          hitSlop={6}
+                          onPress={() => setVoiceModeEnabled(false)}
+                          style={({ pressed }) => [
+                            styles.voiceModeBadge,
+                            pressed && styles.voiceModeBadgePressed,
+                          ]}
+                          testID={testIds.voiceModeIndicator}
+                        >
+                          <Text style={styles.voiceModeBadgeLabel}>Voice</Text>
+                          <View style={styles.voiceModeBadgeClose}>
+                            <Text aria-hidden style={styles.voiceModeBadgeCloseLabel}>X</Text>
+                          </View>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  ) : (
+                    <View style={styles.composerMetaSpacer} />
+                  )}
+
+                  {!showComposerFullscreen && composerVisibleLines > 3 ? (
+                    <Pressable
+                      accessibilityLabel="Open fullscreen composer"
+                      disabled={loading}
+                      onPress={() => setShowComposerFullscreen(true)}
+                      style={({ pressed }) => [
+                        styles.composerFullscreenTrigger,
+                        pressed && !loading && styles.composerFullscreenTriggerPressed,
+                        loading && styles.composerFullscreenTriggerDisabled,
+                      ]}
+                      testID={testIds.composerExpand}
+                    >
+                      <Ionicons name="expand-outline" size={18} color={mobileWeb.colors.gray700} />
+                    </Pressable>
+                  ) : (
+                    <View pointerEvents="none" style={styles.composerFullscreenTriggerPlaceholder} />
+                  )}
+                </View>
+              ) : null}
+
               <TextInput
                 editable={!loading}
                 multiline
@@ -903,21 +1127,6 @@ export default function QuietRoomScreen() {
                 testID={testIds.composerInput}
                 value={input}
               />
-
-              {!showComposerFullscreen && composerVisibleLines > 3 ? (
-                <Pressable
-                  disabled={loading}
-                  onPress={() => setShowComposerFullscreen(true)}
-                  style={({ pressed }) => [
-                    styles.expandButton,
-                    pressed && !loading && styles.expandButtonPressed,
-                    loading && styles.expandButtonDisabled,
-                  ]}
-                  testID={testIds.composerExpand}
-                >
-                  <Text style={styles.expandButtonText}>Expand</Text>
-                </Pressable>
-              ) : null}
             </View>
 
             <Pressable
@@ -993,9 +1202,9 @@ export default function QuietRoomScreen() {
         >
           <SafeAreaView style={styles.crucifixModalScreen} testID={testIds.crucifixModal}>
             <View style={styles.crucifixModalHeader}>
-              <View style={styles.crucifixModalHeaderSpacer} />
               <Pressable
                 accessibilityLabel="Close crucifix"
+                hitSlop={10}
                 onPress={() => setShowCrucifix(false)}
                 style={({ pressed }) => [
                   styles.crucifixModalCloseButton,
@@ -1003,7 +1212,7 @@ export default function QuietRoomScreen() {
                 ]}
                 testID={testIds.crucifixClose}
               >
-                <Ionicons name="close" size={28} color={mobileWeb.colors.white} />
+                <Ionicons name="close" size={28} color={mobileWeb.colors.gray700} />
               </Pressable>
             </View>
 
@@ -1065,12 +1274,48 @@ const styles = StyleSheet.create({
     minHeight: 40,
     paddingBottom: 10,
     paddingHorizontal: 12,
-    paddingRight: 48,
+    paddingRight: 12,
     paddingTop: 10,
   },
   composerWrap: {
     flex: 1,
+    gap: 8,
     position: "relative",
+  },
+  composerMetaRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 28,
+  },
+  composerMetaSpacer: {
+    flex: 1,
+    minHeight: 28,
+  },
+  composerFullscreenTrigger: {
+    alignItems: "center",
+    backgroundColor: mobileWeb.colors.white,
+    borderColor: mobileWeb.colors.gray200,
+    borderRadius: 10,
+    borderWidth: 1,
+    height: 32,
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    width: 32,
+  },
+  composerFullscreenTriggerDisabled: {
+    opacity: 0.45,
+  },
+  composerFullscreenTriggerPlaceholder: {
+    height: 32,
+    opacity: 0,
+    width: 32,
+  },
+  composerFullscreenTriggerPressed: {
+    backgroundColor: mobileWeb.colors.surface,
   },
   crucifixButton: {
     borderRadius: mobileWeb.radii.lg,
@@ -1084,24 +1329,21 @@ const styles = StyleSheet.create({
   },
   crucifixModalCloseButton: {
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    backgroundColor: "rgba(28, 25, 23, 0.08)",
     borderRadius: 999,
     height: 44,
     justifyContent: "center",
     width: 44,
   },
   crucifixModalCloseButtonPressed: {
-    backgroundColor: "rgba(255, 255, 255, 0.18)",
+    backgroundColor: "rgba(28, 25, 23, 0.14)",
   },
   crucifixModalHeader: {
     alignItems: "center",
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  crucifixModalHeaderSpacer: {
-    width: 44,
+    paddingTop: Platform.OS === "ios" ? 12 : 28,
   },
   crucifixModalImage: {
     height: "100%",
@@ -1113,7 +1355,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   crucifixModalScreen: {
-    backgroundColor: "#0F0F10",
+    backgroundColor: mobileWeb.colors.white,
     flex: 1,
   },
   crucifixWrap: {
@@ -1122,37 +1364,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: 12,
   },
-  expandButton: {
-    alignItems: "center",
-    backgroundColor: mobileWeb.colors.white,
-    borderColor: mobileWeb.colors.gray200,
-    borderRadius: 6,
-    borderWidth: 1,
-    bottom: 8,
-    justifyContent: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    position: "absolute",
-    right: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 2,
-  },
-  expandButtonDisabled: {
-    opacity: 0.6,
-  },
-  expandButtonPressed: {
-    backgroundColor: mobileWeb.colors.surface,
-  },
-  expandButtonText: {
-    color: mobileWeb.colors.gray700,
-    fontSize: 12,
-    fontWeight: "600",
-  },
   footerWrap: {
-    minHeight: 8,
-    paddingTop: 2,
+    minHeight: 18,
+    paddingTop: 12,
   },
   fullscreenBody: {
     flex: 1,
@@ -1257,9 +1471,15 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     width: 40,
   },
-  headerProfileImage: {
-    height: 30,
-    width: 30,
+  headerProfileAvatar: {
+    alignItems: "center",
+    backgroundColor: mobileWeb.colors.blue50,
+    borderColor: mobileWeb.colors.blue200,
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 28,
+    justifyContent: "center",
+    width: 28,
   },
   headerGlyph: {
     color: mobileWeb.colors.gray600,
@@ -1347,6 +1567,7 @@ const styles = StyleSheet.create({
   messagesWrap: {
     backgroundColor: "transparent",
     flex: 1,
+    position: "relative",
   },
   modelButton: {
     alignItems: "center",
@@ -1377,8 +1598,51 @@ const styles = StyleSheet.create({
   modelColumn: {
     alignItems: "center",
     gap: 4,
-    width: 64,
+    justifyContent: "flex-end",
     position: "relative",
+    width: 72,
+  },
+  voiceModeBadge: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: mobileWeb.colors.blue50,
+    borderColor: mobileWeb.colors.blue200,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    height: 24,
+    paddingLeft: 12,
+    paddingRight: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+  },
+  voiceModeBadgeSlot: {
+    justifyContent: "center",
+    minHeight: 28,
+  },
+  voiceModeBadgeClose: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.6)",
+    borderRadius: 999,
+    height: 20,
+    justifyContent: "center",
+    width: 20,
+  },
+  voiceModeBadgeCloseLabel: {
+    color: mobileWeb.colors.blue600,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  voiceModeBadgeLabel: {
+    color: mobileWeb.colors.blue600,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  voiceModeBadgePressed: {
+    backgroundColor: mobileWeb.colors.blue200,
   },
   inlineMenuBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -1499,26 +1763,13 @@ const styles = StyleSheet.create({
   },
   profileMenuButton: {
     alignItems: "center",
+    backgroundColor: mobileWeb.colors.blue50,
     borderColor: mobileWeb.colors.blue200,
     borderRadius: 10,
     borderWidth: 1,
     marginTop: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-  },
-  profileMenuButtonDanger: {
-    alignItems: "center",
-    borderColor: mobileWeb.colors.red200,
-    borderRadius: 10,
-    borderWidth: 1,
-    marginTop: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  profileMenuButtonDangerLabel: {
-    color: mobileWeb.colors.red600,
-    fontSize: 13,
-    fontWeight: "600",
   },
   profileMenuButtonLabel: {
     color: mobileWeb.colors.blue600,
@@ -1586,9 +1837,50 @@ const styles = StyleSheet.create({
   sendButtonPressed: {
     opacity: 0.85,
   },
+  scrollActionButton: {
+    alignItems: "center",
+    backgroundColor: mobileWeb.colors.white,
+    borderColor: mobileWeb.colors.gray200,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 36,
+    minWidth: 74,
+    paddingHorizontal: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  scrollActionButtonPressed: {
+    backgroundColor: mobileWeb.colors.surface,
+  },
+  scrollActionPlaceholder: {
+    minHeight: 36,
+    minWidth: 74,
+    opacity: 0,
+    paddingHorizontal: 12,
+  },
+  scrollActionLabel: {
+    color: mobileWeb.colors.gray700,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  scrollButtonsOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 30,
+  },
+  scrollButtonsStack: {
+    alignItems: "flex-end",
+    flexDirection: "column",
+    gap: 8,
+    position: "absolute",
+    right: 16,
+  },
   thinkingRow: {
     flexDirection: "row",
-    paddingTop: 0,
+    paddingTop: 2,
   },
 });
 

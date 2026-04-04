@@ -16,6 +16,7 @@ type CopyState = "copied" | "error" | "idle";
 
 type TextSegment = {
   bold: boolean;
+  italic: boolean;
   text: string;
 };
 
@@ -29,7 +30,7 @@ type MessageBubbleProps = {
 
 function parseInlineMarkdown(content: string): TextSegment[] {
   const segments: TextSegment[] = [];
-  const pattern = /\*\*(.+?)\*\*/gs;
+  const pattern = /(\*\*(.+?)\*\*|\*(.+?)\*)/gs;
   let cursor = 0;
   let match: RegExpExecArray | null;
 
@@ -37,13 +38,15 @@ function parseInlineMarkdown(content: string): TextSegment[] {
     if (match.index > cursor) {
       segments.push({
         bold: false,
+        italic: false,
         text: content.slice(cursor, match.index),
       });
     }
 
     segments.push({
-      bold: true,
-      text: match[1],
+      bold: Boolean(match[2]),
+      italic: Boolean(match[3]),
+      text: match[2] || match[3],
     });
 
     cursor = match.index + match[0].length;
@@ -52,11 +55,12 @@ function parseInlineMarkdown(content: string): TextSegment[] {
   if (cursor < content.length) {
     segments.push({
       bold: false,
+      italic: false,
       text: content.slice(cursor),
     });
   }
 
-  return segments.length > 0 ? segments : [{ bold: false, text: content }];
+  return segments.length > 0 ? segments : [{ bold: false, italic: false, text: content }];
 }
 
 export default function MessageBubble({
@@ -124,8 +128,11 @@ export default function MessageBubble({
         <Text style={styles.content}>
           {contentSegments.map((segment, index) => (
             <Text
-              key={`${segment.bold ? "bold" : "plain"}-${index}`}
-              style={segment.bold ? styles.contentBold : null}
+              key={`${segment.bold ? "bold" : segment.italic ? "italic" : "plain"}-${index}`}
+              style={[
+                segment.bold ? styles.contentBold : null,
+                segment.italic ? styles.contentItalic : null,
+              ]}
             >
               {segment.text}
             </Text>
@@ -240,6 +247,9 @@ const styles = StyleSheet.create({
   },
   contentBold: {
     fontWeight: "700",
+  },
+  contentItalic: {
+    fontStyle: "italic",
   },
   row: {
     width: "100%",

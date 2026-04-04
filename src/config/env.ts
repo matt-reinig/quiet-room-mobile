@@ -50,7 +50,7 @@ export const MODEL_OPTIONS =
   modelOptionsRaw
     ?.split(",")
     .map((value: string) => value.trim())
-    .filter(Boolean) || ["gpt-4.1", "gpt-5.1-chat-latest"];
+    .filter(Boolean) || ["gpt-5.1-chat-latest", "gpt-5.3-chat-latest"];
 
 export const RENDER_MODE: RenderMode =
   renderModeRaw.toLowerCase() === "webview" ? "webview" : "native";

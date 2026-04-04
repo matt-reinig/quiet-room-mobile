@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Alert } from "react-native";
+import { Alert, Platform } from "react-native";
 import type { User } from "firebase/auth";
 import {
   API_BASE,
@@ -11,6 +11,7 @@ import type { ChatMessage, Conversation, ConversationsById } from "../types/chat
 
 const STREAM_FLUSH_INTERVAL_MS = 120;
 const CONVERSATIONS_PAGE_SIZE = 20;
+const MIN_LOADING_MORE_VISIBLE_MS = 800;
 
 type ConversationListPage = {
   items: Record<string, unknown>[];
@@ -103,7 +104,7 @@ function mergeConversationPage(
 }
 
 function decodeSseChunk(data: string): string {
-  if (!data || data === "[DONE]") {
+  if (!data || data === "[DONE]" || data === "[ERROR]") {
     return "";
   }
 
@@ -130,10 +131,8 @@ function decodeSseChunk(data: string): string {
   return "";
 }
 
-async function readSseResponse(
-  response: Response,
-  onChunk: (chunk: string) => void
-): Promise<string> {
+function createSseAccumulator(onChunk: (chunk: string) => void) {
+  let buffer = "";
   let fullContent = "";
 
   const handleFrame = (frame: string) => {
@@ -148,7 +147,7 @@ async function readSseResponse(
 
       const payload = trimmed.slice(5).trimStart();
 
-      if (payload === "[DONE]") {
+      if (payload === "[DONE]" || payload === "[ERROR]") {
         continue;
       }
 
@@ -162,6 +161,38 @@ async function readSseResponse(
       onChunk(chunk);
     }
   };
+
+  return {
+    append(textChunk: string) {
+      if (!textChunk) {
+        return;
+      }
+
+      buffer += textChunk;
+
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() || "";
+
+      for (const frame of frames) {
+        handleFrame(frame);
+      }
+    },
+    flush() {
+      if (buffer.trim()) {
+        handleFrame(buffer);
+      }
+
+      buffer = "";
+      return fullContent;
+    },
+  };
+}
+
+async function readSseResponse(
+  response: Response,
+  onChunk: (chunk: string) => void
+): Promise<string> {
+  const accumulator = createSseAccumulator(onChunk);
 
   const hasReadableStream =
     response.body && typeof response.body.getReader === "function";
@@ -179,32 +210,82 @@ async function readSseResponse(
       }
 
       buffer += decoder.decode(value, { stream: true });
-
-      const frames = buffer.split("\n\n");
-      buffer = frames.pop() || "";
-
-      for (const frame of frames) {
-        handleFrame(frame);
-      }
+      accumulator.append(buffer);
+      buffer = "";
     }
 
     buffer += decoder.decode();
+    accumulator.append(buffer);
+    return accumulator.flush();
+  }
 
-    if (buffer.trim()) {
-      handleFrame(buffer);
+  accumulator.append(await response.text());
+  return accumulator.flush();
+}
+
+async function readSseResponseFromXhr(options: {
+  body: string;
+  headers: Record<string, string>;
+  onChunk: (chunk: string) => void;
+  url: string;
+}): Promise<string> {
+  const accumulator = createSseAccumulator(options.onChunk);
+
+  return await new Promise<string>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let seenLength = 0;
+    let settled = false;
+
+    const settle = (callback: () => void) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      callback();
+    };
+
+    const consumeProgress = () => {
+      const responseText = xhr.responseText || "";
+
+      if (responseText.length <= seenLength) {
+        return;
+      }
+
+      accumulator.append(responseText.slice(seenLength));
+      seenLength = responseText.length;
+    };
+
+    xhr.open("POST", options.url, true);
+
+    for (const [headerName, headerValue] of Object.entries(options.headers)) {
+      xhr.setRequestHeader(headerName, headerValue);
     }
 
-    return fullContent;
-  }
+    xhr.onprogress = consumeProgress;
 
-  const raw = await response.text();
-  const frames = raw.split("\n\n");
+    xhr.onload = () => {
+      consumeProgress();
 
-  for (const frame of frames) {
-    handleFrame(frame);
-  }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        settle(() => resolve(accumulator.flush()));
+        return;
+      }
 
-  return fullContent;
+      const detail = (xhr.responseText || "").trim();
+      settle(() => reject(new Error(`Chat failed: ${xhr.status} ${detail}`.trim())));
+    };
+
+    xhr.onerror = () => {
+      settle(() => reject(new Error("Chat failed: network request failed.")));
+    };
+
+    xhr.onabort = () => {
+      settle(() => reject(new Error("Chat request was aborted.")));
+    };
+
+    xhr.send(options.body);
+  });
 }
 
 function buildConversationTitle(message: string): string {
@@ -577,19 +658,11 @@ export function useChatController({
           tz_offset_minutes: new Date().getTimezoneOffset(),
         };
 
-        const response = await fetch(resolveStreamingUrl(), {
-          body: JSON.stringify(payload),
-          headers: {
-            Authorization: `Bearer ${idToken}`,
-            "Content-Type": "application/json",
-          },
-          method: "POST",
-        });
-
-        if (!response.ok) {
-          const detail = await response.text().catch(() => "");
-          throw new Error(`Chat failed: ${response.status} ${detail}`);
-        }
+        const requestBody = JSON.stringify(payload);
+        const requestHeaders = {
+          Authorization: `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+        };
 
         let renderedContent = "";
         let pendingForRender = "";
@@ -604,7 +677,7 @@ export function useChatController({
           flushTimer = null;
         };
 
-        const streamContent = await readSseResponse(response, (chunk) => {
+        const handleChunk = (chunk: string) => {
           renderedContent += chunk;
           pendingForRender += chunk;
 
@@ -615,7 +688,30 @@ export function useChatController({
           if (chunk.trim()) {
             setShowThinking(false);
           }
-        });
+        };
+
+        const streamContent =
+          Platform.OS === "web"
+            ? await (async () => {
+                const response = await fetch(resolveStreamingUrl(), {
+                  body: requestBody,
+                  headers: requestHeaders,
+                  method: "POST",
+                });
+
+                if (!response.ok) {
+                  const detail = await response.text().catch(() => "");
+                  throw new Error(`Chat failed: ${response.status} ${detail}`);
+                }
+
+                return readSseResponse(response, handleChunk);
+              })()
+            : await readSseResponseFromXhr({
+                body: requestBody,
+                headers: requestHeaders,
+                onChunk: handleChunk,
+                url: resolveStreamingUrl(),
+              });
 
         if (flushTimer) {
           clearTimeout(flushTimer);
@@ -700,6 +796,7 @@ export function useChatController({
       return;
     }
 
+    const startedAt = Date.now();
     setLoadingMoreConversations(true);
 
     try {
@@ -721,6 +818,13 @@ export function useChatController({
     } catch (error) {
       console.error("Failed to load more conversations", error);
     } finally {
+      const elapsed = Date.now() - startedAt;
+      const remaining = MIN_LOADING_MORE_VISIBLE_MS - elapsed;
+
+      if (remaining > 0) {
+        await new Promise((resolve) => setTimeout(resolve, remaining));
+      }
+
       setLoadingMoreConversations(false);
     }
   }, [isAnon, loadingMoreConversations, nextConversationCursor, sidebarLoading, user]);

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Audio, type AVPlaybackStatus } from "expo-av";
+import { Audio, type AVPlaybackSource, type AVPlaybackStatus } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import { fromByteArray } from "base64-js";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 import { resolveVoiceUrl } from "../config/env";
 import { mobileWeb } from "../theme/mobileWeb";
 import { useAuth } from "../contexts/AuthContext";
@@ -17,6 +17,8 @@ type VoiceStatus = "error" | "idle" | "loading" | "playing";
 type MessageVoiceButtonProps = {
   audioSrc?: string;
   autoPlay?: boolean;
+  conversationId?: string | null;
+  messageIndex?: number;
   testID?: string;
   text: string;
 };
@@ -56,9 +58,16 @@ async function writeAudioToCache(bytes: Uint8Array): Promise<string> {
   return fileUri;
 }
 
+function buildConversationVoiceUri(baseUrl: string, conversationId: string, messageIndex: number): string {
+  const separator = baseUrl.includes("?") ? "&" : "?";
+  return `${baseUrl}${separator}conversation_id=${encodeURIComponent(conversationId)}&message_index=${messageIndex}`;
+}
+
 export default function MessageVoiceButton({
   audioSrc,
   autoPlay = false,
+  conversationId,
+  messageIndex,
   testID,
   text,
 }: MessageVoiceButtonProps) {
@@ -78,6 +87,7 @@ export default function MessageVoiceButton({
   const hasPresetAudio = Boolean(resolvedAudioSrc);
   const hasPlayableContent = hasPresetAudio || Boolean(trimmedText);
   const voiceUrl = useMemo(resolveVoiceUrl, []);
+  const loadingSpin = useRef(new Animated.Value(0)).current;
 
   const cleanup = useCallback(async () => {
     if (abortControllerRef.current) {
@@ -130,13 +140,15 @@ export default function MessageVoiceButton({
     setStatus("idle");
   }, []);
 
-  const loadAndPlayFromUri = useCallback(
-    async (uri: string) => {
+  const loadAndPlayFromSource = useCallback(
+    async (source: AVPlaybackSource) => {
       await setAudioMode();
 
       const { sound } = await Audio.Sound.createAsync(
-        { uri },
-        { shouldPlay: true }
+        source,
+        { shouldPlay: true },
+        undefined,
+        false
       );
 
       sound.setOnPlaybackStatusUpdate((playbackStatus: AVPlaybackStatus) => {
@@ -187,25 +199,42 @@ export default function MessageVoiceButton({
 
     try {
       if (hasPresetAudio) {
-        await loadAndPlayFromUri(resolvedAudioSrc);
+        await loadAndPlayFromSource({ uri: resolvedAudioSrc });
         abortControllerRef.current = null;
         return;
       }
 
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
+      const authHeaders: Record<string, string> = {};
 
       if (user) {
         const token = await user.getIdToken();
         if (token) {
-          headers.Authorization = `Bearer ${token}`;
+          authHeaders.Authorization = `Bearer ${token}`;
         }
+      }
+
+      if (conversationId && Number.isInteger(messageIndex) && (messageIndex as number) >= 0) {
+        const remoteUri = buildConversationVoiceUri(
+          voiceUrl,
+          conversationId,
+          messageIndex as number
+        );
+
+        await loadAndPlayFromSource({
+          headers: authHeaders,
+          overrideFileExtensionAndroid: "mp3",
+          uri: remoteUri,
+        });
+        abortControllerRef.current = null;
+        return;
       }
 
       const response = await fetch(voiceUrl, {
         body: JSON.stringify({ text: trimmedText }),
-        headers,
+        headers: {
+          ...authHeaders,
+          "Content-Type": "application/json",
+        },
         method: "POST",
         signal: controller.signal,
       });
@@ -223,7 +252,7 @@ export default function MessageVoiceButton({
         return;
       }
 
-      await loadAndPlayFromUri(localUri);
+      await loadAndPlayFromSource({ uri: localUri });
       abortControllerRef.current = null;
     } catch (rawError) {
       if ((rawError as Error | null)?.name === "AbortError") {
@@ -239,9 +268,11 @@ export default function MessageVoiceButton({
     }
   }, [
     cleanup,
+    conversationId,
     hasPlayableContent,
     hasPresetAudio,
-    loadAndPlayFromUri,
+    loadAndPlayFromSource,
+    messageIndex,
     resolvedAudioSrc,
     trimmedText,
     user,
@@ -285,12 +316,49 @@ export default function MessageVoiceButton({
     void startPlayback();
   }, [autoPlay, startPlayback]);
 
+  useEffect(() => {
+    if (status !== "loading") {
+      loadingSpin.stopAnimation();
+      loadingSpin.setValue(0);
+      return;
+    }
+
+    const loop = Animated.loop(
+      Animated.timing(loadingSpin, {
+        duration: 850,
+        easing: Easing.linear,
+        toValue: 1,
+        useNativeDriver: true,
+      })
+    );
+
+    loop.start();
+
+    return () => {
+      loop.stop();
+      loadingSpin.setValue(0);
+    };
+  }, [loadingSpin, status]);
+
   const isStarting = status === "loading";
+  const loadingRotation = loadingSpin.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+  const accessibilityLabel =
+    status === "playing"
+      ? "Pause voice"
+      : status === "loading"
+        ? "Starting voice..."
+        : status === "error"
+          ? "Retry voice"
+          : "Play voice";
 
   return (
     <View style={styles.container}>
       <Pressable
-        accessibilityLabel={status === "playing" ? "Pause voice" : "Play voice"}
+        accessibilityLabel={accessibilityLabel}
+        accessibilityState={{ busy: isStarting }}
         testID={testID}
         disabled={!hasPlayableContent || isStarting}
         onPress={() => {
@@ -303,13 +371,24 @@ export default function MessageVoiceButton({
           pressed && hasPlayableContent && !isStarting && styles.buttonPressed,
         ]}
       >
-        <Ionicons
-          color={status === "playing" ? mobileWeb.colors.blue600 : mobileWeb.colors.gray700}
-          name={status === "loading" ? "sync-outline" : status === "playing" ? "pause" : "volume-high-outline"}
-          size={16}
-        />
+        {status === "loading" ? (
+          <Animated.View style={{ transform: [{ rotate: loadingRotation }] }}>
+            <Ionicons
+              color={mobileWeb.colors.blue600}
+              name="volume-high-outline"
+              size={16}
+            />
+          </Animated.View>
+        ) : (
+          <Ionicons
+            color={status === "playing" ? mobileWeb.colors.blue600 : mobileWeb.colors.gray700}
+            name={status === "playing" ? "pause" : "volume-high-outline"}
+            size={16}
+          />
+        )}
       </Pressable>
 
+      {isStarting ? <Text style={styles.loading}>Starting voice...</Text> : null}
       {error ? <Text style={styles.error}>{error}</Text> : null}
     </View>
   );
@@ -344,6 +423,12 @@ const styles = StyleSheet.create({
   error: {
     color: mobileWeb.colors.red600,
     fontSize: 11,
+    maxWidth: 180,
+  },
+  loading: {
+    color: mobileWeb.colors.blue600,
+    fontSize: 11,
+    fontWeight: "600",
     maxWidth: 180,
   },
 });

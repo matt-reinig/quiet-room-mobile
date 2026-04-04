@@ -17,8 +17,8 @@ function modelLabel(model: string): string {
     return "GPT-5.1";
   }
 
-  if (model === "gpt-4.1") {
-    return "GPT-4.1";
+  if (model === "gpt-5.3-chat-latest") {
+    return "GPT-5.3";
   }
 
   return model;

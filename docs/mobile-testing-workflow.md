@@ -37,6 +37,9 @@ npm run mobile:anchor:5556
 Use stable `testID` selectors in the app whenever possible.
 The selector contract lives in `src/testIds.ts`.
 
+For the focused native streaming verification flow, see `docs/mobile-streaming-verification.md`.
+For emulator runs against a backend on your machine, see `docs/mobile-local-backend-testing.md`.
+
 Use `uiautomator` only for coarse validation such as:
 
 - app booted to the expected screen
@@ -54,3 +57,4 @@ Do not use `uiautomator` as the main source of truth for:
 
 The next process step is a proper mobile E2E harness that uses the selector contract directly.
 Detox remains the recommended direction.
+

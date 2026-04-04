@@ -12,19 +12,20 @@ function getFrame(attributes) {
   return attributes.frame;
 }
 
-async function waitForEnabled(elementHandle, timeoutMs) {
+async function waitForSendLabel(elementHandle, label, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
     const attributes = await elementHandle.getAttributes();
-    if (attributes && attributes.enabled) {
+    const currentLabel = attributes?.label || attributes?.text;
+    if (currentLabel === label) {
       return attributes;
     }
 
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 
-  throw new Error(`Timed out waiting for enabled element after ${timeoutMs}ms`);
+  throw new Error(`Timed out waiting for send button label '${label}' after ${timeoutMs}ms`);
 }
 
 async function waitForExistsMaybe(elementHandle, timeoutMs) {
@@ -58,20 +59,19 @@ describe('Quiet Room composer flow', () => {
 
     await sendButton.tap();
     const firstUserMessage = element(by.id(ids.message.user(0)));
+    const firstAssistantMessage = element(by.id(ids.message.assistant(1)));
     await waitFor(firstUserMessage).toBeVisible().withTimeout(30000);
-
-    await waitForEnabled(sendButton, 90000);
+    await waitFor(firstAssistantMessage).toBeVisible().withTimeout(90000);
+    await waitForSendLabel(sendButton, 'Send', 10000);
 
     await composer.tap();
     await composer.replaceText('second mobile followup');
-    await waitForEnabled(sendButton, 10000);
     await sendButton.tap();
-    await new Promise((resolve) => setTimeout(resolve, 3000));
 
-    const composerAfterSecondTap = await composer.getAttributes();
-    const sendAfterSecondTap = await sendButton.getAttributes();
     const secondUserMessage = element(by.id(ids.message.user(2)));
     const secondExists = await waitForExistsMaybe(secondUserMessage, 10000);
+    const composerAfterSecondTap = await composer.getAttributes();
+    const sendAfterSecondTap = await sendButton.getAttributes();
 
     console.log('second-send-state', JSON.stringify({
       composerAfterSecondTap,
@@ -83,3 +83,4 @@ describe('Quiet Room composer flow', () => {
     await waitFor(secondUserMessage).toBeVisible().withTimeout(15000);
   });
 });
+
