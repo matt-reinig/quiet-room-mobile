@@ -23,6 +23,7 @@ type TextSegment = {
 type MessageBubbleProps = {
   autoPlayVoice?: boolean;
   conversationId?: string | null;
+  messageIndex?: number;
   message: ChatMessage;
   testID?: string;
   testIndex?: number;
@@ -66,6 +67,7 @@ function parseInlineMarkdown(content: string): TextSegment[] {
 export default function MessageBubble({
   autoPlayVoice = false,
   conversationId,
+  messageIndex,
   message,
   testID,
   testIndex,
@@ -184,6 +186,8 @@ export default function MessageBubble({
               <MessageVoiceButton
                 audioSrc={message.audioSrc}
                 autoPlay={autoPlayVoice}
+                conversationId={conversationId}
+                messageIndex={messageIndex}
                 testID={voiceButtonTestID}
                 text={content}
               />

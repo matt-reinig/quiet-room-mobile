@@ -57,8 +57,10 @@ type VoiceAutoPlayTarget = {
 
 type RenderMessage = {
   autoPlayVoice: boolean;
+  conversationId: string | null;
   id: string;
   message: ChatMessage;
+  messageIndex: number | null;
 };
 
 
@@ -338,11 +340,13 @@ export default function QuietRoomScreen() {
   const renderedMessages = useMemo<RenderMessage[]>(() => {
     const opening: RenderMessage = {
       autoPlayVoice: false,
+      conversationId: null,
       id: "opening",
       message: {
         content: QUIET_ROOM_OPENING_GREETING,
         role: "assistant",
       },
+      messageIndex: null,
     };
 
     const mapped = messages.map((message, index) => {
@@ -355,8 +359,10 @@ export default function QuietRoomScreen() {
 
       return {
         autoPlayVoice,
+        conversationId: currentId ?? null,
         id: `${index}:${message.role}:${message.content.length}:${message.isStreaming ? "1" : "0"}`,
         message,
+        messageIndex: index,
       };
     });
 
@@ -925,8 +931,9 @@ export default function QuietRoomScreen() {
                       >
                         <MessageBubble
                           autoPlayVoice={item.autoPlayVoice}
-                          conversationId={index === 0 ? null : currentId}
+                          conversationId={item.conversationId}
                           message={item.message}
+                          messageIndex={item.messageIndex ?? undefined}
                           testID={index === 0 ? testIds.openingMessage : messageBubbleTestId(item.message.role, index - 1)}
                           testIndex={index === 0 ? undefined : index - 1}
                         />
