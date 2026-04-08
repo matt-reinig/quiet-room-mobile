@@ -103,6 +103,39 @@ async function openLoginModal() {
   await waitFor(element(by.id(ids.loginModal))).toBeVisible().withTimeout(10000);
 }
 
+async function dismissIosPasswordSavePromptIfPresent() {
+  if (device.getPlatform() !== 'ios') {
+    return;
+  }
+
+  const deadline = Date.now() + 12000;
+
+  while (Date.now() < deadline) {
+    const notNowButtonByLabel = element(by.label('Not Now'));
+    const notNowButtonByText = element(by.text('Not Now'));
+    const savePasswordPromptByLabel = element(by.label('Save Password?'));
+    const savePasswordPromptByText = element(by.text('Save Password?'));
+
+    const hasNotNowButton =
+      (await waitForExistsMaybe(notNowButtonByLabel, 500)) ||
+      (await waitForExistsMaybe(notNowButtonByText, 500));
+    const hasSavePasswordPrompt =
+      (await waitForExistsMaybe(savePasswordPromptByLabel, 500)) ||
+      (await waitForExistsMaybe(savePasswordPromptByText, 500));
+
+    if (hasNotNowButton || hasSavePasswordPrompt) {
+      await notNowButtonByLabel.tap().catch(async () => {
+        await notNowButtonByText.tap();
+      });
+      await waitFor(savePasswordPromptByLabel).not.toExist().withTimeout(10000).catch(() => null);
+      await waitFor(savePasswordPromptByText).not.toExist().withTimeout(10000).catch(() => null);
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+}
+
 async function loginWithKnownAccount() {
   const conversationsButton = element(by.id(ids.conversationsButton));
   const alreadySignedIn = await waitForExistsMaybe(conversationsButton, 3000);
@@ -117,10 +150,12 @@ async function loginWithKnownAccount() {
   await element(by.id(ids.loginSigninButton)).tap();
   await waitFor(element(by.id(ids.loginModal))).not.toExist().withTimeout(15000).catch(() => null);
   await waitFor(conversationsButton).toExist().withTimeout(60000);
+  await dismissIosPasswordSavePromptIfPresent();
   return credentials;
 }
 
 module.exports = {
+  dismissIosPasswordSavePromptIfPresent,
   ensureGuestSession,
   getE2ECredentials,
   launchQuietRoom,

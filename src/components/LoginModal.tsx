@@ -13,6 +13,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Modal,
+  NativeModules,
   Platform,
   Pressable,
   StyleSheet,
@@ -20,7 +21,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { GOOGLE_AUTH_CONFIG, GOOGLE_AUTH_ENABLED } from "../config/env";
+import { GOOGLE_AUTH_CONFIG } from "../config/env";
 import { useAuth } from "../contexts/AuthContext";
 import { mobileWeb } from "../theme/mobileWeb";
 import { testIds } from "../testIds";
@@ -97,9 +98,14 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
   const [googleBusy, setGoogleBusy] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
   const [keyboardInset, setKeyboardInset] = useState(0);
+  const isDetox =
+    Boolean(NativeModules.SettingsManager?.settings?.detoxServer) ||
+    Boolean(NativeModules.SettingsManager?.settings?.detoxSessionId) ||
+    Boolean(NativeModules.SettingsManager?.settings?.detoxEnableSynchronization);
 
   const nativeGoogleWebClientId =
     GOOGLE_AUTH_CONFIG.webClientId || GOOGLE_AUTH_CONFIG.clientId || "";
+  const iosGoogleClientId = GOOGLE_AUTH_CONFIG.iosClientId || "";
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     androidClientId: GOOGLE_AUTH_CONFIG.androidClientId || undefined,
@@ -146,8 +152,8 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
       return Boolean(nativeGoogleWebClientId);
     }
 
-    return GOOGLE_AUTH_ENABLED && Boolean(request);
-  }, [nativeGoogleWebClientId, request]);
+    return Boolean(iosGoogleClientId) && Boolean(request);
+  }, [iosGoogleClientId, nativeGoogleWebClientId, request]);
 
   const resetAll = () => {
     setEmail("");
@@ -293,8 +299,8 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
     if (!googleAvailable) {
       const configHint =
         Platform.OS === "android"
-          ? "Google sign-in is not configured yet. Add EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID first."
-          : "Google OAuth is not configured yet. Add EXPO_PUBLIC_GOOGLE_* client IDs first.";
+          ? "Google sign-in is not configured yet. Add EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID or EXPO_PUBLIC_GOOGLE_CLIENT_ID first."
+          : "Google sign-in is not configured yet. Add EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID and rebuild the iOS app.";
 
       Alert.alert("Google Sign-In", configHint);
       return;
@@ -400,6 +406,8 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
               <>
                 <TextInput
                   autoCapitalize="none"
+                  autoComplete={isDetox ? "off" : "email"}
+                  importantForAutofill={isDetox ? "no" : "auto"}
                   keyboardType="email-address"
                   onChangeText={setEmail}
                   placeholder="Email"
@@ -407,11 +415,14 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
                   selectionColor={mobileWeb.colors.blue600}
                   style={styles.input}
                   testID={testIds.loginEmailInput}
+                  textContentType={isDetox ? "none" : "username"}
                   value={email}
                 />
 
                 <TextInput
                   autoCapitalize="none"
+                  autoComplete={isDetox ? "off" : "password"}
+                  importantForAutofill={isDetox ? "no" : "auto"}
                   onChangeText={setPassword}
                   placeholder="Password"
                   placeholderTextColor={mobileWeb.colors.gray500}
@@ -419,6 +430,7 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
                   selectionColor={mobileWeb.colors.blue600}
                   style={styles.input}
                   testID={testIds.loginPasswordInput}
+                  textContentType={isDetox ? "none" : "password"}
                   value={password}
                 />
               </>
@@ -456,6 +468,8 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
               <>
                 <TextInput
                   autoCapitalize="none"
+                  autoComplete={isDetox ? "off" : "email"}
+                  importantForAutofill={isDetox ? "no" : "auto"}
                   keyboardType="email-address"
                   onChangeText={setEmail}
                   placeholder="Email"
@@ -463,6 +477,7 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
                   selectionColor={mobileWeb.colors.blue600}
                   style={styles.input}
                   testID={testIds.loginEmailInput}
+                  textContentType={isDetox ? "none" : "username"}
                   value={email}
                 />
                 {resetMsg ? <Text style={styles.successText}>{resetMsg}</Text> : null}
@@ -607,8 +622,6 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
 });
-
-
 
 
 

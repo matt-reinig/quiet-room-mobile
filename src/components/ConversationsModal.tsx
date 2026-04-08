@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Dimensions,
   FlatList,
   Modal,
   Platform,
@@ -92,6 +93,7 @@ export default function ConversationsModal({
   const [openMenu, setOpenMenu] = useState<OpenMenuState | null>(null);
   const [panelHeight, setPanelHeight] = useState(0);
   const [panelWidth, setPanelWidth] = useState(0);
+  const panelRef = useRef<View | null>(null);
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
   const menuButtonRefs = useRef<Record<string, View | null>>({});
   const [renameValue, setRenameValue] = useState("");
@@ -172,16 +174,43 @@ export default function ConversationsModal({
       return;
     }
 
-    button.measureInWindow((x, y, width, height) => {
-      const maxLeft = Math.max(12, panelWidth - MENU_PANEL_WIDTH - 12);
-      const maxTop = Math.max(12, panelHeight - MENU_PANEL_HEIGHT - 12);
-      const left = Math.max(12, Math.min(x + width - MENU_PANEL_WIDTH, maxLeft));
-      const top = Math.max(12, Math.min(y + height + 8, maxTop));
+    if (Platform.OS === "ios") {
+      const { height: screenHeight, width: screenWidth } = Dimensions.get("window");
 
-      setOpenMenu({
-        id: conversationId,
-        left,
-        top,
+      button.measureInWindow((x, y, width, height) => {
+        const maxLeft = Math.max(12, screenWidth - MENU_PANEL_WIDTH - 12);
+        const maxTop = Math.max(12, screenHeight - MENU_PANEL_HEIGHT - 12);
+        const left = Math.max(12, Math.min(x + width - MENU_PANEL_WIDTH, maxLeft));
+        const top = Math.max(12, Math.min(y + height + 8, maxTop));
+
+        setOpenMenu({
+          id: conversationId,
+          left,
+          top,
+        });
+      });
+      return;
+    }
+
+    const panel = panelRef.current;
+    if (!panel || typeof panel.measureInWindow !== "function") {
+      return;
+    }
+
+    panel.measureInWindow((panelX, panelY) => {
+      button.measureInWindow((x, y, width, height) => {
+        const relativeX = x - panelX;
+        const relativeY = y - panelY;
+        const maxLeft = Math.max(12, panelWidth - MENU_PANEL_WIDTH - 12);
+        const maxTop = Math.max(12, panelHeight - MENU_PANEL_HEIGHT - 12);
+        const left = Math.max(12, Math.min(relativeX + width - MENU_PANEL_WIDTH, maxLeft));
+        const top = Math.max(12, Math.min(relativeY + height + 8, maxTop));
+
+        setOpenMenu({
+          id: conversationId,
+          left,
+          top,
+        });
       });
     });
   }, [openMenu?.id, panelHeight, panelWidth]);
@@ -205,161 +234,198 @@ export default function ConversationsModal({
       <Modal animationType="fade" onRequestClose={closePanel} transparent visible={visible}>
         <View style={styles.backdrop}>
           <Pressable onPress={closePanel} style={StyleSheet.absoluteFill} />
-
           <SafeAreaView
             onLayout={(event) => {
               setPanelHeight(event.nativeEvent.layout.height);
               setPanelWidth(event.nativeEvent.layout.width);
             }}
+            ref={panelRef}
             style={styles.panel}
             testID={testIds.conversationsPanel}
           >
-            <View style={styles.headerRow}>
-              <Text style={styles.headerTitle}>Conversations</Text>
-              <Pressable hitSlop={14} onPress={closePanel} style={styles.closeButton} testID={testIds.conversationsClose}>
-                <Text style={styles.closeLabel}>Close</Text>
-              </Pressable>
-            </View>
-
-            <Pressable
-              onPress={() => {
-                setOpenMenu(null);
-                onCreateNew();
-              }}
-              style={styles.newChatButton}
-              testID={testIds.conversationsNew}
-            >
-              <Text style={styles.newChatLabel}>+ New chat</Text>
-            </Pressable>
-
-            {loading ? (
-              <View style={styles.loadingWrap}>
-                <Spinner label="Loading conversations..." tone="accent" />
+              <View style={styles.headerRow}>
+                <Text style={styles.headerTitle}>Conversations</Text>
+                <Pressable hitSlop={14} onPress={closePanel} style={styles.closeButton} testID={testIds.conversationsClose}>
+                  <Text style={styles.closeLabel}>Close</Text>
+                </Pressable>
               </View>
-            ) : (
-              <View style={styles.listWrap}>
-                <FlatList
-                  contentContainerStyle={styles.listContent}
-                  data={sortedConversations}
-                  keyboardShouldPersistTaps="handled"
-                  onEndReached={() => {
-                    maybeLoadMore();
-                  }}
-                  onEndReachedThreshold={0.35}
-                  onScroll={({ nativeEvent }) => {
-                    const distanceFromBottom =
-                      nativeEvent.contentSize.height -
-                      (nativeEvent.contentOffset.y + nativeEvent.layoutMeasurement.height);
 
-                    if (distanceFromBottom <= 160) {
-                      maybeLoadMore();
-                    }
-                  }}
-                  removeClippedSubviews={false}
-                  scrollEventThrottle={16}
-                  style={styles.list}
-                  testID={testIds.conversationsList}
-                  ListEmptyComponent={
-                    <View style={styles.emptyWrap}>
-                      <Text style={styles.emptyText}>No conversations yet.</Text>
-                    </View>
-                  }
-                  ListFooterComponent={
-                    loadingMore ? (
-                      <View style={styles.listFooterLoading} testID={testIds.conversationsLoadingMore}>
-                        <Spinner label="Loading more conversations..." tone="accent" />
-                      </View>
-                    ) : null
-                  }
-                  renderItem={({ item }) => {
-                  const isActive = item.id === currentId;
-                  const isMenuOpen = openMenu?.id === item.id;
-
-                  return (
-                    <View
-                      style={[
-                        styles.itemRow,
-                        isActive && styles.itemRowActive,
-                        isMenuOpen && styles.itemRowMenuOpen,
-                        isActive && isMenuOpen && styles.itemRowActiveMenuOpen,
-                      ]}
-                    >
-                      <Pressable
-                        onPress={() => {
-                          setOpenMenu(null);
-                          onSelectConversation(item.id);
-                        }}
-                        style={styles.itemMainButton}
-                        testID={conversationRowTestId(item.id)}
-                      >
-                        <Text numberOfLines={1} style={styles.itemTitle}>
-                          {formatConversationTitle(item)}
-                        </Text>
-                        <Text numberOfLines={1} style={styles.itemMeta}>
-                          {formatTimestamp(item.updatedAt)}
-                        </Text>
-                      </Pressable>
-
-                      <Pressable
-                        accessibilityLabel="Conversation options"
-                        hitSlop={8}
-                        onPress={() => {
-                          void openConversationMenu(item.id);
-                        }}
-                        ref={(node) => {
-                          menuButtonRefs.current[item.id] = node;
-                        }}
-                        style={[styles.itemMenuButton, isMenuOpen && styles.itemMenuButtonOpen]}
-                        testID={conversationMenuButtonTestId(item.id)}
-                      >
-                        <Ionicons
-                          color={mobileWeb.colors.gray600}
-                          name="ellipsis-vertical"
-                          size={16}
-                        />
-                      </Pressable>
-                    </View>
-                  );
+              <Pressable
+                onPress={() => {
+                  setOpenMenu(null);
+                  onCreateNew();
                 }}
-                />
-              </View>
-            )}
+                style={styles.newChatButton}
+                testID={testIds.conversationsNew}
+              >
+                <Text style={styles.newChatLabel}>+ New chat</Text>
+              </Pressable>
 
-            {openMenuConversation && openMenu ? (
-              <View pointerEvents="box-none" style={styles.menuOverlay}>
-                <Pressable onPress={() => setOpenMenu(null)} style={StyleSheet.absoluteFill} />
-
-                <View
-                  style={[
-                    styles.menuPanel,
-                    {
-                      left: openMenu.left,
-                      top: openMenu.top,
-                      width: MENU_PANEL_WIDTH,
-                    },
-                  ]}
-                >
-                  <Pressable
-                    onPress={() => openRename(openMenuConversation)}
-                    style={styles.menuActionButton}
-                    testID={conversationRenameButtonTestId(openMenuConversation.id)}
-                  >
-                    <Text style={styles.menuActionLabel}>Rename</Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => {
-                      setOpenMenu(null);
-                      confirmDelete(openMenuConversation.id);
-                    }}
-                    style={styles.menuActionButton}
-                    testID={conversationDeleteButtonTestId(openMenuConversation.id)}
-                  >
-                    <Text style={styles.menuDeleteLabel}>Delete</Text>
-                  </Pressable>
+              {loading ? (
+                <View style={styles.loadingWrap}>
+                  <Spinner label="Loading conversations..." tone="accent" />
                 </View>
-              </View>
-            ) : null}
+              ) : (
+                <View style={styles.listWrap}>
+                  <FlatList
+                    contentContainerStyle={styles.listContent}
+                    data={sortedConversations}
+                    keyboardShouldPersistTaps="handled"
+                    onEndReached={() => {
+                      maybeLoadMore();
+                    }}
+                    onEndReachedThreshold={0.35}
+                    onScroll={({ nativeEvent }) => {
+                      const distanceFromBottom =
+                        nativeEvent.contentSize.height -
+                        (nativeEvent.contentOffset.y + nativeEvent.layoutMeasurement.height);
+
+                      if (distanceFromBottom <= 160) {
+                        maybeLoadMore();
+                      }
+                    }}
+                    removeClippedSubviews={false}
+                    scrollEventThrottle={16}
+                    style={styles.list}
+                    testID={testIds.conversationsList}
+                    ListEmptyComponent={
+                      <View style={styles.emptyWrap}>
+                        <Text style={styles.emptyText}>No conversations yet.</Text>
+                      </View>
+                    }
+                    ListFooterComponent={
+                      loadingMore ? (
+                        <View style={styles.listFooterLoading} testID={testIds.conversationsLoadingMore}>
+                          <Spinner label="Loading more conversations..." tone="accent" />
+                        </View>
+                      ) : null
+                    }
+                    renderItem={({ item }) => {
+                    const isActive = item.id === currentId;
+                    const isMenuOpen = openMenu?.id === item.id;
+
+                    return (
+                      <View
+                        style={[
+                          styles.itemRow,
+                          isActive && styles.itemRowActive,
+                          isMenuOpen && styles.itemRowMenuOpen,
+                          isActive && isMenuOpen && styles.itemRowActiveMenuOpen,
+                        ]}
+                      >
+                        <Pressable
+                          onPress={() => {
+                            setOpenMenu(null);
+                            onSelectConversation(item.id);
+                          }}
+                          style={styles.itemMainButton}
+                          testID={conversationRowTestId(item.id)}
+                        >
+                          <Text numberOfLines={1} style={styles.itemTitle}>
+                            {formatConversationTitle(item)}
+                          </Text>
+                          <Text numberOfLines={1} style={styles.itemMeta}>
+                            {formatTimestamp(item.updatedAt)}
+                          </Text>
+                        </Pressable>
+
+                        <View
+                          collapsable={false}
+                          ref={(node) => {
+                            menuButtonRefs.current[item.id] = node;
+                          }}
+                        >
+                          <Pressable
+                            accessibilityLabel="Conversation options"
+                            hitSlop={8}
+                            onPress={() => {
+                              void openConversationMenu(item.id);
+                            }}
+                            style={[styles.itemMenuButton, isMenuOpen && styles.itemMenuButtonOpen]}
+                            testID={conversationMenuButtonTestId(item.id)}
+                          >
+                            <Ionicons
+                              color={mobileWeb.colors.gray600}
+                              name="ellipsis-vertical"
+                              size={16}
+                            />
+                          </Pressable>
+                        </View>
+                      </View>
+                    );
+                  }}
+                  />
+                </View>
+              )}
+              {Platform.OS !== "ios" && openMenuConversation && openMenu ? (
+                <View pointerEvents="box-none" style={styles.menuOverlay}>
+                  <Pressable onPress={() => setOpenMenu(null)} style={StyleSheet.absoluteFill} />
+
+                  <View
+                    style={[
+                      styles.menuPanel,
+                      {
+                        left: openMenu.left,
+                        top: openMenu.top,
+                        width: MENU_PANEL_WIDTH,
+                      },
+                    ]}
+                  >
+                    <Pressable
+                      onPress={() => openRename(openMenuConversation)}
+                      style={styles.menuActionButton}
+                      testID={conversationRenameButtonTestId(openMenuConversation.id)}
+                    >
+                      <Text style={styles.menuActionLabel}>Rename</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        setOpenMenu(null);
+                        confirmDelete(openMenuConversation.id);
+                      }}
+                      style={styles.menuActionButton}
+                      testID={conversationDeleteButtonTestId(openMenuConversation.id)}
+                    >
+                      <Text style={styles.menuDeleteLabel}>Delete</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
           </SafeAreaView>
+          {Platform.OS === "ios" && openMenuConversation && openMenu ? (
+            <View pointerEvents="box-none" style={styles.menuOverlayScreen}>
+              <Pressable onPress={() => setOpenMenu(null)} style={StyleSheet.absoluteFill} />
+
+              <View
+                style={[
+                  styles.menuPanel,
+                  {
+                    left: openMenu.left,
+                    top: openMenu.top,
+                    width: MENU_PANEL_WIDTH,
+                  },
+                ]}
+              >
+                <Pressable
+                  onPress={() => openRename(openMenuConversation)}
+                  style={styles.menuActionButton}
+                  testID={conversationRenameButtonTestId(openMenuConversation.id)}
+                >
+                  <Text style={styles.menuActionLabel}>Rename</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    setOpenMenu(null);
+                    confirmDelete(openMenuConversation.id);
+                  }}
+                  style={styles.menuActionButton}
+                  testID={conversationDeleteButtonTestId(openMenuConversation.id)}
+                >
+                  <Text style={styles.menuDeleteLabel}>Delete</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
         </View>
       </Modal>
 
@@ -450,6 +516,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     marginBottom: 12,
+    paddingHorizontal: Platform.OS === "ios" ? 10 : 0,
   },
   headerTitle: {
     color: mobileWeb.colors.gray900,
@@ -461,7 +528,7 @@ const styles = StyleSheet.create({
     gap: 2,
     justifyContent: "center",
     minHeight: 48,
-    paddingRight: 8,
+    paddingRight: Platform.OS === "ios" ? 10 : 8,
   },
   itemMenuButton: {
     alignItems: "center",
@@ -484,7 +551,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: "row",
     overflow: "visible",
-    paddingHorizontal: 12,
+    paddingHorizontal: Platform.OS === "ios" ? 14 : 12,
     paddingVertical: 10,
     position: "relative",
   },
@@ -514,6 +581,7 @@ const styles = StyleSheet.create({
   listContent: {
     gap: 10,
     paddingBottom: 16,
+    paddingHorizontal: Platform.OS === "ios" ? 10 : 0,
   },
   loadingWrap: {
     alignItems: "center",
@@ -546,6 +614,11 @@ const styles = StyleSheet.create({
     elevation: 30,
     zIndex: 60,
   },
+  menuOverlayScreen: {
+    ...StyleSheet.absoluteFillObject,
+    elevation: 80,
+    zIndex: 120,
+  },
   menuPanel: {
     backgroundColor: mobileWeb.colors.white,
     borderColor: mobileWeb.colors.gray200,
@@ -566,6 +639,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: "center",
     marginBottom: 14,
+    marginHorizontal: Platform.OS === "ios" ? 10 : 0,
     minHeight: 44,
   },
   newChatLabel: {
@@ -579,11 +653,11 @@ const styles = StyleSheet.create({
     borderRightColor: mobileWeb.colors.gray200,
     borderRightWidth: 1,
     flex: 1,
-    maxWidth: Platform.OS === "ios" ? 420 : 380,
+    maxWidth: Platform.OS === "ios" ? 404 : 380,
     paddingBottom: 20,
-    paddingHorizontal: 14,
+    paddingHorizontal: Platform.OS === "ios" ? 18 : 14,
     paddingTop: Platform.OS === "ios" ? 16 : 36,
-    width: "88%",
+    width: Platform.OS === "ios" ? "84%" : "88%",
   },
   renameActions: {
     flexDirection: "row",
@@ -652,9 +726,3 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
 });
-
-
-
-
-
-

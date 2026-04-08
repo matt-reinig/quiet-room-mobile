@@ -83,4 +83,3 @@ describe('Quiet Room composer flow', () => {
     await waitFor(secondUserMessage).toBeVisible().withTimeout(15000);
   });
 });
-

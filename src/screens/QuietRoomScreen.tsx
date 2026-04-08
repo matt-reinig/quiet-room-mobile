@@ -75,7 +75,7 @@ function modelLabel(model: string): string {
 }
 
 function headerTopPadding(): number {
-  return Platform.OS === "ios" ? 120 : 100;
+  return Platform.OS === "ios" ? 84 : 100;
 }
 
 function headerControlsTop(): number {
@@ -84,6 +84,10 @@ function headerControlsTop(): number {
 
 function headerTitleTop(): number {
   return Platform.OS === "ios" ? 24 : 52;
+}
+
+function crucifixTopMargin(): number {
+  return Platform.OS === "ios" ? 0 : 12;
 }
 
 export default function QuietRoomScreen() {
@@ -153,6 +157,7 @@ export default function QuietRoomScreen() {
   const listContentHeightRef = useRef(0);
   const anchorContentMinHeightRef = useRef(0);
   const newestButtonTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
     const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
@@ -1007,7 +1012,7 @@ export default function QuietRoomScreen() {
               : null,
           ]}
         >
-            <View style={styles.modelColumn}>
+            <View style={[styles.modelColumn, showChatOptions && styles.modelColumnMenuOpen]}>
               <Text style={styles.modelCaption}>{modelLabel(currentModel)}</Text>
               <Pressable
                 disabled={loading}
@@ -1022,13 +1027,14 @@ export default function QuietRoomScreen() {
               </Pressable>
 
               {showChatOptions ? (
-                <View style={styles.modelMenu}>
+                <View style={styles.modelMenu} testID={testIds.modelMenu}>
                   {voiceModeAvailable ? (
                     <Pressable
                       onPress={() => {
                         setVoiceModeEnabled((previous) => !previous);
                       }}
                       style={styles.modelMenuVoiceRow}
+                      testID={testIds.modelMenuVoiceToggle}
                     >
                       <View style={styles.modelMenuVoiceCopy}>
                         <Text style={styles.modelMenuVoiceTitle}>Voice mode</Text>
@@ -1362,7 +1368,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     height: 128,
     justifyContent: "center",
-    marginTop: 12,
+    marginTop: crucifixTopMargin(),
   },
   footerWrap: {
     minHeight: 18,
@@ -1602,6 +1608,10 @@ const styles = StyleSheet.create({
     position: "relative",
     width: 72,
   },
+  modelColumnMenuOpen: {
+    elevation: 20,
+    zIndex: 80,
+  },
   voiceModeBadge: {
     alignItems: "center",
     alignSelf: "flex-start",
@@ -1655,6 +1665,7 @@ const styles = StyleSheet.create({
     borderRadius: mobileWeb.radii.lg,
     borderWidth: 1,
     bottom: 56,
+    elevation: 20,
     left: 0,
     paddingBottom: 8,
     paddingTop: 0,
@@ -1883,18 +1894,3 @@ const styles = StyleSheet.create({
     paddingTop: 2,
   },
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -184,8 +184,6 @@ export default function MessageBubble({
               <MessageVoiceButton
                 audioSrc={message.audioSrc}
                 autoPlay={autoPlayVoice}
-                conversationId={conversationId}
-                messageIndex={testIndex}
                 testID={voiceButtonTestID}
                 text={content}
               />
@@ -265,4 +263,3 @@ const styles = StyleSheet.create({
     borderColor: mobileWeb.colors.blue200,
   },
 });
-

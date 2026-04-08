@@ -17,6 +17,8 @@ export const testIds = {
   promptCuesToggle: "quiet-room.prompt-cues.toggle",
   promptCuesPanel: "quiet-room.prompt-cues.panel",
   modelMenuButton: "quiet-room.model.toggle",
+  modelMenu: "quiet-room.model.menu",
+  modelMenuVoiceToggle: "quiet-room.model.voice-toggle",
   voiceModeIndicator: "quiet-room.voice-mode.indicator",
   composerInput: "quiet-room.composer.input",
   composerExpand: "quiet-room.composer.expand",
