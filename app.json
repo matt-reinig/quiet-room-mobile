@@ -15,8 +15,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "2",
-      "bundleIdentifier": "com.quietroom.mobile"
+      "buildNumber": "3",
+      "bundleIdentifier": "com.quietroom.mobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.quietroom.mobile",

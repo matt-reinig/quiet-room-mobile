@@ -1,19 +1,27 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
+import type { Persistence, User } from "@firebase/auth";
 import { Platform } from "react-native";
 import { getApp, getApps, initializeApp } from "firebase/app";
-import {
+import { FIREBASE_CONFIG, GOOGLE_AUTH_CONFIG } from "../config/env";
+
+const firebaseAuth = require("@firebase/auth") as typeof import("@firebase/auth") & {
+  getReactNativePersistence?: (storage: typeof AsyncStorage) => Persistence;
+};
+
+const {
   createUserWithEmailAndPassword,
   getAuth,
   GoogleAuthProvider,
-  onAuthStateChanged,
+  initializeAuth,
   sendPasswordResetEmail,
   signInAnonymously,
   signInWithCredential,
   signInWithEmailAndPassword,
   signOut,
-  type User,
-} from "firebase/auth";
-import { FIREBASE_CONFIG, GOOGLE_AUTH_CONFIG } from "../config/env";
+} = firebaseAuth;
+
+const getReactNativePersistence = firebaseAuth.getReactNativePersistence;
 
 const hasFirebaseConfig = Object.values(FIREBASE_CONFIG).every(Boolean);
 
@@ -32,7 +40,27 @@ if (Platform.OS === "android" && nativeGoogleWebClientId) {
   });
 }
 
-export const auth = getAuth(app);
+function createAuth() {
+  if (!getReactNativePersistence) {
+    return getAuth(app);
+  }
+
+  try {
+    return initializeAuth(app, {
+      persistence: getReactNativePersistence(AsyncStorage),
+    });
+  } catch (error) {
+    const code = typeof error === "object" && error !== null && "code" in error ? error.code : "";
+
+    if (code === "auth/already-initialized") {
+      return getAuth(app);
+    }
+
+    throw error;
+  }
+}
+
+export const auth = createAuth();
 
 async function restoreNativeGoogleUser(): Promise<User | null> {
   if (Platform.OS !== "android" || !nativeGoogleWebClientId || !GoogleSignin.hasPreviousSignIn()) {
@@ -61,40 +89,26 @@ async function restoreNativeGoogleUser(): Promise<User | null> {
   }
 }
 
-export function ensureAuth(): Promise<User> {
-  return new Promise((resolve, reject) => {
-    const unsubscribe = onAuthStateChanged(
-      auth,
-      async (user) => {
-        unsubscribe();
+export async function ensureAuth(): Promise<User> {
+  await auth.authStateReady();
 
-        if (user) {
-          resolve(user);
-          return;
-        }
+  if (auth.currentUser) {
+    return auth.currentUser;
+  }
 
-        try {
-          const restoredGoogleUser = await restoreNativeGoogleUser();
+  const restoredGoogleUser = await restoreNativeGoogleUser();
 
-          if (restoredGoogleUser) {
-            resolve(restoredGoogleUser);
-            return;
-          }
+  if (restoredGoogleUser) {
+    return restoredGoogleUser;
+  }
 
-          const credential = await signInAnonymously(auth);
-          resolve(credential.user);
-        } catch (error) {
-          console.error("ensureAuth: anon sign-in failed", error);
-          reject(error);
-        }
-      },
-      (error) => {
-        unsubscribe();
-        console.error("ensureAuth: onAuthStateChanged error", error);
-        reject(error);
-      }
-    );
-  });
+  try {
+    const credential = await signInAnonymously(auth);
+    return credential.user;
+  } catch (error) {
+    console.error("ensureAuth: anon sign-in failed", error);
+    throw error;
+  }
 }
 
 export async function loginWithGoogle(idToken: string) {
