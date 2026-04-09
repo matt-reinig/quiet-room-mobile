@@ -349,15 +349,17 @@ export function useChatController({
   const [loadingMoreConversations, setLoadingMoreConversations] = useState(false);
   const [nextConversationCursor, setNextConversationCursor] = useState<string | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
-  const [currentModel, setCurrentModel] = useState(DEFAULT_MODEL);
+  const [currentModel, setCurrentModelState] = useState(DEFAULT_MODEL);
 
   const chatLoadRequestIdRef = useRef(0);
+  const currentIdRef = useRef<string | null>(null);
+  currentIdRef.current = currentId;
 
   useEffect(() => {
     if (!user) {
       setConversations({});
       setCurrentId(null);
-      setCurrentModel(DEFAULT_MODEL);
+      setCurrentModelState(DEFAULT_MODEL);
       setSidebarLoading(false);
       setLoadingMoreConversations(false);
       setNextConversationCursor(null);
@@ -368,7 +370,7 @@ export function useChatController({
     if (isAnon) {
       setConversations({});
       setCurrentId(null);
-      setCurrentModel(DEFAULT_MODEL);
+      setCurrentModelState(DEFAULT_MODEL);
       setSidebarLoading(false);
       setLoadingMoreConversations(false);
       setNextConversationCursor(null);
@@ -429,6 +431,42 @@ export function useChatController({
       cancelled = true;
     };
   }, [isAnon, user]);
+
+  const setCurrentModel = useCallback(
+    (model: string) => {
+      const nextModel = typeof model === "string" && model.trim() ? model.trim() : DEFAULT_MODEL;
+
+      setCurrentModelState((previous: string) => {
+        if (previous === nextModel) {
+          return previous;
+        }
+        return nextModel;
+      });
+
+      setConversations((previous: ConversationsById) => {
+        const conversationId = currentIdRef.current;
+
+        if (!conversationId) {
+          return previous;
+        }
+
+        const conversation = previous[conversationId];
+
+        if (!conversation || conversation.currentModel === nextModel) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          [conversationId]: {
+            ...conversation,
+            currentModel: nextModel,
+          },
+        };
+      });
+    },
+    []
+  );
 
   useEffect(() => {
     if (!user || isAnon || !currentId) {
@@ -986,4 +1024,3 @@ export function useChatController({
     sidebarLoading,
   };
 }
-
