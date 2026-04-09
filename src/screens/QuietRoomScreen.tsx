@@ -3,10 +3,8 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-
   ScrollView,
   Keyboard,
-  KeyboardAvoidingView,
   Image,
   Modal,
   Platform,
@@ -859,8 +857,6 @@ export default function QuietRoomScreen() {
             </View>
           ) : null}
         </Pressable>
-
-
         <View onLayout={handleMessagesWrapLayout} style={styles.messagesWrap}>
           {chatLoading ? (
             <View style={styles.loadingConversation}>
@@ -1014,6 +1010,9 @@ export default function QuietRoomScreen() {
         <View
           style={[
             styles.inputRow,
+            Platform.OS === "ios" && keyboardInset > 0
+              ? { paddingBottom: COMPOSER_ROW_PADDING_BOTTOM + keyboardInset }
+              : null,
             Platform.OS === "android" && keyboardInset > 0
               ? { paddingBottom: COMPOSER_ROW_PADDING_BOTTOM + keyboardInset + ANDROID_KEYBOARD_CLEARANCE }
               : null,

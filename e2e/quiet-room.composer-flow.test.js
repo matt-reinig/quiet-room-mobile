@@ -66,6 +66,7 @@ describe('Quiet Room composer flow', () => {
 
     await composer.tap();
     await composer.replaceText('second mobile followup');
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     await sendButton.tap();
 
     const secondUserMessage = element(by.id(ids.message.user(2)));
