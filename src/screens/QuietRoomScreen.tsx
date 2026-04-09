@@ -3,10 +3,8 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
-
   ScrollView,
   Keyboard,
-  KeyboardAvoidingView,
   Image,
   Modal,
   Platform,
@@ -57,8 +55,10 @@ type VoiceAutoPlayTarget = {
 
 type RenderMessage = {
   autoPlayVoice: boolean;
+  conversationId: string | null;
   id: string;
   message: ChatMessage;
+  messageIndex: number | null;
 };
 
 
@@ -338,11 +338,13 @@ export default function QuietRoomScreen() {
   const renderedMessages = useMemo<RenderMessage[]>(() => {
     const opening: RenderMessage = {
       autoPlayVoice: false,
+      conversationId: null,
       id: "opening",
       message: {
         content: QUIET_ROOM_OPENING_GREETING,
         role: "assistant",
       },
+      messageIndex: null,
     };
 
     const mapped = messages.map((message, index) => {
@@ -355,8 +357,10 @@ export default function QuietRoomScreen() {
 
       return {
         autoPlayVoice,
+        conversationId: currentId ?? null,
         id: `${index}:${message.role}:${message.content.length}:${message.isStreaming ? "1" : "0"}`,
         message,
+        messageIndex: index,
       };
     });
 
@@ -853,8 +857,6 @@ export default function QuietRoomScreen() {
             </View>
           ) : null}
         </Pressable>
-
-
         <View onLayout={handleMessagesWrapLayout} style={styles.messagesWrap}>
           {chatLoading ? (
             <View style={styles.loadingConversation}>
@@ -925,8 +927,9 @@ export default function QuietRoomScreen() {
                       >
                         <MessageBubble
                           autoPlayVoice={item.autoPlayVoice}
-                          conversationId={index === 0 ? null : currentId}
+                          conversationId={item.conversationId}
                           message={item.message}
+                          messageIndex={item.messageIndex ?? undefined}
                           testID={index === 0 ? testIds.openingMessage : messageBubbleTestId(item.message.role, index - 1)}
                           testIndex={index === 0 ? undefined : index - 1}
                         />
@@ -1007,6 +1010,9 @@ export default function QuietRoomScreen() {
         <View
           style={[
             styles.inputRow,
+            Platform.OS === "ios" && keyboardInset > 0
+              ? { paddingBottom: COMPOSER_ROW_PADDING_BOTTOM + keyboardInset }
+              : null,
             Platform.OS === "android" && keyboardInset > 0
               ? { paddingBottom: COMPOSER_ROW_PADDING_BOTTOM + keyboardInset + ANDROID_KEYBOARD_CLEARANCE }
               : null,

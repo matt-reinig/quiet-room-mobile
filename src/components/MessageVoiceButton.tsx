@@ -86,6 +86,11 @@ export default function MessageVoiceButton({
 
   const hasPresetAudio = Boolean(resolvedAudioSrc);
   const hasPlayableContent = hasPresetAudio || Boolean(trimmedText);
+  const hasConversationAudio =
+    typeof conversationId === "string" &&
+    conversationId.trim().length > 0 &&
+    Number.isInteger(messageIndex) &&
+    (messageIndex as number) >= 0;
   const voiceUrl = useMemo(resolveVoiceUrl, []);
   const loadingSpin = useRef(new Animated.Value(0)).current;
 
@@ -171,6 +176,38 @@ export default function MessageVoiceButton({
     []
   );
 
+  const resolveAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    if (!user) {
+      return {};
+    }
+
+    const token = await user.getIdToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }, [user]);
+
+  const startConversationPlayback = useCallback(
+    async (authHeaders: Record<string, string>) => {
+      if (!hasConversationAudio) {
+        return false;
+      }
+
+      const remoteUri = buildConversationVoiceUri(
+        voiceUrl,
+        conversationId!.trim(),
+        messageIndex as number
+      );
+
+      await loadAndPlayFromSource({
+        headers: authHeaders,
+        overrideFileExtensionAndroid: "mp3",
+        uri: remoteUri,
+      });
+
+      return true;
+    },
+    [conversationId, hasConversationAudio, loadAndPlayFromSource, messageIndex, voiceUrl]
+  );
+
   const startPlayback = useCallback(async () => {
     if (!hasPlayableContent) {
       return;
@@ -204,29 +241,25 @@ export default function MessageVoiceButton({
         return;
       }
 
-      const authHeaders: Record<string, string> = {};
+      const authHeaders = await resolveAuthHeaders();
 
-      if (user) {
-        const token = await user.getIdToken();
-        if (token) {
-          authHeaders.Authorization = `Bearer ${token}`;
+      if (hasConversationAudio) {
+        try {
+          const startedConversationPlayback = await startConversationPlayback(authHeaders);
+          if (startedConversationPlayback) {
+            abortControllerRef.current = null;
+            return;
+          }
+        } catch (conversationError) {
+          if ((conversationError as Error | null)?.name === "AbortError") {
+            return;
+          }
+
+          await cleanup();
+          abortControllerRef.current = controller;
+          setStatus("loading");
+          console.warn("Conversation voice playback failed; falling back to text POST", conversationError);
         }
-      }
-
-      if (conversationId && Number.isInteger(messageIndex) && (messageIndex as number) >= 0) {
-        const remoteUri = buildConversationVoiceUri(
-          voiceUrl,
-          conversationId,
-          messageIndex as number
-        );
-
-        await loadAndPlayFromSource({
-          headers: authHeaders,
-          overrideFileExtensionAndroid: "mp3",
-          uri: remoteUri,
-        });
-        abortControllerRef.current = null;
-        return;
       }
 
       const response = await fetch(voiceUrl, {
@@ -268,14 +301,15 @@ export default function MessageVoiceButton({
     }
   }, [
     cleanup,
-    conversationId,
     hasPlayableContent,
+    hasConversationAudio,
     hasPresetAudio,
     loadAndPlayFromSource,
     messageIndex,
+    resolveAuthHeaders,
     resolvedAudioSrc,
+    startConversationPlayback,
     trimmedText,
-    user,
     voiceUrl,
   ]);
 
@@ -432,7 +466,6 @@ const styles = StyleSheet.create({
     maxWidth: 180,
   },
 });
-
 
 
 

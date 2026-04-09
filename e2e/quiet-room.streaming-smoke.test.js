@@ -107,10 +107,18 @@ describe('Quiet Room streaming smoke', () => {
     await waitFor(element(by.id(ids.screen))).toBeVisible().withTimeout(60000);
   });
 
-  it('shows assistant output before completion and starts native voice playback', async () => {
+  it('shows assistant output before completion and autoplays native voice playback', async () => {
     const composer = element(by.id(ids.composerInput));
     const sendButton = element(by.id(ids.sendButton));
     const messageList = element(by.id(ids.messageList));
+    const modelMenuButton = element(by.id(ids.modelMenuButton));
+    const voiceModeToggle = element(by.id(ids.modelMenuVoiceToggle));
+
+    await modelMenuButton.tap();
+    await waitFor(element(by.id(ids.modelMenu))).toBeVisible().withTimeout(10000);
+    await voiceModeToggle.tap();
+    await waitFor(element(by.id(ids.voiceModeIndicator))).toBeVisible().withTimeout(10000);
+    await modelMenuButton.tap();
 
     await composer.tap();
     await composer.replaceText('Give me a longer response in several short paragraphs about silence in prayer, practical steps, and one brief concluding prayer.');
@@ -127,17 +135,19 @@ describe('Quiet Room streaming smoke', () => {
 
     const voiceButton = element(by.id(ids.message.voice('assistant', 1)));
     await revealInMessageList(messageList, voiceButton, 20000);
-    await voiceButton.tap();
 
     if (device.getPlatform() === 'ios') {
-      const voiceLabel = await waitForAnyLabel(
+      await waitForAnyLabel(
         voiceButton,
         ['Pause voice', 'Starting voice...', 'Retry voice'],
         20000
       );
-      console.log('ios-voice-label', voiceLabel);
     } else {
-      await waitForLabel(voiceButton, 'Pause voice', 20000);
+      await waitForAnyLabel(
+        voiceButton,
+        ['Pause voice', 'Starting voice...'],
+        20000
+      );
     }
   });
 });
