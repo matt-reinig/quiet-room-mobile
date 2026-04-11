@@ -51,8 +51,8 @@ The smoke evidence should capture:
 
 ## External Setup Still Needed
 
-- Apple still needs the separate QA app record for `com.quietroom.mobile.qa`.
-- Google Play still needs the separate QA app record for `com.quietroom.mobile.qa`.
+- The Apple and Google Play QA / prod app records now exist.
+- The next external work is validating first uploads, tester groups / tracks, signing, metadata, and submission readiness on those records.
 - Prod store records should stay on `com.quietroom.mobile`.
 - Any store-side signing, capabilities, tester groups, or release tracks still have to be created or verified outside the repo.
 - If Google sign-in or other Firebase-backed features are in scope, the matching console-side app settings still need to be kept aligned with the two app records.
@@ -68,4 +68,4 @@ The smoke evidence should capture:
 - `npm run smoke:ios:qa` passes on the iOS simulator.
 - `npm run smoke:ios:prod` passes on the iOS simulator.
 - The scripted smoke definition is now a basic prompt/response flow rather than only a shell-render check.
-- Repo-side variant/env plumbing and baseline smoke proof are complete; the remaining work is external store-console setup and any optional Google sign-in release validation.
+- Repo-side variant/env plumbing and baseline smoke proof are complete; the next effort is distribution / store-readiness work plus any optional Google sign-in release validation.

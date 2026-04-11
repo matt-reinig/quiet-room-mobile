@@ -4,11 +4,11 @@ This plan is for the next distribution milestones after local mobile bring-up.
 
 Current priority:
 
-1. Turn Emily's TestFlight feedback into a release-blocker list
-2. Finalize the QA/prod app identity split
-3. Close store compliance gaps
-4. Prepare Google Play release
-5. Prepare App Store public release
+1. Turn the new QA/prod store records into a working distribution pipeline
+2. Close store compliance and submission gaps
+3. Validate first QA uploads on Apple and Play
+4. Validate first prod-candidate uploads on Apple and Play
+5. Capture final release blockers from real-device testing
 
 Confirmed current tester detail:
 
@@ -21,7 +21,9 @@ What has changed since this plan was first written:
 
 - Emily is already testing on TestFlight
 - internal TestFlight setup is no longer the main blocker
-- the next planning focus should shift from "get the first beta onto a phone" to "decide what must be finished before store submission"
+- the app-identity split is now implemented in the repo and smoke-verified
+- the four matching Apple / Play app records now exist for QA and prod
+- the next planning focus should shift from "make the split possible" to "make the split operational for release and tester distribution"
 
 What TestFlight should mean now:
 
@@ -55,10 +57,10 @@ What is already true:
 
 Important current gaps:
 
-- there is not yet a side-by-side-installable QA app identity
 - Android release builds are still signed with the debug keystore
 - account deletion flow is not yet implemented
 - privacy policy / store disclosure work is not yet fully prepared
+- the new QA / prod store records still need first-upload, tester-group, and track validation
 
 ## Phase 1: Get Emily On A Beta Build
 
@@ -187,6 +189,10 @@ Phase 1 acceptance:
 
 ## Phase 2: Finalize QA / Prod App Identity
 
+Status:
+
+- complete for repo-side implementation and initial store-record creation
+
 Goal:
 
 - define the permanent prod identity and the side-by-side-installable QA identity before store setup expands further
@@ -265,6 +271,32 @@ Suggested work order for the branding task:
 5. Export replacement files for `icon.png`, `adaptive-icon.png`, `splash-icon.png`, and `favicon.png`, plus QA-specific variants later if needed.
 6. Launch the app on iPhone and Android emulator/device to visually verify icon legibility and splash balance.
 7. Only after those exports look correct, capture store screenshots and any TestFlight-facing branded materials.
+
+## Phase 3: Operationalize The Four Store Records
+
+Status:
+
+- next effort
+
+Goal:
+
+- turn the newly created QA and prod app records on Apple and Google Play into a reliable release pipeline
+
+What this next effort should cover:
+
+- confirm QA builds upload to the QA Apple / Play records and prod builds upload to the prod records
+- finalize signing / provisioning for release builds rather than debug-style local signing
+- configure tester groups, internal tracks, and release notes flow for QA distribution
+- prepare screenshots, metadata, privacy policy links, and review-compliance copy for both stores
+- run one physical-device side-by-side validation pass so QA and prod installs can both be trusted before public submission
+
+Acceptance for this next effort:
+
+- QA upload path works on both Apple and Play
+- prod-candidate upload path works on both Apple and Play
+- tester distribution path is clear for QA
+- public submission path is clear for prod
+- remaining blockers are product / policy decisions rather than store plumbing confusion
 
 Why this phase should happen before store submission:
 

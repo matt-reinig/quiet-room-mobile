@@ -4,6 +4,21 @@ This doc defines the recommended environment and distribution strategy for `quie
 
 This replaces the earlier recommendation to keep a single mobile app identity for both QA and prod.
 
+## Handoff Update
+
+What completed in this effort:
+
+- we pivoted from a single mobile app identity to two installable identities: `Quiet Room` on `com.quietroom.mobile` and `Quiet Room QA` on `com.quietroom.mobile.qa`
+- `app.config.js`, env selectors, native sync, and diagnostics now separate app identity from backend target
+- the split is proven in practice rather than only planned: local/QA/prod verification is wired, Android smoke passed for `qa/local`, `qa/qa`, and `prod/prod`, and iOS smoke passed for `qa/qa` and `prod/prod`
+- the four matching Apple / Play app records now exist, so the store identity side of the split is established too
+
+What this means for handoff:
+
+- the repo-side QA/prod app-variant effort is complete
+- the next effort should be treated as distribution and launch-readiness work, not more variant-plumbing work
+- remaining follow-up is mostly store-console, signing, tester-flow, metadata, and release-validation work
+
 ## Recommendation
 
 Use **two app identities** from here forward so QA and prod can be installed side-by-side on the same device.
