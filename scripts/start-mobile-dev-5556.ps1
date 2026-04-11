@@ -4,6 +4,7 @@ param(
   [int]$Port = 5556,
   [int]$MetroPort = 8081,
   [string]$MetroHost = "lan",
+  [string]$AppPackage = "",
   [switch]$SkipAppLaunch,
   [switch]$ForceMetroRestart
 )
@@ -14,6 +15,14 @@ Set-StrictMode -Version Latest
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $logPath = Join-Path $projectRoot "start-dev-client.log"
 $expoCommand = Join-Path $projectRoot "node_modules\.bin\expo.cmd"
+$resolvedAppPackage =
+  if ($AppPackage) {
+    $AppPackage
+  } elseif ($env:EXPO_PUBLIC_APP_VARIANT -eq "qa") {
+    "com.quietroom.mobile.qa"
+  } else {
+    "com.quietroom.mobile"
+  }
 
 if (-not (Test-Path $expoCommand)) {
   throw "Expo CLI not found at $expoCommand"
@@ -96,7 +105,7 @@ if ($null -eq $existingMetro) {
 if (-not $SkipAppLaunch) {
   & adb -s $DeviceId shell input keyevent KEYCODE_WAKEUP | Out-Null
   & adb -s $DeviceId shell wm dismiss-keyguard | Out-Null
-  & adb -s $DeviceId shell monkey -p com.quietroom.mobile -c android.intent.category.LAUNCHER 1 | Out-Null
+  & adb -s $DeviceId shell monkey -p $resolvedAppPackage -c android.intent.category.LAUNCHER 1 | Out-Null
 }
 
 $result = [ordered]@{
@@ -104,6 +113,7 @@ $result = [ordered]@{
   metro_port = $MetroPort
   metro_ready = $true
   app_launched = -not $SkipAppLaunch
+  app_package = $resolvedAppPackage
   log_path = $logPath
 }
 

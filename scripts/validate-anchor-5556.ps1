@@ -1,6 +1,6 @@
 param(
   [string]$DeviceId = "emulator-5556",
-  [string]$AppPackage = "com.quietroom.mobile",
+  [string]$AppPackage = "",
   [int]$ImmediateDelayMs = 120,
   [int]$LateDelayMs = 1800,
   [int]$MaxAnchorDriftPx = 14,
@@ -15,6 +15,15 @@ Set-StrictMode -Version Latest
 if (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue) {
   $PSNativeCommandUseErrorActionPreference = $false
 }
+
+$ResolvedAppPackage =
+  if ($AppPackage) {
+    $AppPackage
+  } elseif ($env:EXPO_PUBLIC_APP_VARIANT -eq "qa") {
+    "com.quietroom.mobile.qa"
+  } else {
+    "com.quietroom.mobile"
+  }
 
 function Invoke-Adb {
   param(
@@ -279,8 +288,8 @@ Ensure-DeviceOnline
 
 Invoke-Adb -Args @("shell", "input", "keyevent", "KEYCODE_WAKEUP") -AllowFailure | Out-Null
 Invoke-Adb -Args @("shell", "wm", "dismiss-keyguard") -AllowFailure | Out-Null
-Invoke-Adb -Args @("shell", "am", "force-stop", $AppPackage) -AllowFailure | Out-Null
-Invoke-Adb -Args @("shell", "monkey", "-p", $AppPackage, "-c", "android.intent.category.LAUNCHER", "1") -AllowFailure | Out-Null
+Invoke-Adb -Args @("shell", "am", "force-stop", $ResolvedAppPackage) -AllowFailure | Out-Null
+Invoke-Adb -Args @("shell", "monkey", "-p", $ResolvedAppPackage, "-c", "android.intent.category.LAUNCHER", "1") -AllowFailure | Out-Null
 Start-Sleep -Milliseconds 2000
 
 $readySnapshot = Wait-ForMainScreen
@@ -452,8 +461,6 @@ Write-Host "Saved report: $jsonPath"
 if ($failed) {
   exit 1
 }
-
-
 
 
 
