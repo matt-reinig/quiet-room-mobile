@@ -32,6 +32,7 @@
     "expo-av": "~16.0.8",
     "expo-clipboard": "~8.0.8",
     "expo-file-system": "~19.0.21",
+    "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-web-browser": "~15.0.10",
     "firebase": "^12.9.0",

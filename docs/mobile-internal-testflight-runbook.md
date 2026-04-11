@@ -73,6 +73,13 @@ This checks for:
 - current iOS version/build metadata alignment
 - whether the app still shows the placeholder visible name
 
+What a good local state should look like before you open Xcode:
+
+- `npm run ios:testflight:preflight` passes
+- `npm run ios:testflight:status` shows the bundle id you expect and a build number higher than the last TestFlight upload
+- local signing in Xcode already knows your Apple team and distribution certificate
+- `GoogleService-Info.plist` and any required `.env` values are present in the repo
+
 ## App Store Connect Setup
 
 These steps are outside the repo, but they are required for internal TestFlight:
@@ -97,18 +104,123 @@ From repo root:
 open ios/quietroommobile.xcworkspace
 ```
 
-In Xcode:
+In Xcode, use this exact mental model:
 
-1. Select the `quietroommobile` scheme.
-2. Select `Any iOS Device (arm64)` or the current generic iOS device target.
-3. Set the build configuration to `Release`.
-4. Use `Product > Archive`.
-5. When the archive finishes, Organizer opens.
-6. Choose `Distribute App`.
-7. Choose `App Store Connect`.
-8. Choose `Upload`.
-9. Keep automatic signing unless Xcode shows a signing problem you need to fix manually.
-10. Complete the upload and wait for build processing in App Store Connect.
+- `Run` puts a dev build on a simulator or attached phone.
+- `Archive` creates the signed release artifact that Apple accepts for TestFlight and App Store upload.
+- `Organizer` is the screen where you take that archive and distribute it to App Store Connect.
+
+### Step-by-step Xcode flow
+
+1. Open [quietroommobile.xcworkspace](/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile/ios/quietroommobile.xcworkspace).
+2. In the top toolbar, make sure the active scheme is `quietroommobile`.
+3. Change the run destination to `Any iOS Device (arm64)` or another generic iOS device target.
+4. Confirm the build configuration is `Release` if Xcode exposes that choice in the current UI.
+5. In the menu bar, choose `Product > Archive`.
+6. Wait for the archive to finish. This can take a while on React Native projects and the first archive after native changes is usually the slowest.
+7. When Organizer opens to `Archives`, select the newest archive for `quietroommobile`.
+8. Click `Distribute App`.
+9. Choose the `App Store Connect` distribution method.
+10. Choose `Upload`.
+11. Keep the recommended settings unless Xcode surfaces a concrete signing or capability error you need to address.
+12. Continue until Xcode shows the upload progress sheet.
+13. Wait through the App Store Connect analysis/upload step. This can sit on `Waiting for App Store Connect analysis response` for a bit before it advances.
+14. Finish when Organizer shows an `App upload complete` screen.
+
+### What we just used successfully
+
+This repo already uploaded successfully through the flow above using:
+
+- scheme: `quietroommobile`
+- bundle id: `com.quietroom.mobile`
+- team: `SV7SPMY2Q8`
+- distribution certificate: `Apple Distribution: Matthew Reinig (SV7SPMY2Q8)`
+- provisioning profile: `matt profile`
+
+### Build number behavior to expect
+
+This one is easy to miss the first time:
+
+- your local repo may say one build number before upload
+- App Store Connect may already have higher builds for the same version
+- Xcode can auto-manage the final uploaded build number during distribution
+
+That happened here:
+
+- local repo build before upload: `4`
+- App Store Connect already had builds through `7`
+- uploaded TestFlight build ended up as `1.0.0 (8)`
+
+So after a successful upload, always run:
+
+```bash
+npm run ios:testflight:status
+```
+
+If Xcode auto-advanced the uploaded build number, sync the repo files to match before the next beta cycle:
+
+- `app.json`
+- `ios/quietroommobile/Info.plist`
+- `ios/quietroommobile.xcodeproj/project.pbxproj`
+
+### If archive succeeds but export/upload fails
+
+Treat these as separate stages:
+
+1. archive
+2. distribute
+3. App Store Connect processing
+
+Common examples:
+
+- archive succeeds but Xcode says the bundle version must be higher than a previously uploaded build
+- archive succeeds but the distribution step wants an explicit provisioning profile
+- upload succeeds but the build still needs App Store Connect processing time before it is selectable in TestFlight
+
+If the error says the build number must be higher:
+
+- bump the iOS build number again
+- re-archive
+- upload again
+
+If the error is signing-related before archive:
+
+- choose the correct Apple team in Signing and Capabilities
+- confirm the bundle id is still `com.quietroom.mobile`
+- confirm the distribution certificate is present on the Mac
+- let Xcode regenerate or download provisioning if needed
+
+### Optional CLI path we validated
+
+The Xcode Organizer flow above should still be treated as the normal path, but we also confirmed the repo can produce a proper archive and IPA from terminal:
+
+```bash
+xcodebuild -workspace ios/quietroommobile.xcworkspace \
+  -scheme quietroommobile \
+  -configuration Release \
+  -destination 'generic/platform=iOS' \
+  -archivePath build/quietroommobile.xcarchive archive
+```
+
+Then export:
+
+```bash
+xcodebuild -exportArchive \
+  -archivePath build/quietroommobile.xcarchive \
+  -exportPath build/testflight-export \
+  -exportOptionsPlist build/exportOptions-appstore.plist
+```
+
+Current successful artifact locations:
+
+- [quietroommobile.xcarchive](/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile/build/quietroommobile.xcarchive)
+- [quietroommobile.ipa](/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile/build/testflight-export/quietroommobile.ipa)
+
+Future improvement:
+
+- we could automate archive export and TestFlight upload with CLI tooling such as `xcodebuild` plus Apple upload tooling like `altool` or its current equivalent
+- until that automation is implemented and documented here, treat the Xcode Organizer flow above as the source of truth
+- any scripted path should mirror this process rather than replace it informally
 
 If Xcode blocks on signing before archive:
 
@@ -126,6 +238,12 @@ In App Store Connect after processing:
 4. Add the new build to the internal group.
 5. Add Emily to that group if she is not already there.
 6. Send or confirm the invite.
+
+What to expect after upload:
+
+- the build may not be selectable immediately
+- App Store Connect needs processing time even after Xcode says upload is complete
+- once processing finishes, the build appears in the TestFlight area and can be attached to the internal group
 
 ## Emily-Side Steps
 

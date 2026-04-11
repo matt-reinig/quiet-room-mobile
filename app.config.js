@@ -12,6 +12,11 @@ const resolvedIosGoogleServicesFile = path.resolve(__dirname, iosGoogleServicesF
 const expoConfig = { ...appJson.expo };
 const androidConfig = { ...(expoConfig.android || {}) };
 const iosConfig = { ...(expoConfig.ios || {}) };
+const plugins = [...(expoConfig.plugins || [])];
+
+if (!plugins.includes("./plugins/withHermesDsymPhase")) {
+  plugins.push("./plugins/withHermesDsymPhase");
+}
 
 if (fs.existsSync(resolvedAndroidGoogleServicesFile)) {
   androidConfig.googleServicesFile = androidGoogleServicesFile;
@@ -29,6 +34,7 @@ module.exports = {
   ...appJson,
   expo: {
     ...expoConfig,
+    plugins,
     android: androidConfig,
     ios: iosConfig,
   },

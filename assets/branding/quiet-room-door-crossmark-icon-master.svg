@@ -1,0 +1,36 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1024"
+  height="1024"
+  viewBox="0 0 1024 1024"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Quiet Room door crossmark icon master</title>
+  <desc id="desc">
+    A minimal wall-and-door silhouette with a distinct wall color, a lower-set door, a small handle, and a centered slim black cross on a white background.
+  </desc>
+  <rect width="1024" height="1024" fill="#FFFFFF" />
+  <rect x="216" y="180" width="592" height="644" rx="24" fill="#5E3D2B" />
+  <path
+    d="M242 798V228C242 215.85 251.85 206 264 206H760C772.15 206 782 215.85 782 228V798"
+    fill="none"
+    stroke="#714A34"
+    stroke-width="14"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M318 220H706C715.941 220 724 228.059 724 238V824H300V238C300 228.059 308.059 220 318 220Z"
+    fill="#936447"
+  />
+  <path
+    d="M344 250H680C687.732 250 694 256.268 694 264V794H330V264C330 256.268 336.268 250 344 250Z"
+    fill="none"
+    stroke="#7A533A"
+    stroke-width="10"
+  />
+  <rect x="502" y="328" width="20" height="214" rx="8" fill="#000000" />
+  <rect x="423" y="423" width="178" height="20" rx="8" fill="#000000" />
+  <rect x="626" y="540" width="14" height="54" rx="7" fill="#000000" />
+</svg>

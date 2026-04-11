@@ -4,15 +4,30 @@ This plan is for the next distribution milestones after local mobile bring-up.
 
 Current priority:
 
-1. Get Emily on a beta build
+1. Turn Emily's TestFlight feedback into a release-blocker list
 2. Finalize the app identity for public release
-3. Prepare Google Play release
-4. Prepare App Store / TestFlight release
+3. Close store compliance gaps
+4. Prepare Google Play release
+5. Prepare App Store public release
 
 Confirmed current tester detail:
 
 - Emily is on iPhone
 - the preferred rapid-iteration path should therefore be internal TestFlight
+
+## Current Status Update
+
+What has changed since this plan was first written:
+
+- Emily is already testing on TestFlight
+- internal TestFlight setup is no longer the main blocker
+- the next planning focus should shift from "get the first beta onto a phone" to "decide what must be finished before store submission"
+
+What TestFlight should mean now:
+
+- keep using Emily's TestFlight loop to validate fixes on a real device
+- convert Emily feedback into a short list of true release blockers vs follow-up polish
+- avoid letting repeated beta iteration delay store-readiness work that can proceed in parallel
 
 ## Why Emily Beta Comes First
 
@@ -45,6 +60,10 @@ Important current gaps:
 - privacy policy / store disclosure work is not yet fully prepared
 
 ## Phase 1: Get Emily On A Beta Build
+
+Status:
+
+- active / substantially complete once Emily is installing and testing through TestFlight
 
 Goal:
 
@@ -177,6 +196,68 @@ Tasks:
 - finalize the app icon artwork
 - confirm splash and adaptive icon assets still look correct after final art is chosen
 
+Current brand direction:
+
+- keep the visual simple
+- core symbol: a door with a cross on it
+- use the door + cross mark for launcher, splash, store, and related marketing surfaces only
+- keep the main in-app devotional functionality and imagery separate from the launcher/store mark
+- small app icon should use the door + cross only, without app name text
+- larger assets may include the app name on the door if it still reads clearly
+- prefer a mark that still works when reduced to small App Store / Play Store icon sizes
+
+Branding deliverables to prepare:
+
+- small app icon for iOS / Android launcher use
+- Android adaptive icon treatment
+- splash image that matches the final icon direction
+- larger marketing image variants for store listings or TestFlight-facing materials if needed
+
+Branding source of truth:
+
+- first-pass visual and export spec: `docs/mobile-branding-asset-spec.md`
+
+Current repo-side branding audit:
+
+- `app.json` already points the mobile build at `assets/icon.png`, `assets/adaptive-icon.png`, `assets/splash-icon.png`, and `assets/favicon.png`
+- those launcher and splash assets are still Expo placeholder art rather than Quiet Room product branding
+- current exported sizes are already usable as a starting shell: `icon.png` 1024x1024, `adaptive-icon.png` 1024x1024, `splash-icon.png` 1024x1024, `favicon.png` 48x48
+- the current in-app devotional image is separate from launcher branding and is already used in the mobile UI via `assets/crucifix-web.png`
+- `src/screens/QuietRoomScreen.tsx` currently shows `crucifix-web.png` in the header and crucifix modal, so launcher branding and in-app imagery should be treated as related but distinct decisions
+
+Branding mismatch to resolve explicitly:
+
+- the planned public launcher mark is a door with a cross on it
+- the current in-app imagery is a crucifix image
+- this is now an intentional system: launcher/store icon as the product mark, crucifix artwork as devotional UI imagery
+- do not treat the branding task as a requirement to replace in-app devotional imagery or main app functionality
+
+Recommended mobile branding deliverables for first public release:
+
+1. Source-of-truth master artwork for the door + cross mark, ideally vector or layered high-resolution art kept outside the generated export files.
+2. iOS / Android primary app icon export based on the final mark, optimized to read clearly at very small sizes.
+3. Android adaptive icon foreground export that keeps the symbol inside the safe area and avoids edge clipping on masked launchers.
+4. Splash artwork export that reuses the same symbol system and background color rather than introducing a second visual identity.
+5. Favicon / lightweight web icon export so the web-adjacent surfaces do not keep showing placeholder branding.
+6. Optional larger marketing or store-listing art if TestFlight invite screens or store metadata need a branded image beyond the square icon.
+
+Recommended technical spec checklist:
+
+- keep `assets/icon.png` as a 1024x1024 square export for Expo launcher icon generation
+- keep `assets/adaptive-icon.png` as a 1024x1024 foreground export with comfortable padding for Android mask shapes
+- keep `assets/splash-icon.png` as a high-resolution centered symbol export sized for `resizeMode: contain`
+- keep launcher exports on a simple solid background unless a more complex background is proven to survive small-size reduction cleanly
+- verify the final icon on both light and dark device wallpapers, because transparency and thin strokes can read differently than they do in design tools
+- test the adaptive icon on Android after export, because the masked shape often reveals spacing problems not obvious in the flat square file
+
+Suggested work order for the branding task:
+
+1. Confirm the final symbol decision: door + cross for launcher/store identity only, without changing core in-app devotional functionality.
+2. Create the master artwork before touching generated PNG exports.
+3. Export replacement files for `icon.png`, `adaptive-icon.png`, `splash-icon.png`, and `favicon.png`.
+4. Launch the app on iPhone and Android emulator/device to visually verify icon legibility and splash balance.
+5. Only after those exports look correct, capture store screenshots and any TestFlight-facing branded materials.
+
 Why this phase should happen before store submission:
 
 - screenshots, listings, and TestFlight invites should reflect the real product identity
@@ -266,25 +347,55 @@ Current iOS-specific note:
 
 Use this order unless a higher-priority product decision changes things:
 
-1. Get Emily onto internal TestFlight
-2. Capture feedback from repeated real-device testing
+1. Keep Emily on TestFlight as the real-device validation lane
+2. Capture feedback from repeated real-device testing and label issues as blockers vs follow-ups
 3. Finalize the public app name and icon
 4. Add privacy-policy and account-deletion readiness work
 5. Prepare Google Play internal testing
 6. Prepare external TestFlight / App Store milestone readiness
 7. Submit to stores only after the app identity and compliance work are settled
 
+## Suggested Task Breakdown
+
+Treat these as separate tasks so release prep does not collapse into one large thread:
+
+1. Branding assets
+   Deliverable: finalize the door-with-cross launcher/store visual system and update the generated app asset set without changing core in-app devotional functionality.
+   Likely files: `assets/icon.png`, `assets/adaptive-icon.png`, `assets/splash-icon.png`, `assets/favicon.png`.
+   Source doc: `docs/mobile-branding-asset-spec.md`.
+2. TestFlight blocker triage
+   Deliverable: convert Emily's feedback into release blockers, important polish, and later follow-ups.
+3. Mobile QA / prod environment split
+   Deliverable: support a deliberate QA mobile build path and a separate production mobile release path, including env selection, backend URLs, Firebase config, and release labeling.
+   Strategy doc: `docs/mobile-qa-prod-environment-strategy.md`.
+4. Play Console setup decision
+   Deliverable: choose personal vs organization and document any resulting testing gate.
+5. Android release signing
+   Deliverable: replace the debug keystore release path with a real release keystore and capture the signing process.
+6. Firebase / Google auth release alignment
+   Deliverable: add the release signing fingerprints so production Google sign-in keeps working.
+7. Android permission and policy audit
+   Deliverable: remove any unneeded permissions and prepare accurate Data safety / disclosure answers.
+8. Account deletion readiness
+   Deliverable: support the required deletion path in-app and outside the app if account creation remains part of the release.
+9. Store listing metadata
+   Deliverable: screenshots, support URL, privacy policy URL, category, age/content rating, review notes, and listing copy.
+10. First Android store build
+   Deliverable: produce and upload the first signed Android App Bundle.
+11. First App Store submission pass
+   Deliverable: move from internal TestFlight to a public-release-ready App Store Connect submission.
+
 ## Short-Term Next Actions
 
 These are the most practical next actions from here:
 
-1. Move directly into a TestFlight path for Emily.
-2. Create and upload the first iOS beta build.
-3. Add Emily as a tester and verify install on her phone.
-4. Decide on the final public app name.
-5. Decide whether the Play Console account should be personal or organization.
-6. Create the Android release keystore plan before any Play upload work starts.
-7. Audit Android permissions plus privacy/account-deletion requirements before preparing the first store listing.
+1. Review Emily's TestFlight feedback and split it into release blockers, important polish, and later follow-ups.
+2. Decide whether the current public identity is final enough for store screenshots and listings.
+3. Decide whether the Play Console account should be personal or organization.
+4. Create the Android release keystore plan before any Play upload work starts.
+5. Audit Android permissions plus privacy/account-deletion requirements before preparing the first store listing.
+6. Prepare privacy policy, support URL, and store disclosure answers so App Store Connect and Play Console metadata are no longer blocked.
+7. Treat TestFlight as the ongoing validation lane while store-prep work continues in parallel.
 
 ## Notes
 
