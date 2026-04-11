@@ -21,7 +21,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { GOOGLE_AUTH_CONFIG } from "../config/env";
+import { APP_SCHEME, GOOGLE_AUTH_CONFIG } from "../config/env";
 import { useAuth } from "../contexts/AuthContext";
 import { mobileWeb } from "../theme/mobileWeb";
 import { testIds } from "../testIds";
@@ -38,10 +38,6 @@ type LoginModalProps = {
 };
 
 WebBrowser.maybeCompleteAuthSession();
-
-const browserGoogleRedirectUri = makeRedirectUri({
-  native: "quietroommobile:/oauthredirect",
-});
 
 function mapAuthError(code: string | undefined, kind: "login" | "signup") {
   switch (code) {
@@ -106,6 +102,13 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
   const nativeGoogleWebClientId =
     GOOGLE_AUTH_CONFIG.webClientId || GOOGLE_AUTH_CONFIG.clientId || "";
   const iosGoogleClientId = GOOGLE_AUTH_CONFIG.iosClientId || "";
+  const browserGoogleRedirectUri = useMemo(
+    () =>
+      makeRedirectUri({
+        native: `${APP_SCHEME}:/oauthredirect`,
+      }),
+    []
+  );
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     androidClientId: GOOGLE_AUTH_CONFIG.androidClientId || undefined,
@@ -622,6 +625,5 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
 });
-
 
 

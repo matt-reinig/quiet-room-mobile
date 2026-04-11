@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { CONTACT_EMAIL } from "../config/env";
+import { API_BASE, APP_VARIANT, CONTACT_EMAIL, RELEASE_ENV } from "../config/env";
 import { getPromptCues } from "../promptCues";
 
 type AboutModalProps = {
@@ -102,6 +102,13 @@ export default function AboutModal({ isAnon, onClose, visible }: AboutModalProps
 
             <Text style={styles.email}>Email: {CONTACT_EMAIL}</Text>
 
+            <Text style={styles.sectionTitle}>Build details</Text>
+            <Text style={styles.meta}>App variant: {APP_VARIANT}</Text>
+            <Text style={styles.meta}>Release env: {RELEASE_ENV}</Text>
+            <Text selectable style={styles.meta}>
+              API base: {API_BASE}
+            </Text>
+
             <Text style={styles.paragraph}>Thank you for being here.</Text>
           </ScrollView>
         </View>
@@ -156,6 +163,11 @@ const styles = StyleSheet.create({
     gap: 12,
     justifyContent: "space-between",
     paddingBottom: 12,
+  },
+  meta: {
+    color: "#4B5563",
+    fontSize: 12,
+    lineHeight: 18,
   },
   paragraph: {
     color: "#111827",

@@ -5,7 +5,7 @@ This plan is for the next distribution milestones after local mobile bring-up.
 Current priority:
 
 1. Turn Emily's TestFlight feedback into a release-blocker list
-2. Finalize the app identity for public release
+2. Finalize the QA/prod app identity split
 3. Close store compliance gaps
 4. Prepare Google Play release
 5. Prepare App Store public release
@@ -55,6 +55,7 @@ What is already true:
 
 Important current gaps:
 
+- there is not yet a side-by-side-installable QA app identity
 - Android release builds are still signed with the debug keystore
 - account deletion flow is not yet implemented
 - privacy policy / store disclosure work is not yet fully prepared
@@ -184,15 +185,18 @@ Phase 1 acceptance:
 - one basic app flow works on her phone
 - we collect a short list of any friction, visual issues, or setup problems
 
-## Phase 2: Finalize Public App Identity
+## Phase 2: Finalize QA / Prod App Identity
 
 Goal:
 
-- get the app ready to look like a real public product instead of an internal mobile project
+- define the permanent prod identity and the side-by-side-installable QA identity before store setup expands further
 
 Tasks:
 
 - final public app name is `Quiet Room`
+- QA app name should be `Quiet Room QA`
+- keep the prod ids as `com.quietroom.mobile`
+- introduce QA ids as `com.quietroom.mobile.qa`
 - finalize the app icon artwork
 - confirm splash and adaptive icon assets still look correct after final art is chosen
 
@@ -205,6 +209,8 @@ Current brand direction:
 - small app icon should use the door + cross only, without app name text
 - larger assets may include the app name on the door if it still reads clearly
 - prefer a mark that still works when reduced to small App Store / Play Store icon sizes
+- keep QA visually related to prod rather than inventing a second brand
+- if QA and prod need launcher-level differentiation, prefer a subtle QA badge or tint treatment rather than a different core symbol
 
 Branding deliverables to prepare:
 
@@ -252,11 +258,13 @@ Recommended technical spec checklist:
 
 Suggested work order for the branding task:
 
-1. Confirm the final symbol decision: door + cross for launcher/store identity only, without changing core in-app devotional functionality.
-2. Create the master artwork before touching generated PNG exports.
-3. Export replacement files for `icon.png`, `adaptive-icon.png`, `splash-icon.png`, and `favicon.png`.
-4. Launch the app on iPhone and Android emulator/device to visually verify icon legibility and splash balance.
-5. Only after those exports look correct, capture store screenshots and any TestFlight-facing branded materials.
+1. Confirm the permanent naming split: `Quiet Room` for prod and `Quiet Room QA` for the tester build.
+2. Confirm the final symbol decision: door + cross for launcher/store identity only, without changing core in-app devotional functionality.
+3. Create the master artwork before touching generated PNG exports.
+4. Decide whether QA needs a subtle launcher differentiator for side-by-side installs.
+5. Export replacement files for `icon.png`, `adaptive-icon.png`, `splash-icon.png`, and `favicon.png`, plus QA-specific variants later if needed.
+6. Launch the app on iPhone and Android emulator/device to visually verify icon legibility and splash balance.
+7. Only after those exports look correct, capture store screenshots and any TestFlight-facing branded materials.
 
 Why this phase should happen before store submission:
 
@@ -281,6 +289,7 @@ Current known Google-side requirements to plan around:
 Current repo-side readiness snapshot:
 
 - Android package id is already `com.quietroom.mobile`
+- there is not yet an Android QA package id wired into the app config
 - `google-services.json` is already wired into Expo/native Android config when present locally
 - there is already a local release APK workflow in `docs/mobile-apk-phone-workflow.md`
 - there is no `eas.json`, so the clearest current store-build path is the native Android/Gradle project rather than an EAS-managed Play submission flow
@@ -295,20 +304,24 @@ Concrete work order:
 1. Decide whether the Play Console account should be personal or organization before any store setup begins.
 2. Create or confirm the Play Console account and complete developer verification.
 3. If the account is a new personal account, plan for device verification and the 12-tester / 14-day closed-testing gate up front.
-4. Finalize the public app name and icon before taking Play screenshots or writing listing copy.
-5. Create a real Android release keystore and wire release signing so `release` no longer uses the debug keystore.
-6. Export the release SHA fingerprints and update Firebase / Google Cloud so Google sign-in still works once the signing key changes.
-7. Audit Android permissions and remove anything not genuinely needed for the first public release.
-8. Increment Android `versionCode` / `versionName` and verify the first release bundle targets the current required API level.
-9. Build an Android App Bundle for release and enroll in Play App Signing during the first upload flow.
-10. Prepare listing copy, screenshots, category, content rating, app content declarations, support contact details, and privacy policy URL.
-11. If email/password signup remains available, ship or document the required account deletion flow both in-app and on the web.
-12. Use internal testing first, then closed testing as needed, and only move to production after the policy and testing gates are satisfied.
+4. Create the QA Play Console app with package id `com.quietroom.mobile.qa` for internal testing.
+5. Reserve `com.quietroom.mobile` for the production Play listing.
+6. Finalize the public and QA app names plus icon approach before taking Play screenshots or writing listing copy.
+7. Create a real Android release keystore and wire release signing so `release` no longer uses the debug keystore.
+8. Export the release SHA fingerprints and update Firebase / Google Cloud so Google sign-in still works once the signing key changes.
+9. Audit Android permissions and remove anything not genuinely needed for the first public release.
+10. Increment Android `versionCode` / `versionName` and verify the first release bundle targets the current required API level.
+11. Build an Android App Bundle for the QA app and confirm internal testing distribution works.
+12. Build an Android App Bundle for the prod app and enroll in Play App Signing during the first upload flow.
+13. Prepare listing copy, screenshots, category, content rating, app content declarations, support contact details, and privacy policy URL.
+14. If email/password signup remains available, ship or document the required account deletion flow both in-app and on the web.
+15. Use internal testing on the QA app first, then closed testing as needed, and only move the prod app to production after the policy and testing gates are satisfied.
 
 Repo-specific blockers to close before first upload:
 
 - release signing is not production-ready yet
-- the public app identity is not final yet
+- the QA app identity is not wired yet
+- the public app identity and QA app naming split are not final yet
 - the Android permission surface has not been audited for store review
 - store compliance declarations are not yet prepared
 - account deletion is still a product and policy gap
@@ -331,13 +344,14 @@ Goal:
 Tasks:
 
 - enroll in the Apple Developer Program if not already done
-- create the App Store Connect app record
-- upload a beta build
-- use internal TestFlight for rapid iteration first
+- create the App Store Connect prod app record
+- create the App Store Connect QA app record
+- upload a QA beta build to the QA app record
+- use internal TestFlight for rapid iteration on the QA app first
 - use external TestFlight later for broader milestone testing if needed
 - prepare screenshots, support URL, privacy policy URL, app privacy answers, age rating, and review notes
 - decide whether iOS Google sign-in is required for first public release or intentionally deferred
-- submit the first App Store version only after TestFlight validation is solid
+- submit the first App Store prod version only after QA TestFlight validation is solid
 
 Current iOS-specific note:
 
@@ -348,12 +362,13 @@ Current iOS-specific note:
 Use this order unless a higher-priority product decision changes things:
 
 1. Keep Emily on TestFlight as the real-device validation lane
-2. Capture feedback from repeated real-device testing and label issues as blockers vs follow-ups
-3. Finalize the public app name and icon
-4. Add privacy-policy and account-deletion readiness work
-5. Prepare Google Play internal testing
-6. Prepare external TestFlight / App Store milestone readiness
-7. Submit to stores only after the app identity and compliance work are settled
+2. Finalize the QA/prod app identity split so side-by-side installs are a permanent part of the plan
+3. Capture feedback from repeated real-device testing and label issues as blockers vs follow-ups
+4. Finalize the public app name, QA app name, and icon approach
+5. Add privacy-policy and account-deletion readiness work
+6. Prepare the QA app for TestFlight and Play internal testing
+7. Prepare the prod app for public store submission
+8. Submit to stores only after the app identity and compliance work are settled
 
 ## Suggested Task Breakdown
 
@@ -366,7 +381,7 @@ Treat these as separate tasks so release prep does not collapse into one large t
 2. TestFlight blocker triage
    Deliverable: convert Emily's feedback into release blockers, important polish, and later follow-ups.
 3. Mobile QA / prod environment split
-   Deliverable: support a deliberate QA mobile build path and a separate production mobile release path, including env selection, backend URLs, Firebase config, and release labeling.
+   Deliverable: support a side-by-side-installable QA app and a separate production app, including app naming, bundle/package ids, scheme selection, backend URLs, Firebase config, and release labeling.
    Strategy doc: `docs/mobile-qa-prod-environment-strategy.md`.
 4. Play Console setup decision
    Deliverable: choose personal vs organization and document any resulting testing gate.
@@ -390,12 +405,13 @@ Treat these as separate tasks so release prep does not collapse into one large t
 These are the most practical next actions from here:
 
 1. Review Emily's TestFlight feedback and split it into release blockers, important polish, and later follow-ups.
-2. Decide whether the current public identity is final enough for store screenshots and listings.
-3. Decide whether the Play Console account should be personal or organization.
-4. Create the Android release keystore plan before any Play upload work starts.
-5. Audit Android permissions plus privacy/account-deletion requirements before preparing the first store listing.
-6. Prepare privacy policy, support URL, and store disclosure answers so App Store Connect and Play Console metadata are no longer blocked.
-7. Treat TestFlight as the ongoing validation lane while store-prep work continues in parallel.
+2. Lock the app identity split: `Quiet Room` for prod and `Quiet Room QA` for the tester build.
+3. Decide whether QA needs a subtle launcher/icon differentiator for side-by-side installs.
+4. Decide whether the Play Console account should be personal or organization.
+5. Create the Android release keystore plan before any Play upload work starts.
+6. Audit Android permissions plus privacy/account-deletion requirements before preparing the first store listing.
+7. Prepare privacy policy, support URL, and store disclosure answers so App Store Connect and Play Console metadata are no longer blocked.
+8. Treat TestFlight as the ongoing validation lane while wiring the dedicated QA app in parallel.
 
 ## Notes
 

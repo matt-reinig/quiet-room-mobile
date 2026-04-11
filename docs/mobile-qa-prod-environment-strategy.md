@@ -2,143 +2,176 @@
 
 This doc defines the recommended environment and distribution strategy for `quiet-room-mobile` as we move from TestFlight-only QA into real App Store and Play Store releases.
 
+This replaces the earlier recommendation to keep a single mobile app identity for both QA and prod.
+
 ## Recommendation
 
-Use a **single public app identity** first:
+Use **two app identities** from here forward so QA and prod can be installed side-by-side on the same device.
 
-- iOS bundle id: `com.quietroom.mobile`
-- Android application id: `com.quietroom.mobile`
+Recommended identities:
 
-Then split **distribution track** and **backend environment** rather than creating a second QA app immediately.
+- prod app name: `Quiet Room`
+- prod iOS bundle id: `com.quietroom.mobile`
+- prod Android application id: `com.quietroom.mobile`
+- prod URL scheme: `quietroommobile`
+- QA app name: `Quiet Room QA`
+- QA iOS bundle id: `com.quietroom.mobile.qa`
+- QA Android application id: `com.quietroom.mobile.qa`
+- QA URL scheme: `quietroommobileqa`
 
-That means:
+Recommended selectors:
 
-- iOS QA uses internal TestFlight
-- iOS prod uses the same App Store app record and same bundle id
-- Android QA uses Google Play internal testing
-- Android prod uses the same Play Console app and same application id
+- `EXPO_PUBLIC_APP_VARIANT=qa|prod`
+- `EXPO_PUBLIC_RELEASE_ENV=local|qa|prod`
 
-Recommended release env names:
+Use them for different purposes:
 
-- `local`
-- `qa`
-- `prod`
+- `EXPO_PUBLIC_APP_VARIANT` chooses the app identity, launcher name, bundle id / package id, scheme, and variant-specific service files
+- `EXPO_PUBLIC_RELEASE_ENV` chooses backend targets, diagnostics labeling, and preflight safety checks
 
-## Why This Is The Right First Step
+## Why This Is The Right Pivot
 
-This repo is not yet set up for a clean QA/prod split, but it is already close enough that an env-driven strategy is much lower risk than introducing a second mobile app identity.
+Why this is a better fit now:
 
-Why we should start this way:
+- it matches the web workflow where QA and prod are treated as intentionally separate surfaces
+- it lets you keep the public production app installed while also testing QA builds on the same phone
+- it makes tester behavior simpler because "use the QA app for testing" is clearer than "replace the prod app with a QA build"
+- it reduces the chance of accidentally validating QA work against the wrong installed build
+- it creates clean separation for Firebase registrations, OAuth clients, deep links, and future push notification routing
+- it makes production feel more stable because the prod app can stay reserved for prod-candidate and public releases
 
-- it keeps App Store Connect and Play Console simpler
-- it avoids maintaining separate QA and prod app records immediately
-- it avoids duplicating bundle ids, package ids, Firebase app registrations, screenshots, and listing metadata
-- it matches how TestFlight and Play internal testing are commonly used for pre-release validation
-- it still gives us a clean path to move QA testers onto production later
+Costs we are intentionally accepting:
+
+- two App Store Connect app records instead of one
+- two Play Console apps instead of one
+- separate Firebase mobile app registrations for QA and prod
+- separate OAuth / redirect / universal-link setup where required
+- more release metadata to maintain across both app identities
+
+For this project, that added setup is worth it because side-by-side install support is now a real requirement rather than a hypothetical later need.
 
 ## What This Means In Practice
 
 ### iOS
 
-Use one app identity with two release lanes:
+Use two separate iOS apps:
 
-- `qa` lane: internal TestFlight builds that point at QA services
-- `prod` lane: App Store release candidates and final production releases that point at prod services
+- QA lane: internal TestFlight on `Quiet Room QA`
+- prod lane: TestFlight / App Store release candidates on `Quiet Room`
 
 Important consequence:
 
-- the QA build and the App Store build will not be separate side-by-side apps on the same phone
-- they are different builds of the same app identity
-
-This is acceptable for the current phase because Emily is already using TestFlight as the QA lane.
+- QA and prod can be installed at the same time on the same iPhone
+- QA should live in its own App Store Connect record and should not be the public store app
 
 ### Android
 
-Use the same application id with Play tracks:
+Use two separate Android apps:
 
-- `qa` lane: Play internal testing
-- optional broader beta lane: Play closed testing
-- `prod` lane: Play production
+- QA lane: Play internal testing on `Quiet Room QA`
+- prod lane: Play production path on `Quiet Room`
 
 Important consequence:
 
-- Android QA and prod also will not be separate side-by-side apps if they share the same application id
-
-This is the closest equivalent to the current TestFlight flow.
-
-## When To Introduce A Separate QA App
-
-Do **not** start with a separate QA app unless one of these becomes necessary:
-
-- you need QA and prod installed side-by-side on the same device
-- you need QA-only push notifications, OAuth clients, or deep links that cannot share identity cleanly
-- you need internal users to test QA while keeping a stable public version installed at the same time
-- TestFlight / Play internal testing becomes too limiting for your workflow
-
-If that later becomes necessary, the QA app should use:
-
-- iOS bundle id: `com.quietroom.mobile.qa`
-- Android application id: `com.quietroom.mobile.qa`
-- visible name: `Quiet Room QA`
-
-That should be treated as a later phase because it creates extra store and Firebase overhead.
+- QA and prod can be installed at the same time on the same Android device
+- Play Console should treat them as separate apps because they have different application ids
 
 ## Current Repo State
 
-The current mobile repo is effectively QA-first:
+The current repo is already close to supporting this split, but it does not implement it yet.
+
+What is already true:
 
 - runtime env values are read from `process.env`
 - `WEB_APP_URL` currently defaults to the QA frontend URL
-- the checked local Android Firebase file currently points at the QA Firebase project
-- service config files are already selected through env variables in `app.config.js`
+- `app.config.js` already selects Google service config files from env variables
+- the checked local Android Firebase file is already treated as optional and env-selectable
 
-This is a good base for an env split because we do not need to redesign the app architecture first.
+What still needs to change for the new strategy:
+
+- `app.json` currently hardcodes a single app name: `Quiet Room`
+- `app.json` currently hardcodes the prod bundle id: `com.quietroom.mobile`
+- `app.json` currently hardcodes the prod Android package: `com.quietroom.mobile`
+- `app.json` currently hardcodes a single scheme: `quietroommobile`
+- there is no first-class `app variant` selector yet
+- release scripts and preflight only think in terms of environment, not app identity
+
+That means the repo foundation is good, but `app.config.js` needs to grow from "service-file selection" into "full variant selection."
 
 ## Build Matrix
 
 Recommended build matrix:
 
-| Build Type | Release Env | Distribution | App Identity | Backend | Firebase |
-| --- | --- | --- | --- | --- | --- |
-| Local dev | `local` | local run / simulator / emulator | `com.quietroom.mobile` | local backend | QA-aligned or local dev config |
-| QA beta iOS | `qa` | internal TestFlight | `com.quietroom.mobile` | QA backend | QA Firebase |
-| QA beta Android | `qa` | Play internal testing | `com.quietroom.mobile` | QA backend | QA Firebase |
-| Prod candidate iOS | `prod` | TestFlight / App Store submission | `com.quietroom.mobile` | prod backend | prod Firebase |
-| Prod candidate Android | `prod` | Play production-ready build | `com.quietroom.mobile` | prod backend | prod Firebase |
+| Build Type | App Variant | Release Env | Distribution | App Identity | Backend | Firebase |
+| --- | --- | --- | --- | --- | --- | --- |
+| Local dev | `qa` | `local` | simulator / emulator / local device | `com.quietroom.mobile.qa` | local backend | QA or local-dev Firebase config |
+| QA beta iOS | `qa` | `qa` | internal TestFlight | `com.quietroom.mobile.qa` | QA backend | QA Firebase |
+| QA beta Android | `qa` | `qa` | Play internal testing | `com.quietroom.mobile.qa` | QA backend | QA Firebase |
+| Prod candidate iOS | `prod` | `prod` | TestFlight / App Store submission | `com.quietroom.mobile` | prod backend | prod Firebase |
+| Prod candidate Android | `prod` | `prod` | Play production-ready build | `com.quietroom.mobile` | prod backend | prod Firebase |
+
+Recommended default developer posture:
+
+- use the QA app variant for day-to-day development and tester distribution
+- reserve the prod app variant for deliberate release-candidate validation and public release work
 
 ## Configuration Model
 
-### 1. Introduce An Explicit Public Release Env
+### 1. Introduce An Explicit App Variant
 
-Add a single public env selector:
+Add a variant selector alongside the release env:
 
 ```env
+EXPO_PUBLIC_APP_VARIANT=qa
 EXPO_PUBLIC_RELEASE_ENV=qa
 ```
 
 Allowed values:
 
-- `local`
-- `qa`
-- `prod`
+- app variant: `qa`, `prod`
+- release env: `local`, `qa`, `prod`
 
-This should become the canonical runtime label shown in diagnostics and used by preflight checks.
+Recommended behavior:
 
-### 2. Keep Backend URLs Explicit
+- `qa` variant can be paired with `local` or `qa`
+- `prod` variant should normally only be paired with `prod`
+
+### 2. Drive App Identity From The Variant In `app.config.js`
+
+Move these fields out of hardcoded `app.json` values and compute them in `app.config.js`:
+
+- app name
+- iOS bundle identifier
+- Android application id
+- scheme
+- variant-specific icon or badge if we decide QA should look different on the launcher
+
+Recommended mapping:
+
+- prod variant -> `Quiet Room`, `com.quietroom.mobile`, `quietroommobile`
+- QA variant -> `Quiet Room QA`, `com.quietroom.mobile.qa`, `quietroommobileqa`
+
+Optional but useful later:
+
+- give the QA launcher icon a subtle visual differentiator so testers can identify it instantly
+
+### 3. Keep Backend URLs Explicit
 
 Do not infer QA or prod from build type alone.
 
-Keep these explicit per environment:
+Keep these explicit per release env:
 
 - `EXPO_PUBLIC_API_BASE`
 - `EXPO_PUBLIC_STREAMING_BASE`
 - `EXPO_PUBLIC_WEB_APP_URL`
 
-This makes it much harder to ship a prod build that still points at QA by accident.
+This keeps the app identity decision separate from the backend-target decision.
 
-### 3. Split Firebase Config By Environment
+### 4. Split Firebase And OAuth By App Variant
 
-Keep separate local untracked service config files for QA and prod:
+Firebase mobile app registrations must match the bundle id / application id, so service files should be keyed by variant rather than by release env.
+
+Recommended local files:
 
 - `google-services.qa.json`
 - `google-services.prod.json`
@@ -150,35 +183,64 @@ Then select them through env variables already supported by `app.config.js`:
 - `EXPO_PUBLIC_GOOGLE_SERVICES_FILE`
 - `EXPO_PUBLIC_IOS_GOOGLE_SERVICES_FILE`
 
-### 4. Keep One App Identity For Now
+Also expect separate setup for related identity-bound integrations:
 
-For the recommended first phase:
+- Google sign-in client ids
+- Apple sign-in / associated domains as needed
+- Firebase app registrations
+- deep link / universal link routing
+- push notification credentials if introduced later
 
-- app name remains `Quiet Room`
-- iOS bundle id remains `com.quietroom.mobile`
-- Android application id remains `com.quietroom.mobile`
+### 5. Show Both Variant And Release Env Inside The App
 
-Do not append `QA` to the public app name unless we intentionally switch to a separate QA app identity later.
-
-### 5. Add In-App Environment Visibility
-
-QA and prod builds should be visibly distinguishable somewhere inside the app, but not through a second app identity.
+Once two apps exist, testers need quick confirmation of both identity and backend.
 
 Recommended visibility:
 
-- show current release env in a diagnostics / settings screen
-- optionally include the API host and Firebase project id in that diagnostics area
-- optionally show a subtle QA-only badge in a non-public diagnostics area if testers need a quick check
+- show current app variant in diagnostics / settings
+- show current release env in diagnostics / settings
+- optionally include API host and Firebase project id
+- optionally include a subtle QA-only badge in non-public diagnostics screens
 
-Do not make the public launcher name or icon environment-specific in phase 1.
+### 6. Add Stronger Preflight Rules
+
+When bundle ids and backends can vary independently, preflight needs to validate both.
+
+Recommended checks:
+
+1. Print the selected app variant and release env before every release build.
+2. Fail if the `qa` variant is not using the QA bundle id / application id / scheme.
+3. Fail if the `prod` variant is not using the prod bundle id / application id / scheme.
+4. Fail if the `prod` variant points at QA backend URLs.
+5. Fail if the selected variant's Firebase service file does not match the expected mobile app registration.
+6. Include the intended variant and env in QA release notes.
+
+## Transition Plan From Current State
+
+The safest migration path is:
+
+1. Keep `com.quietroom.mobile` reserved as the production identity.
+2. Create new QA identities:
+   - iOS: `com.quietroom.mobile.qa`
+   - Android: `com.quietroom.mobile.qa`
+3. Create new QA store records:
+   - App Store Connect app record for `Quiet Room QA`
+   - Play Console app for `Quiet Room QA`
+4. Create QA Firebase registrations and service files that match the new ids.
+5. Teach `app.config.js` and scripts to build the QA app variant.
+6. Let Emily stay on the current TestFlight build until the QA variant exists.
+7. Move Emily and future testers onto the new QA app once the first side-by-side installable build is ready.
+8. After that migration, keep the prod app variant for prod-candidate validation and public release only.
+
+This avoids disturbing the existing prod-shaped identifiers while still giving QA its own permanent home.
 
 ## Local Secret And Env File Layout
 
-Keep secrets and service files untracked, but standardize naming.
+Keep secrets and service files untracked, but standardize naming around the new split.
 
 Recommended local files:
 
-- `.env.local`
+- `.env.local.qa`
 - `.env.qa`
 - `.env.prod`
 - `google-services.qa.json`
@@ -188,31 +250,34 @@ Recommended local files:
 
 Recommended committed templates:
 
-- `.env.example`
+- `.env.local.qa.example`
 - `.env.qa.example`
 - `.env.prod.example`
 
-The repo should provide scripts that copy or load the chosen env before building, rather than requiring manual edits to `.env`.
+The repo should provide scripts that load the chosen env and variant before building, rather than requiring manual edits.
 
 ## Recommended Build Scripts
 
 Add simple explicit scripts later such as:
 
+- `npm run mobile:variant:qa`
+- `npm run mobile:variant:prod`
 - `npm run mobile:env:qa`
 - `npm run mobile:env:prod`
 - `npm run ios:testflight:qa`
 - `npm run ios:testflight:prod`
-- `npm run android:build:qa`
-- `npm run android:build:prod`
+- `npm run android:internal:qa`
+- `npm run android:bundle:prod`
 
 These do not need to be fancy.
 
 Their main job is to:
 
 - load the right env file
+- set the right app variant
 - select the right Firebase service files
-- print the chosen env clearly before build
-- fail fast if required variables are missing
+- print the chosen variant and env clearly before build
+- fail fast if required variables are missing or mismatched
 
 ## Distribution Strategy
 
@@ -220,63 +285,60 @@ Their main job is to:
 
 Use internal TestFlight for QA:
 
+- build with `EXPO_PUBLIC_APP_VARIANT=qa`
 - build with `EXPO_PUBLIC_RELEASE_ENV=qa`
 - point at QA backend and QA Firebase
-- distribute through internal TestFlight
+- distribute through the QA App Store Connect record
 
 ### iOS Prod
 
-Use the same bundle id for production:
+Use the prod bundle id for production:
 
+- build with `EXPO_PUBLIC_APP_VARIANT=prod`
 - build with `EXPO_PUBLIC_RELEASE_ENV=prod`
 - point at prod backend and prod Firebase
-- upload through the same App Store Connect app record
+- upload through the public App Store Connect record
 
 ### Android QA
 
-Use Play internal testing:
+Use Play internal testing for the QA app:
 
+- build with `EXPO_PUBLIC_APP_VARIANT=qa`
 - build with `EXPO_PUBLIC_RELEASE_ENV=qa`
 - point at QA backend and QA Firebase
-- upload to the Play internal testing track
+- upload to the QA Play Console app
 
 ### Android Prod
 
-Use the same application id for production:
+Use the prod application id for production:
 
+- build with `EXPO_PUBLIC_APP_VARIANT=prod`
 - build with `EXPO_PUBLIC_RELEASE_ENV=prod`
 - point at prod backend and prod Firebase
-- upload to the production path in Play Console
-
-## Safety Rules
-
-To keep QA and prod from getting mixed up, add these rules:
-
-1. Every release build must print the selected release env during preflight.
-2. Preflight must fail if `prod` is selected but placeholder URLs or QA Firebase config are still in use.
-3. Preflight must fail if `qa` is selected but prod endpoints are wired accidentally.
-4. iOS and Android release notes should include the intended env during QA distribution.
-5. The app should expose the active env and backend host somewhere visible to testers.
+- upload to the prod Play Console app
 
 ## Implementation Plan
 
 Recommended order:
 
-1. Add `EXPO_PUBLIC_RELEASE_ENV` and diagnostics display.
-2. Add `.env.qa` / `.env.prod` conventions plus example files.
-3. Add QA/prod service config file naming conventions.
-4. Extend `app.config.js` and release scripts to select env-specific service files.
-5. Add QA/prod preflight scripts that verify API base, web URL, Firebase project, and service files.
-6. Add Android Play internal testing as the QA Android lane.
-7. Only consider a second QA app identity if the side-by-side install need becomes real.
+1. Add `EXPO_PUBLIC_APP_VARIANT` and keep `EXPO_PUBLIC_RELEASE_ENV`.
+2. Extend `app.config.js` to compute app name, ids, scheme, and service files from the chosen variant.
+3. Add `.env.local.qa` / `.env.qa` / `.env.prod` conventions plus example files.
+4. Add QA/prod preflight scripts that verify variant, ids, API base, web URL, Firebase project, and service files.
+5. Create QA Firebase app registrations and matching local service-file naming.
+6. Create the QA App Store Connect record and QA Play Console app.
+7. Move Emily onto the new QA app once the first side-by-side installable build is ready.
+8. Keep prod builds reserved for release-candidate and public-release use.
 
 ## Recommended Decision
 
 For this repo, the recommended decision is:
 
 - **yes** to a deliberate QA/prod environment split
-- **yes** to using TestFlight as the iOS QA lane
-- **yes** to using Play internal testing as the Android QA lane
-- **no** to creating a second QA app identity right now
+- **yes** to a deliberate QA/prod app-identity split now
+- **yes** to using TestFlight as the iOS QA lane for the QA app
+- **yes** to using Play internal testing as the Android QA lane for the QA app
+- **yes** to reserving the prod app identity for prod-only builds
+- **no** to continuing with a single app identity for both lanes
 
-That gives us the smallest change set with the highest release payoff.
+That gives us the workflow you actually want: two different apps on the same device, with QA and prod behaving like intentionally separate products.
