@@ -4,12 +4,14 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_JSON="$ROOT_DIR/app.json"
-INFO_PLIST="$ROOT_DIR/ios/quietroommobile/Info.plist"
-PBXPROJ="$ROOT_DIR/ios/quietroommobile.xcodeproj/project.pbxproj"
+APP_CONFIG_JS="$ROOT_DIR/app.config.js"
+IOS_DIR="$ROOT_DIR/ios"
+INFO_PLIST="$(find "$IOS_DIR" -maxdepth 2 -name Info.plist | head -n 1 || true)"
+PBXPROJ="$(find "$IOS_DIR" -maxdepth 2 -path "*.xcodeproj/project.pbxproj" | head -n 1 || true)"
 PLIST_BUDDY="/usr/libexec/PlistBuddy"
 
-if [[ ! -f "$APP_JSON" ]]; then
-  echo "Missing app.json at $APP_JSON" >&2
+if [[ ! -f "$APP_JSON" || ! -f "$APP_CONFIG_JS" ]]; then
+  echo "Missing app config file at $ROOT_DIR" >&2
   exit 1
 fi
 
@@ -23,11 +25,14 @@ if [[ ! -f "$PBXPROJ" ]]; then
   exit 1
 fi
 
-app_name="$(node -p "require(process.argv[1]).expo.name" "$APP_JSON")"
-app_slug="$(node -p "require(process.argv[1]).expo.slug" "$APP_JSON")"
+app_name="$(node -p "require(process.argv[1]).expo.name" "$APP_CONFIG_JS")"
+app_slug="$(node -p "require(process.argv[1]).expo.slug" "$APP_CONFIG_JS")"
 app_version="$(node -p "require(process.argv[1]).expo.version" "$APP_JSON")"
-app_bundle_id="$(node -p "require(process.argv[1]).expo.ios.bundleIdentifier" "$APP_JSON")"
+app_bundle_id="$(node -p "require(process.argv[1]).expo.ios.bundleIdentifier" "$APP_CONFIG_JS")"
 app_build_number="$(node -e "const app=require(process.argv[1]); const value=app.expo?.ios?.buildNumber ?? ''; process.stdout.write(String(value));" "$APP_JSON")"
+app_scheme="$(node -p "require(process.argv[1]).expo.scheme" "$APP_CONFIG_JS")"
+app_variant="$(node -p "require(process.argv[1]).expo.extra?.appVariant ?? ''" "$APP_CONFIG_JS")"
+release_env="$(node -p "require(process.argv[1]).expo.extra?.releaseEnv ?? ''" "$APP_CONFIG_JS")"
 
 plist_display_name="$("$PLIST_BUDDY" -c "Print :CFBundleDisplayName" "$INFO_PLIST")"
 plist_version="$("$PLIST_BUDDY" -c "Print :CFBundleShortVersionString" "$INFO_PLIST")"
@@ -41,10 +46,15 @@ echo "Expo config"
 echo "  name: $app_name"
 echo "  slug: $app_slug"
 echo "  version: $app_version"
+echo "  scheme: $app_scheme"
+echo "  extra.appVariant: ${app_variant:-<unset>}"
+echo "  extra.releaseEnv: ${release_env:-<unset>}"
 echo "  ios.buildNumber: ${app_build_number:-<unset>}"
 echo "  ios.bundleIdentifier: $app_bundle_id"
 echo
 echo "Native iOS config"
+echo "  Info.plist: ${INFO_PLIST#$ROOT_DIR/}"
+echo "  Xcode project: ${PBXPROJ#$ROOT_DIR/}"
 echo "  CFBundleDisplayName: $plist_display_name"
 echo "  CFBundleShortVersionString: $plist_version"
 echo "  CFBundleVersion: $plist_build_number"

@@ -1,12 +1,43 @@
+const fs = require('fs');
 const path = require('path');
+
+function resolveAppVariant(value) {
+  return value === 'qa' ? 'qa' : 'prod';
+}
+
+function findFirstEntry(rootDir, matcher) {
+  if (!fs.existsSync(rootDir)) {
+    return null;
+  }
+
+  for (const entry of fs.readdirSync(rootDir)) {
+    if (matcher(entry)) {
+      return entry;
+    }
+  }
+
+  return null;
+}
 
 const androidDir = path.join(__dirname, 'android');
 const iosDir = path.join(__dirname, 'ios');
-const iosDerivedDataDir = path.join(iosDir, 'build');
+const appVariant = resolveAppVariant(process.env.EXPO_PUBLIC_APP_VARIANT);
+const iosProjectEntry = findFirstEntry(iosDir, (entry) => entry.endsWith('.xcodeproj'));
+const iosWorkspaceEntry = findFirstEntry(iosDir, (entry) => entry.endsWith('.xcworkspace'));
+const iosProjectName = iosProjectEntry ? path.basename(iosProjectEntry, '.xcodeproj') : 'quietroommobile';
 const iosDebugAppPath = path.join(
-  iosDerivedDataDir,
-  'Build/Products/Debug-iphonesimulator/quietroommobile.app'
+  iosDir,
+  'build',
+  'Build/Products/Debug-iphonesimulator',
+  `${iosProjectName}.app`
 );
+const iosReleaseAppPath = path.join(
+  iosDir,
+  'build',
+  'Build/Products/Release-iphonesimulator',
+  `${iosProjectName}.app`
+);
+const iosDerivedDataDir = path.join(iosDir, 'build');
 const debugApkPath = path.join(androidDir, 'app/build/outputs/apk/debug/app-debug.apk');
 const debugTestApkPath = path.join(
   androidDir,
@@ -21,17 +52,28 @@ const gradlew = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
 const buildDebug = `cd android && ${gradlew} assembleDebug assembleAndroidTest -DtestBuildType=debug`;
 const buildRelease = `cd android && ${gradlew} assembleRelease assembleAndroidTest -DtestBuildType=release`;
 const attachedDeviceName = process.env.DETOX_ATTACHED_DEVICE || process.env.ANDROID_SERIAL || 'emulator-5554';
-const avdName = process.env.DETOX_AVD_NAME || 'QuietRoom_API_35';
+const avdName = process.env.DETOX_AVD_NAME || 'Pixel34AVD_2';
 const iosSimulatorName = process.env.DETOX_IOS_DEVICE || 'iPhone 17';
-const buildIosDebug = [
+const buildIosDebugArgs = [
   'xcodebuild',
-  '-workspace ios/quietroommobile.xcworkspace',
-  '-scheme quietroommobile',
+  iosWorkspaceEntry ? `-workspace ios/${iosWorkspaceEntry}` : `-project ios/${iosProjectEntry || 'quietroommobile.xcodeproj'}`,
+  `-scheme ${iosProjectName}`,
   '-configuration Debug',
   '-sdk iphonesimulator',
   `-destination "platform=iOS Simulator,name=${iosSimulatorName}"`,
   '-derivedDataPath ios/build',
-].join(' ');
+];
+const buildIosDebug = buildIosDebugArgs.join(' ');
+const buildIosReleaseArgs = [
+  'xcodebuild',
+  iosWorkspaceEntry ? `-workspace ios/${iosWorkspaceEntry}` : `-project ios/${iosProjectEntry || 'quietroommobile.xcodeproj'}`,
+  `-scheme ${iosProjectName}`,
+  '-configuration Release',
+  '-sdk iphonesimulator',
+  `-destination "platform=iOS Simulator,name=${iosSimulatorName}"`,
+  '-derivedDataPath ios/build',
+];
+const buildIosRelease = buildIosReleaseArgs.join(' ');
 
 /** @type {Detox.DetoxConfig} */
 module.exports = {
@@ -62,6 +104,11 @@ module.exports = {
       type: 'ios.app',
       binaryPath: iosDebugAppPath,
       build: buildIosDebug,
+    },
+    'ios.release': {
+      type: 'ios.app',
+      binaryPath: iosReleaseAppPath,
+      build: buildIosRelease,
     },
   },
   devices: {
@@ -104,6 +151,10 @@ module.exports = {
     'ios.sim.debug': {
       device: 'iosSimulator',
       app: 'ios.debug',
+    },
+    'ios.sim.release': {
+      device: 'iosSimulator',
+      app: 'ios.release',
     },
   },
 };

@@ -1,5 +1,8 @@
 import { Platform } from "react-native";
 
+export type AppVariant = "prod" | "qa";
+export type ReleaseEnv = "local" | "qa" | "prod";
+
 type FirebaseConfig = {
   apiKey: string;
   authDomain: string;
@@ -19,6 +22,24 @@ function trimTrailingSlashes(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
+function resolveAppVariant(value: string | undefined): AppVariant {
+  return value?.toLowerCase() === "qa" ? "qa" : "prod";
+}
+
+function resolveReleaseEnv(value: string | undefined): ReleaseEnv {
+  const normalizedValue = value?.toLowerCase();
+
+  if (normalizedValue === "local" || normalizedValue === "qa" || normalizedValue === "prod") {
+    return normalizedValue;
+  }
+
+  return "qa";
+}
+
+function resolveAppScheme(appVariant: AppVariant): string {
+  return appVariant === "qa" ? "quietroommobileqa" : "quietroommobile";
+}
+
 const devApiBase =
   Platform.OS === "android" ? "http://10.0.2.2:5000" : "http://localhost:5000";
 
@@ -26,7 +47,9 @@ const apiBaseRaw =
   process.env.EXPO_PUBLIC_API_BASE ||
   (__DEV__ ? devApiBase : "https://your-prod-api.com");
 
+const appVariantRaw = process.env.EXPO_PUBLIC_APP_VARIANT;
 const modelOptionsRaw = process.env.EXPO_PUBLIC_MODEL_OPTIONS;
+const releaseEnvRaw = process.env.EXPO_PUBLIC_RELEASE_ENV;
 const renderModeRaw =
   process.env.EXPO_PUBLIC_RENDER_MODE ||
   process.env.EXPO_PUBLIC_WEB_PARITY_MODE ||
@@ -34,6 +57,9 @@ const renderModeRaw =
 const webAppUrlRaw =
   process.env.EXPO_PUBLIC_WEB_APP_URL || "https://quiet-room-qa.vercel.app";
 
+export const APP_VARIANT = resolveAppVariant(appVariantRaw);
+export const RELEASE_ENV = resolveReleaseEnv(releaseEnvRaw);
+export const APP_SCHEME = resolveAppScheme(APP_VARIANT);
 export const API_BASE = trimTrailingSlashes(apiBaseRaw);
 
 export const STREAMING_BASE = trimTrailingSlashes(
@@ -87,6 +113,4 @@ export function resolveVoiceUrl(): string {
 
   return `${API_BASE}/api/voice_stream`;
 }
-
-
 
