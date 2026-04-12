@@ -30,6 +30,44 @@ function hasHermesDsymPhase(project) {
   );
 }
 
+function getHermesDsymPhaseId(project) {
+  const phases = project.hash.project.objects.PBXShellScriptBuildPhase || {};
+
+  return Object.entries(phases).find(
+    ([, phase]) => phase && typeof phase === "object" && phase.name === `"${PHASE_NAME}"`
+  )?.[0] || null;
+}
+
+function getFirstTargetBuildPhases(project) {
+  const target = project.getFirstTarget();
+  return target?.firstTarget?.buildPhases || [];
+}
+
+function reorderHermesDsymPhase(project) {
+  const buildPhases = getFirstTargetBuildPhases(project);
+  const hermesPhaseId = getHermesDsymPhaseId(project);
+
+  if (!hermesPhaseId || !Array.isArray(buildPhases)) {
+    return;
+  }
+
+  const hermesIndex = buildPhases.findIndex((phase) => phase.value === hermesPhaseId);
+  const embedPodsIndex = buildPhases.findIndex(
+    (phase) => phase.comment === "[CP] Embed Pods Frameworks"
+  );
+
+  if (hermesIndex === -1 || embedPodsIndex === -1 || hermesIndex === embedPodsIndex + 1) {
+    return;
+  }
+
+  const [hermesPhase] = buildPhases.splice(hermesIndex, 1);
+  const nextEmbedPodsIndex = buildPhases.findIndex(
+    (phase) => phase.comment === "[CP] Embed Pods Frameworks"
+  );
+
+  buildPhases.splice(nextEmbedPodsIndex + 1, 0, hermesPhase);
+}
+
 const withHermesDsymPhase = (config) =>
   withXcodeProject(config, (configWithProject) => {
     const project = configWithProject.modResults;
@@ -42,6 +80,8 @@ const withHermesDsymPhase = (config) =>
         outputPaths: [OUTPUT_PATH],
       });
     }
+
+    reorderHermesDsymPhase(project);
 
     return configWithProject;
   });

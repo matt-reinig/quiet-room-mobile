@@ -1,0 +1,35 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1024"
+  height="1024"
+  viewBox="0 0 1024 1024"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Quiet Room door crossmark foreground</title>
+  <desc id="desc">
+    A minimal wall-and-door silhouette with a distinct wall color, a lower-set door, a small handle, and a centered slim black cross for Android adaptive icon and splash foreground use.
+  </desc>
+  <rect x="252" y="214" width="520" height="584" rx="22" fill="#5E3D2B" />
+  <path
+    d="M276 774V258C276 246.954 284.954 238 296 238H728C739.046 238 748 246.954 748 258V774"
+    fill="none"
+    stroke="#714A34"
+    stroke-width="12"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M340 248H684C692.837 248 700 255.163 700 264V798H324V264C324 255.163 331.163 248 340 248Z"
+    fill="#936447"
+  />
+  <path
+    d="M364 276H660C666.627 276 672 281.373 672 288V768H352V288C352 281.373 357.373 276 364 276Z"
+    fill="none"
+    stroke="#7A533A"
+    stroke-width="8"
+  />
+  <rect x="502" y="346" width="20" height="194" rx="8" fill="#000000" />
+  <rect x="431" y="433" width="162" height="20" rx="8" fill="#000000" />
+  <rect x="598" y="542" width="12" height="50" rx="6" fill="#000000" />
+</svg>

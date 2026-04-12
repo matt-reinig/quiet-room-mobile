@@ -4,8 +4,8 @@ This plan is for the next distribution milestones after local mobile bring-up.
 
 Current priority:
 
-1. Turn the new QA/prod store records into a working distribution pipeline
-2. Close store compliance and submission gaps
+1. Close store compliance and metadata gaps that are now gating Play uploads
+2. Turn the new QA/prod store records into a working distribution pipeline
 3. Validate first QA uploads on Apple and Play
 4. Validate first prod-candidate uploads on Apple and Play
 5. Capture final release blockers from real-device testing
@@ -23,24 +23,28 @@ What has changed since this plan was first written:
 - internal TestFlight setup is no longer the main blocker
 - the app-identity split is now implemented in the repo and smoke-verified
 - the four matching Apple / Play app records now exist for QA and prod
-- the next planning focus should shift from "make the split possible" to "make the split operational for release and tester distribution"
+- Android release signing is now wired locally with a real upload-key path
+- branded QA and prod iOS builds have already uploaded successfully to App Store Connect
+- the first QA Play upload reached Google Play and was blocked by missing privacy-policy metadata because the app requests `android.permission.RECORD_AUDIO`
+- the next planning focus should shift from "make the split possible" to "finish store compliance and make the split operational for release and tester distribution"
 
 What TestFlight should mean now:
 
 - keep using Emily's TestFlight loop to validate fixes on a real device
 - convert Emily feedback into a short list of true release blockers vs follow-up polish
-- avoid letting repeated beta iteration delay store-readiness work that can proceed in parallel
+- keep iOS validation moving while Play metadata and policy work proceed in parallel
+- do not assume Play internal testing can bypass privacy-policy or app-content setup
 
-## Why Emily Beta Comes First
+## Why Real-Device Beta Still Matters
 
-This is the fastest path to real user validation without blocking on store paperwork.
+This is still the fastest path to real user validation while the remaining store paperwork is being finished.
 
 Why it comes before store submission:
 
 - it gets the app onto a real non-dev phone quickly
 - it validates onboarding, chat, layout, auth, and general feel outside the emulator/simulator
 - it helps confirm what still feels unfinished before store screenshots, copy, and review metadata are prepared
-- it avoids turning Play Store / App Store setup into the critical path too early
+- it keeps product learning moving even when Play policy metadata becomes the current gating work
 
 ## Current Project State
 
@@ -48,19 +52,21 @@ The app is already far enough along that release planning can focus on distribut
 
 What is already true:
 
-- Android package id is `com.quietroom.mobile`
-- iOS bundle id is `com.quietroom.mobile`
+- Android package ids are now split between `com.quietroom.mobile.qa` and `com.quietroom.mobile`
+- iOS bundle ids are now split between `com.quietroom.mobile.qa` and `com.quietroom.mobile`
 - icon asset paths are already wired in Expo config
 - Android emulator bring-up is working on this Mac
 - iOS simulator bring-up is working on this Mac
 - local mobile docs already include an Android phone APK workflow
+- QA and prod local build flows now exist for both Apple and Android
 
 Important current gaps:
 
-- Android release builds are still signed with the debug keystore
 - account deletion flow is not yet implemented
-- privacy policy / store disclosure work is not yet fully prepared
-- the new QA / prod store records still need first-upload, tester-group, and track validation
+- privacy policy URL and store disclosure work are not yet fully prepared for both QA and prod app records
+- Play app-content metadata still needs to be completed before Android internal-testing uploads can finish
+- the Android permission surface still needs a final store-policy audit
+- the QA / prod Play records still need first successful upload, tester-group, and track validation
 
 ## Phase 1: Get Emily On A Beta Build
 
@@ -285,6 +291,7 @@ Goal:
 What this next effort should cover:
 
 - confirm QA builds upload to the QA Apple / Play records and prod builds upload to the prod records
+- finish the policy and metadata prerequisites that now gate Google Play uploads
 - finalize signing / provisioning for release builds rather than debug-style local signing
 - configure tester groups, internal tracks, and release notes flow for QA distribution
 - prepare screenshots, metadata, privacy policy links, and review-compliance copy for both stores
@@ -292,6 +299,7 @@ What this next effort should cover:
 
 Acceptance for this next effort:
 
+- Play metadata no longer blocks the first QA upload
 - QA upload path works on both Apple and Play
 - prod-candidate upload path works on both Apple and Play
 - tester distribution path is clear for QA
@@ -302,6 +310,29 @@ Why this phase should happen before store submission:
 
 - screenshots, listings, and TestFlight invites should reflect the real product identity
 - changing core branding late creates churn across both stores
+
+Active tracker for this newly elevated workstream:
+
+- `docs/mobile-store-compliance-readiness-effort.md`
+
+## Active Effort: Store Compliance And Metadata Readiness
+
+Goal:
+
+- unblock the first successful Play internal-testing upload and reduce late-stage store-review churn for both QA and prod
+
+Why this effort is active now:
+
+- on April 11, 2026, the first QA Play upload reached Google Play and failed because a privacy policy URL was required for an app that requests `android.permission.RECORD_AUDIO`
+- that means privacy-policy and app-content work is not only a production-launch concern; it is an early upload prerequisite
+
+What this effort now owns:
+
+- privacy policy URL publication and wiring for both app records
+- Play Data safety and app-content answers
+- support/contact/store metadata needed on both Apple and Play
+- account-deletion follow-up if account creation remains in scope
+- verification that QA internal testing and prod-candidate uploads can proceed without store-policy blockers
 
 ## Phase 3: Google Play Prep
 
@@ -320,15 +351,22 @@ Current known Google-side requirements to plan around:
 
 Current repo-side readiness snapshot:
 
-- Android package id is already `com.quietroom.mobile`
-- there is not yet an Android QA package id wired into the app config
-- `google-services.json` is already wired into Expo/native Android config when present locally
+- Android package ids are now variant-aware through `app.config.js`
+- the QA Android package id is `com.quietroom.mobile.qa`
+- the prod Android package id is `com.quietroom.mobile`
+- variant-specific Google service files are selected through app config when present locally
 - there is already a local release APK workflow in `docs/mobile-apk-phone-workflow.md`
+- there is now a Play-internal-testing runbook in `docs/mobile-play-internal-testing-runbook.md`
+- there is now a dedicated store-compliance tracker in `docs/mobile-store-compliance-readiness-effort.md`
+- repo helpers now exist for Android release prep: `npm run android:play:status:qa`, `npm run android:play:status:prod`, `npm run android:play:preflight:qa`, `npm run android:play:preflight:prod`, and `npm run android:play:prepare`
 - there is no `eas.json`, so the clearest current store-build path is the native Android/Gradle project rather than an EAS-managed Play submission flow
-- `android/app/build.gradle` still signs release builds with the debug keystore
-- Android versioning is still at `versionCode 1` / `versionName 1.0.0`
-- the visible Android app name is still `quiet-room-mobile`
+- generated Android release signing now reads a real upload key from local env
+- Android versioning is now tracked in `app.json` with `expo.android.versionCode`
+- the visible Android app name now follows the selected QA/prod app variant
 - the manifest still declares sensitive-or-review-worthy permissions that should be audited for production, including `SYSTEM_ALERT_WINDOW`, `READ_EXTERNAL_STORAGE`, `WRITE_EXTERNAL_STORAGE`, `RECORD_AUDIO`, and `MODIFY_AUDIO_SETTINGS`
+- fresh QA and prod Android App Bundles can now be built locally
+- Play service-account auth is configured well enough to create edits and start bundle uploads
+- the first QA Play upload already proved the next real blocker is missing privacy-policy metadata
 - privacy policy, Data safety responses, and account deletion support are not yet release-ready
 
 Concrete work order:
@@ -339,21 +377,20 @@ Concrete work order:
 4. Create the QA Play Console app with package id `com.quietroom.mobile.qa` for internal testing.
 5. Reserve `com.quietroom.mobile` for the production Play listing.
 6. Finalize the public and QA app names plus icon approach before taking Play screenshots or writing listing copy.
-7. Create a real Android release keystore and wire release signing so `release` no longer uses the debug keystore.
-8. Export the release SHA fingerprints and update Firebase / Google Cloud so Google sign-in still works once the signing key changes.
+7. Confirm the real Android upload key is stored safely and remains the release-signing source of truth.
+8. Verify Firebase / Google Cloud include the release SHA fingerprints that Google sign-in needs.
 9. Audit Android permissions and remove anything not genuinely needed for the first public release.
-10. Increment Android `versionCode` / `versionName` and verify the first release bundle targets the current required API level.
-11. Build an Android App Bundle for the QA app and confirm internal testing distribution works.
-12. Build an Android App Bundle for the prod app and enroll in Play App Signing during the first upload flow.
-13. Prepare listing copy, screenshots, category, content rating, app content declarations, support contact details, and privacy policy URL.
-14. If email/password signup remains available, ship or document the required account deletion flow both in-app and on the web.
-15. Use internal testing on the QA app first, then closed testing as needed, and only move the prod app to production after the policy and testing gates are satisfied.
+10. Publish a public privacy policy URL and enter it on both Play app records before retrying upload.
+11. Draft Data safety, app-content declarations, support contact details, and other store metadata while the first upload path is being validated.
+12. Increment Android `versionCode` / `versionName` and verify the first release bundle targets the current required API level.
+13. Build an Android App Bundle for the QA app and confirm internal testing distribution works.
+14. Build an Android App Bundle for the prod app and enroll in Play App Signing during the first upload flow.
+15. If email/password signup remains available, ship or document the required account deletion flow both in-app and on the web.
+16. Use internal testing on the QA app first, then closed testing as needed, and only move the prod app to production after the policy and testing gates are satisfied.
 
 Repo-specific blockers to close before first upload:
 
-- release signing is not production-ready yet
-- the QA app identity is not wired yet
-- the public app identity and QA app naming split are not final yet
+- Play now requires privacy-policy metadata before the first QA internal-testing upload can complete
 - the Android permission surface has not been audited for store review
 - store compliance declarations are not yet prepared
 - account deletion is still a product and policy gap
@@ -397,10 +434,11 @@ Use this order unless a higher-priority product decision changes things:
 2. Finalize the QA/prod app identity split so side-by-side installs are a permanent part of the plan
 3. Capture feedback from repeated real-device testing and label issues as blockers vs follow-ups
 4. Finalize the public app name, QA app name, and icon approach
-5. Add privacy-policy and account-deletion readiness work
+5. Finish privacy-policy, Data safety, and account-deletion readiness work
 6. Prepare the QA app for TestFlight and Play internal testing
-7. Prepare the prod app for public store submission
-8. Submit to stores only after the app identity and compliance work are settled
+7. Prove the QA Play upload path after metadata is in place
+8. Prepare the prod app for public store submission
+9. Submit to stores only after the app identity and compliance work are settled
 
 ## Suggested Task Breakdown
 
@@ -418,18 +456,21 @@ Treat these as separate tasks so release prep does not collapse into one large t
 4. Play Console setup decision
    Deliverable: choose personal vs organization and document any resulting testing gate.
 5. Android release signing
-   Deliverable: replace the debug keystore release path with a real release keystore and capture the signing process.
+   Deliverable: keep the real upload-key path documented, recoverable, and verified for future Play uploads.
 6. Firebase / Google auth release alignment
    Deliverable: add the release signing fingerprints so production Google sign-in keeps working.
-7. Android permission and policy audit
+7. Store compliance readiness
+   Deliverable: publish privacy-policy/support URLs, draft Data safety and app-content answers, and clear the first Play upload policy gate.
+   Tracker: `docs/mobile-store-compliance-readiness-effort.md`.
+8. Android permission and policy audit
    Deliverable: remove any unneeded permissions and prepare accurate Data safety / disclosure answers.
-8. Account deletion readiness
+9. Account deletion readiness
    Deliverable: support the required deletion path in-app and outside the app if account creation remains part of the release.
-9. Store listing metadata
+10. Store listing metadata
    Deliverable: screenshots, support URL, privacy policy URL, category, age/content rating, review notes, and listing copy.
-10. First Android store build
+11. First Android store build
    Deliverable: produce and upload the first signed Android App Bundle.
-11. First App Store submission pass
+12. First App Store submission pass
    Deliverable: move from internal TestFlight to a public-release-ready App Store Connect submission.
 
 ## Short-Term Next Actions
@@ -440,10 +481,10 @@ These are the most practical next actions from here:
 2. Lock the app identity split: `Quiet Room` for prod and `Quiet Room QA` for the tester build.
 3. Decide whether QA needs a subtle launcher/icon differentiator for side-by-side installs.
 4. Decide whether the Play Console account should be personal or organization.
-5. Create the Android release keystore plan before any Play upload work starts.
-6. Audit Android permissions plus privacy/account-deletion requirements before preparing the first store listing.
-7. Prepare privacy policy, support URL, and store disclosure answers so App Store Connect and Play Console metadata are no longer blocked.
-8. Treat TestFlight as the ongoing validation lane while wiring the dedicated QA app in parallel.
+5. Publish the privacy policy URL and add it to both Play app records before retrying Android upload.
+6. Work through the checklist in `docs/mobile-store-compliance-readiness-effort.md`.
+7. Audit Android permissions plus privacy/account-deletion requirements before preparing the first store listing.
+8. Treat TestFlight as the ongoing validation lane while finishing Play metadata and compliance work in parallel.
 
 ## Notes
 

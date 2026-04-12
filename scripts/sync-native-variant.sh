@@ -87,4 +87,11 @@ if [[ "$PLATFORM" == "ios" || "$PLATFORM" == "all" ]]; then
     cd "$ROOT_DIR/ios"
     pod install
   )
+
+  echo
+  echo "Patching iOS Xcode project signing"
+  (
+    cd "$ROOT_DIR"
+    node ./scripts/patch-ios-xcodeproj-signing.js
+  )
 fi

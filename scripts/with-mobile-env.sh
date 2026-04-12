@@ -43,6 +43,7 @@ case "$APP_VARIANT:$RELEASE_ENV" in
 esac
 
 BASE_ENV_FILE="$ROOT_DIR/.env"
+ANDROID_SIGNING_ENV_FILE="$ROOT_DIR/.env.android.signing"
 
 load_env_file() {
   local file_path="$1"
@@ -59,6 +60,7 @@ load_env_file() {
 }
 
 loaded_any_env=false
+loaded_android_signing_env=false
 
 if load_env_file "$BASE_ENV_FILE"; then
   loaded_any_env=true
@@ -72,6 +74,10 @@ elif [[ "$APP_VARIANT" == "prod" ]]; then
   exit 1
 fi
 
+if load_env_file "$ANDROID_SIGNING_ENV_FILE"; then
+  loaded_android_signing_env=true
+fi
+
 if [[ "$loaded_any_env" != true ]]; then
   echo "No mobile env file could be loaded. Expected at least $BASE_ENV_FILE" >&2
   exit 1
@@ -81,6 +87,7 @@ export EXPO_PUBLIC_APP_VARIANT="$APP_VARIANT"
 export EXPO_PUBLIC_RELEASE_ENV="$RELEASE_ENV"
 export MOBILE_ENV_BASE_FILE="$BASE_ENV_FILE"
 export MOBILE_ENV_OVERLAY_FILE="$OVERLAY_ENV_FILE"
+export MOBILE_ANDROID_SIGNING_ENV_FILE="$ANDROID_SIGNING_ENV_FILE"
 
 echo "Running with mobile env" >&2
 echo "  app variant: $APP_VARIANT" >&2
@@ -90,6 +97,11 @@ if [[ -f "$OVERLAY_ENV_FILE" ]]; then
   echo "  overlay env: $OVERLAY_ENV_FILE" >&2
 else
   echo "  overlay env: <missing, using base env only>" >&2
+fi
+if [[ "$loaded_android_signing_env" == true ]]; then
+  echo "  android signing env: $ANDROID_SIGNING_ENV_FILE" >&2
+else
+  echo "  android signing env: <missing, release signing vars not loaded>" >&2
 fi
 echo >&2
 

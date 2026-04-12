@@ -9,13 +9,13 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/branding/quiet-room-door-wordmark-marketing-splash.jpg",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#FFFFFF"
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "3",
+      "buildNumber": "10",
       "bundleIdentifier": "com.quietroom.mobile",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -23,10 +23,11 @@
     },
     "android": {
       "package": "com.quietroom.mobile",
+      "versionCode": 1,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#FFFFFF"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -36,6 +37,21 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FFFFFF",
+          "image": "./assets/branding/quiet-room-door-wordmark-marketing.png",
+          "resizeMode": "contain",
+          "imageWidth": 320,
+          "android": {
+            "backgroundColor": "#FFFFFF",
+            "image": "./assets/branding/quiet-room-door-wordmark-marketing.png",
+            "resizeMode": "contain",
+            "imageWidth": 160
+          }
+        }
+      ],
       "expo-web-browser",
       "@react-native-google-signin/google-signin"
     ]

@@ -12,12 +12,19 @@ What completed in this effort:
 - `app.config.js`, env selectors, native sync, and diagnostics now separate app identity from backend target
 - the split is proven in practice rather than only planned: local/QA/prod verification is wired, Android smoke passed for `qa/local`, `qa/qa`, and `prod/prod`, and iOS smoke passed for `qa/qa` and `prod/prod`
 - the four matching Apple / Play app records now exist, so the store identity side of the split is established too
+- the next blocker discovered in practice is Play policy metadata, not more variant-plumbing work
 
 What this means for handoff:
 
 - the repo-side QA/prod app-variant effort is complete
-- the next effort should be treated as distribution and launch-readiness work, not more variant-plumbing work
+- the next effort should be treated as distribution, store-metadata, and launch-readiness work, not more variant-plumbing work
 - remaining follow-up is mostly store-console, signing, tester-flow, metadata, and release-validation work
+
+Observed distribution-readiness update:
+
+- on April 11, 2026, the first QA Play upload reached Google Play and was blocked because the app record did not yet have the required privacy policy URL for an app requesting `android.permission.RECORD_AUDIO`
+- that means Play internal testing remains the right Android QA lane, but it must now be paired with earlier privacy-policy and app-content setup
+- active tracker: `docs/mobile-store-compliance-readiness-effort.md`
 
 ## Recommendation
 
@@ -90,28 +97,29 @@ Important consequence:
 
 - QA and prod can be installed at the same time on the same Android device
 - Play Console should treat them as separate apps because they have different application ids
+- Play internal testing still requires early privacy-policy and app-content readiness; it is not a metadata-free lane
 
 ## Current Repo State
 
-The current repo is already close to supporting this split, but it does not implement it yet.
+The current repo now implements this split and has moved on to distribution-readiness follow-up.
 
 What is already true:
 
 - runtime env values are read from `process.env`
 - `WEB_APP_URL` currently defaults to the QA frontend URL
+- `app.config.js` now computes app identity from the selected variant
 - `app.config.js` already selects Google service config files from env variables
 - the checked local Android Firebase file is already treated as optional and env-selectable
+- release scripts and preflight now understand both app variant and release env
+- QA/prod native sync and local verification are already wired
 
-What still needs to change for the new strategy:
+What still needs to change for launch-readiness:
 
-- `app.json` currently hardcodes a single app name: `Quiet Room`
-- `app.json` currently hardcodes the prod bundle id: `com.quietroom.mobile`
-- `app.json` currently hardcodes the prod Android package: `com.quietroom.mobile`
-- `app.json` currently hardcodes a single scheme: `quietroommobile`
-- there is no first-class `app variant` selector yet
-- release scripts and preflight only think in terms of environment, not app identity
+- store metadata, privacy-policy wiring, and policy declarations still need to be completed
+- tester-group / internal-track distribution still needs end-to-end validation in the stores
+- account-deletion and permission-audit follow-up still need product and policy decisions
 
-That means the repo foundation is good, but `app.config.js` needs to grow from "service-file selection" into "full variant selection."
+That means the repo foundation is done; the remaining work is mostly store-console readiness rather than more config plumbing.
 
 ## Build Matrix
 
@@ -342,8 +350,9 @@ Recommended order:
 4. Add QA/prod preflight scripts that verify variant, ids, API base, web URL, Firebase project, and service files.
 5. Create QA Firebase app registrations and matching local service-file naming.
 6. Create the QA App Store Connect record and QA Play Console app.
-7. Move Emily onto the new QA app once the first side-by-side installable build is ready.
-8. Keep prod builds reserved for release-candidate and public-release use.
+7. Start privacy-policy and store-metadata setup before the first Play internal-testing upload.
+8. Move Emily onto the new QA app once the first side-by-side installable build is ready.
+9. Keep prod builds reserved for release-candidate and public-release use.
 
 ## Recommended Decision
 

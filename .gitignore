@@ -67,3 +67,7 @@ GoogleService-Info.*.plist
 /start-dev-client*.err.log
 /tmp-android.bundle.js
 /src/screens/*.bak-*
+
+# local store upload artifacts and credentials
+/build-records/
+/gabriel-qa-*.json

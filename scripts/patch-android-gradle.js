@@ -46,6 +46,34 @@ function ensureLineAfter(anchor, line) {
   appSource = appSource.replace(anchor, `${anchor}\n        ${line}`);
 }
 
+function ensureBlockAfter(anchor, block) {
+  const normalizedBlock = block.replace(/\s+$/, "");
+  if (appSource.includes(normalizedBlock)) {
+    return;
+  }
+
+  if (!appSource.includes(anchor)) {
+    throw new Error(`Unable to find anchor: ${anchor}`);
+  }
+
+  appSource = appSource.replace(anchor, `${anchor}\n\n${normalizedBlock}`);
+}
+
+function ensureBlockAfterMatch(pattern, block) {
+  const normalizedBlock = block.replace(/\s+$/, "");
+  if (appSource.includes(normalizedBlock)) {
+    return;
+  }
+
+  const match = appSource.match(pattern);
+  if (!match) {
+    throw new Error(`Unable to find regex anchor: ${pattern}`);
+  }
+
+  const anchor = match[0];
+  appSource = appSource.replace(anchor, `${anchor}\n\n${normalizedBlock}`);
+}
+
 function ensureDependencyAfter(anchor, dependencyLine) {
   if (appSource.includes(dependencyLine)) {
     return;
@@ -69,6 +97,18 @@ function ensureRootRepositoryLine(line) {
   }
 
   rootSource = rootSource.replace(anchor, `${anchor}\n    ${line}`);
+}
+
+function replaceOnce(before, after) {
+  if (appSource.includes(after)) {
+    return;
+  }
+
+  if (!appSource.includes(before)) {
+    throw new Error(`Unable to find replace target: ${before}`);
+  }
+
+  appSource = appSource.replace(before, after);
 }
 
 function resolveAndroidPackageName() {
@@ -157,13 +197,73 @@ function writeNetworkSecurityConfig() {
   fs.writeFileSync(networkSecurityConfigPath, contents);
 }
 
+ensureBlockAfterMatch(
+  /^def jscFlavor = .+$/m,
+  `def resolveReleaseSigningValue(name) {
+    return project.findProperty(name) ?: System.getenv(name)
+}
+
+def resolveReleaseSigningFilePath(pathValue) {
+    if (pathValue == null || pathValue.toString().trim().isEmpty()) {
+        return null
+    }
+
+    def candidate = new File(pathValue)
+    if (candidate.isAbsolute()) {
+        return candidate
+    }
+
+    return new File(rootDir.getAbsoluteFile().getParentFile().getAbsolutePath(), pathValue)
+}
+
+ext.quietRoomReleaseSigningStoreFile = resolveReleaseSigningValue("QUIET_ROOM_ANDROID_UPLOAD_STORE_FILE")
+ext.quietRoomReleaseSigningStorePassword = resolveReleaseSigningValue("QUIET_ROOM_ANDROID_UPLOAD_STORE_PASSWORD")
+ext.quietRoomReleaseSigningKeyAlias = resolveReleaseSigningValue("QUIET_ROOM_ANDROID_UPLOAD_KEY_ALIAS")
+ext.quietRoomReleaseSigningKeyPassword = resolveReleaseSigningValue("QUIET_ROOM_ANDROID_UPLOAD_KEY_PASSWORD")
+ext.quietRoomHasReleaseSigning = [
+    ext.quietRoomReleaseSigningStoreFile,
+    ext.quietRoomReleaseSigningStorePassword,
+    ext.quietRoomReleaseSigningKeyAlias,
+    ext.quietRoomReleaseSigningKeyPassword,
+].every { value -> value != null && !value.toString().trim().isEmpty() }`
+);
 ensureLineAfter(`        versionName "1.0.0"`, `testBuildType System.getProperty('testBuildType', 'debug')`);
 ensureLineAfter(
   `        testBuildType System.getProperty('testBuildType', 'debug')`,
   `testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'`
 );
+ensureBlockAfter(
+  `        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }`,
+  `        release {
+            if (project.ext.quietRoomHasReleaseSigning) {
+                storeFile resolveReleaseSigningFilePath(project.ext.quietRoomReleaseSigningStoreFile)
+                storePassword project.ext.quietRoomReleaseSigningStorePassword
+                keyAlias project.ext.quietRoomReleaseSigningKeyAlias
+                keyPassword project.ext.quietRoomReleaseSigningKeyPassword
+            }
+        }`
+);
+replaceOnce(
+  `        release {
+            // Caution! In production, you need to generate your own keystore file.
+            // see https://reactnative.dev/docs/signed-apk-android.
+            signingConfig signingConfigs.debug`,
+  `        release {
+            // Caution! In production, you need to generate your own keystore file.
+            // see https://reactnative.dev/docs/signed-apk-android.
+            signingConfig project.ext.quietRoomHasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+            if (!project.ext.quietRoomHasReleaseSigning) {
+                logger.warn("Quiet Room Android release signing is not configured. Falling back to the debug keystore.")
+            }`
+);
 ensureDependencyAfter(`    implementation("com.facebook.react:react-android")`, `implementation("androidx.appcompat:appcompat:1.7.1")`);
-ensureDependencyAfter(`    implementation("androidx.appcompat:appcompat:1.7.1")`, `androidTestImplementation('com.wix:detox:+')`);
+ensureDependencyAfter(`    implementation("androidx.appcompat:appcompat:1.7.1")`, `implementation("androidx.core:core-splashscreen:1.0.1")`);
+ensureDependencyAfter(`    implementation("androidx.core:core-splashscreen:1.0.1")`, `androidTestImplementation('com.wix:detox:+')`);
 ensureRootRepositoryLine(`maven { url("$rootDir/../node_modules/detox/Detox-android") }`);
 ensureManifestAttribute();
 
