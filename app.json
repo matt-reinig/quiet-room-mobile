@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "8",
+      "buildNumber": "10",
       "bundleIdentifier": "com.quietroom.mobile",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
@@ -23,6 +23,7 @@
     },
     "android": {
       "package": "com.quietroom.mobile",
+      "versionCode": 3,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",

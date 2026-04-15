@@ -4,8 +4,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="$ROOT_DIR/.env"
-IOS_GOOGLE_SERVICES_FILE="$ROOT_DIR/GoogleService-Info.plist"
 APP_JSON="$ROOT_DIR/app.json"
+APP_CONFIG_JS="$ROOT_DIR/app.config.js"
+selected_ios_google_services_file="$(node -p "require(process.argv[1]).expo.ios?.googleServicesFile ?? ''" "$APP_CONFIG_JS")"
 
 pass_count=0
 warn_count=0
@@ -56,10 +57,22 @@ else
   fail "Missing .env. The beta build should point at the backend Emily should use."
 fi
 
-if [[ -f "$IOS_GOOGLE_SERVICES_FILE" ]]; then
-  pass "Found GoogleService-Info.plist"
+if [[ -n "$selected_ios_google_services_file" && -f "$ROOT_DIR/$selected_ios_google_services_file" ]]; then
+  pass "Found selected iOS Google services file: $selected_ios_google_services_file"
 else
-  fail "Missing GoogleService-Info.plist"
+  fail "Missing the iOS Google services file selected by app.config.js"
+fi
+
+if env_has_nonempty_value "EXPO_PUBLIC_APP_VARIANT"; then
+  pass "EXPO_PUBLIC_APP_VARIANT is set"
+else
+  warn "EXPO_PUBLIC_APP_VARIANT is missing in .env; app.config.js will default to prod"
+fi
+
+if env_has_nonempty_value "EXPO_PUBLIC_RELEASE_ENV"; then
+  pass "EXPO_PUBLIC_RELEASE_ENV is set"
+else
+  warn "EXPO_PUBLIC_RELEASE_ENV is missing in .env; runtime config will default to qa"
 fi
 
 if env_has_nonempty_value "EXPO_PUBLIC_API_BASE"; then
@@ -104,12 +117,22 @@ else
   warn "Neither EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID nor EXPO_PUBLIC_GOOGLE_CLIENT_ID is set"
 fi
 
-app_name="$(node -p "require(process.argv[1]).expo.name" "$APP_JSON")"
+app_name="$(node -p "require(process.argv[1]).expo.name" "$APP_CONFIG_JS")"
+app_variant="$(node -p "require(process.argv[1]).expo.extra?.appVariant ?? ''" "$APP_CONFIG_JS")"
+release_env="$(node -p "require(process.argv[1]).expo.extra?.releaseEnv ?? ''" "$APP_CONFIG_JS")"
 
 if [[ "$app_name" == "quiet-room-mobile" ]]; then
   warn "Visible app name is still quiet-room-mobile"
 else
   pass "Visible app name has been updated from the internal placeholder"
+fi
+
+if [[ -n "$app_variant" ]]; then
+  pass "Resolved app variant: $app_variant"
+fi
+
+if [[ -n "$release_env" ]]; then
+  pass "Resolved release env: $release_env"
 fi
 
 echo

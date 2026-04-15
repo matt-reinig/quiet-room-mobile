@@ -4,8 +4,11 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_JSON="$ROOT_DIR/app.json"
-INFO_PLIST="$ROOT_DIR/ios/quietroommobile/Info.plist"
-PBXPROJ="$ROOT_DIR/ios/quietroommobile.xcodeproj/project.pbxproj"
+IOS_DIR="$ROOT_DIR/ios"
+INFO_PLIST="$(find "$IOS_DIR" -maxdepth 2 -name Info.plist | head -n 1 || true)"
+PBXPROJ="$(find "$IOS_DIR" -maxdepth 2 -path "*.xcodeproj/project.pbxproj" | head -n 1 || true)"
+XCODEPROJ="$(dirname "$PBXPROJ")"
+XCODE_WORKSPACE="$(find "$IOS_DIR" -maxdepth 1 -name "*.xcworkspace" | head -n 1 || true)"
 PLIST_BUDDY="/usr/libexec/PlistBuddy"
 
 version_override=""
@@ -125,10 +128,14 @@ perl -0pi -e "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = $target_version;/
 
 echo "Updated:"
 echo "  app.json"
-echo "  ios/quietroommobile/Info.plist"
-echo "  ios/quietroommobile.xcodeproj/project.pbxproj"
+echo "  ${INFO_PLIST#$ROOT_DIR/}"
+echo "  ${PBXPROJ#$ROOT_DIR/}"
 echo
 echo "Next:"
 echo "  1. Run npm run ios:testflight:status"
-echo "  2. Open ios/quietroommobile.xcworkspace in Xcode"
+if [[ -n "$XCODE_WORKSPACE" ]]; then
+  echo "  2. Open ${XCODE_WORKSPACE#$ROOT_DIR/} in Xcode"
+else
+  echo "  2. Open ${XCODEPROJ#$ROOT_DIR/} in Xcode"
+fi
 echo "  3. Archive a Release build and upload it to App Store Connect"
