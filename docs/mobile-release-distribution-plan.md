@@ -4,11 +4,12 @@ This plan is for the next distribution milestones after local mobile bring-up.
 
 Current priority:
 
-1. Close store compliance and metadata gaps that are now gating Play uploads
-2. Turn the new QA/prod store records into a working distribution pipeline
-3. Validate first QA uploads on Apple and Play
-4. Validate first prod-candidate uploads on Apple and Play
-5. Capture final release blockers from real-device testing
+1. Clear the review-critical compliance blockers identified in `docs/deep-research-report.md`
+2. Align the privacy-policy site, in-app UX, and store-console disclosures with one verified data story
+3. Turn the new QA/prod store records into a working distribution pipeline
+4. Validate first QA uploads on Apple and Play
+5. Validate first prod-candidate uploads on Apple and Play
+6. Capture final release blockers from real-device testing
 
 Confirmed current tester detail:
 
@@ -26,6 +27,7 @@ What has changed since this plan was first written:
 - Android release signing is now wired locally with a real upload-key path
 - branded QA and prod iOS builds have already uploaded successfully to App Store Connect
 - the first QA Play upload reached Google Play and was blocked by missing privacy-policy metadata because the app requests `android.permission.RECORD_AUDIO`
+- the privacy-policy URL gate is no longer the main issue; the deeper remaining work is review alignment across policy copy, in-app behavior, and store disclosures
 - the next planning focus should shift from "make the split possible" to "finish store compliance and make the split operational for release and tester distribution"
 
 What TestFlight should mean now:
@@ -62,11 +64,24 @@ What is already true:
 
 Important current gaps:
 
-- account deletion flow is not yet implemented
-- privacy policy URL and store disclosure work are not yet fully prepared for both QA and prod app records
+- in-app account deletion is not yet implemented
+- Apple-compliant equivalent login is not yet implemented if Google sign-in remains on iOS
+- explicit AI-sharing disclosure/consent is not yet implemented
+- privacy policy and store disclosure work are not yet fully aligned with the app's real data flows
+- mobile is not yet aligned with the desktop app's latest feature-flagged model-picker and conditional graphic/chrome behavior
 - Play app-content metadata still needs to be completed before Android internal-testing uploads can finish
 - the Android permission surface still needs a final store-policy audit
+- the iOS privacy-manifest requirement has not been audited yet
 - the QA / prod Play records still need first successful upload, tester-group, and track validation
+
+Current review-critical blockers from the April 15, 2026 report:
+
+- App Store P0: add in-app account deletion if account creation remains supported
+- App Store P0: add Sign in with Apple or remove the conflicting iOS login path if Google sign-in remains
+- App Store high risk: add explicit disclosure/permission before sharing user content with third-party AI providers
+- Cross-store high risk: revise the privacy-policy site and store-form answers to cover third-party AI, profiles/inferences, retention, deletion, and in-app access
+
+Detailed work breakdown for this area now lives in `docs/deep-research-privacy-policy.md`.
 
 ## Phase 1: Get Emily On A Beta Build
 
