@@ -39,11 +39,28 @@ This effort does not cover:
 - Android signing setup
 - native build-system fixes unless they directly block policy validation
 
-## Current Known Blocker
+## Current State Snapshot
 
-Current blocker to clear first:
+Observed by April 12, 2026:
 
-- add a public privacy policy URL to both Play app records so the first QA and prod bundle uploads can complete
+- privacy-policy URLs are now set well enough for Play uploads to proceed
+- QA Play internal track now contains:
+  - `versionCode 2` as the earlier completed internal release
+  - `versionCode 3` as the corrected-QA-SHA follow-up build in draft state
+- PROD Play internal track now contains:
+  - `versionCode 1` as the earlier completed internal release
+  - `versionCode 2` as the refreshed-prod-Firebase follow-up build in draft state
+- both iOS app records already have uploaded build records in App Store Connect
+- the current remaining Play-console nuance is app draft-state / release-promotion behavior, not bundle upload auth
+
+## Current Known Blockers
+
+Current blockers to clear next:
+
+- promote the current Play draft releases when Console allows it
+- finish any remaining Play and App Store metadata that still prevents the app records from feeling fully operational
+- verify Android native Google sign-in on the freshly rebuilt QA Play build
+- verify Android native Google sign-in on the freshly rebuilt PROD Play build if that auth path is expected there too
 
 ## Workstreams
 
@@ -98,13 +115,21 @@ Deliverables:
 
 ## Checklist
 
-- [ ] Publish the privacy policy at a stable public URL.
-- [ ] Deploy `site/quiet-room-privacy-policy` to Vercel or another stable host.
-- [ ] Add that URL to the `Quiet Room QA` Play app record.
-- [ ] Add that URL to the `Quiet Room` Play app record.
+- [x] Publish the privacy policy at a stable public URL.
+- [x] Deploy `site/quiet-room-privacy-policy` to Vercel or another stable host.
+- [x] Add that URL to the `Quiet Room QA` Play app record.
+- [x] Add that URL to the `Quiet Room` Play app record.
 - [ ] Add the support URL from the same site to both store records.
-- [ ] Retry the QA Play internal-testing upload.
-- [ ] Retry the prod Play upload once QA proves the path.
+- [x] Retry the QA Play internal-testing upload.
+- [x] Retry the prod Play upload once QA proves the path.
+- [x] Create the first QA Play build record.
+- [x] Create the first PROD Play build record.
+- [x] Refresh `google-services.qa.json` after adding the Play app-signing certificate in Firebase.
+- [x] Rebuild and re-upload QA with the refreshed Firebase config.
+- [x] Correct the QA Firebase SHA mismatch, rebuild, and re-upload QA again.
+- [x] Refresh `google-services.prod.json` locally after adding the Play app-signing certificate in Firebase.
+- [x] Rebuild and re-upload PROD with the refreshed Firebase config if native Google sign-in is expected there.
+- [ ] Promote the current Play draft releases as needed in Console.
 - [ ] Draft Play Data safety answers.
 - [ ] Draft Play app-content declarations.
 - [ ] Confirm support/contact metadata for Play.
@@ -118,6 +143,7 @@ Deliverables:
 This effort is done when:
 
 - QA and prod Play uploads are no longer blocked by missing metadata
+- QA and prod Play tracks no longer depend on draft-only release handling
 - both stores have the minimum required privacy/support metadata in place
 - the declared privacy and policy answers match the shipped app behavior
 - remaining release blockers are product decisions or review outcomes rather than missing console setup
