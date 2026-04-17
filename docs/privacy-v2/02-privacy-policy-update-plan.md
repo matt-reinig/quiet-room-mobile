@@ -61,6 +61,9 @@ Before editing copy:
 
 If these are still moving, this task is not ready to finalize.
 
+Assumption for planning:
+- deployed backend operational-log retention will be explicitly configured later and then reflected in final policy/store copy
+
 ---
 
 ### Step 2 — Update Core Privacy Sections

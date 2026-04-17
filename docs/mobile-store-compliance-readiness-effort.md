@@ -68,6 +68,7 @@ Current blockers to clear next:
 - implement an Apple-compliant equivalent login option if Google sign-in remains available on iOS
 - add explicit first-run disclosure and consent before user content is shared with third-party AI providers
 - revise the public privacy-policy and account-deletion pages so they match the actual data model and store-language expectations
+- define and configure deployed backend operational-log retention in days so policy and store disclosures can state log retention concretely
 - finish the Play and App Store metadata/forms using one verified data inventory rather than ad hoc answers
 - audit the Android permission surface so sensitive permissions stay consistent with shipped features and disclosures
 - determine whether the shipped iOS dependency/API set requires a `PrivacyInfo.xcprivacy` file
@@ -166,6 +167,7 @@ Deliverables:
 - [x] Rebuild and re-upload PROD with the refreshed Firebase config if native Google sign-in is expected there.
 - [ ] Promote the current Play draft releases as needed in Console.
 - [ ] Build one verified data-inventory/disclosure matrix for auth, chat, profiles/inferences, voice, and logs.
+- [ ] Define and configure deployed backend operational-log retention in days, then reflect that number in privacy/store disclosures.
 - [ ] Revise `/privacy` to cover developer identity, third-party AI/services, profiles/inferences, retention by data class, and deletion language.
 - [ ] Revise `/account-deletion` so it explains in-app deletion, fallback web deletion, deleted data, retained exceptions, and timelines.
 - [ ] Add privacy/support/account-deletion links inside the app.

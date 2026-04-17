@@ -16,7 +16,7 @@ Track the execution status of the privacy workstreams defined in `docs/privacy-v
 
 | Task | Mobile Branch | Backend Branch | Task Folder | Owner | Status | Latest milestone | PRs | Notes |
 |---|---|---|---|---|---|---|---|---|
-| 01/02/07 Disclosure stream | `codex/privacy/task-01-data-inventory` | — | `../quiet-room-mobile-task-01-data-inventory` | Codex | ready | plans complete | — | covers data inventory, privacy policy alignment, and store submission prep |
+| 01/02/07 Disclosure stream | `codex/privacy/task-01-data-inventory` | — | `../quiet-room-mobile-task-01-data-inventory` | Codex | ready for review | Task 01 implemented; pending final log-retention number from infra/ops | — | covers data inventory, privacy policy alignment, and store submission prep; Task 01 is otherwise complete, with final policy/store wording still waiting on deployed log-retention days |
 | 03 AI consent | `codex/privacy/task-03-ai-consent` | — | `../quiet-room-mobile-task-03-ai-consent` | Codex | ready | plan complete | — | mobile-owned unless backend consent persistence is required |
 | 04/05 Account deletion stream | `codex/privacy/task-05-mobile-deletion` | `codex/privacy/task-04-backend-deletion` | `../privacy-task-04` | Codex | ready | plans complete | — | backend owns delete endpoint and shared test hooks; mobile owns in-app deletion flow |
 | 06 iOS login compliance | `codex/privacy/task-06-ios-login` | — | `../quiet-room-mobile-task-06-ios-login` | Codex | blocked | decision needed | — | choose Sign in with Apple vs hide Google on iOS |
