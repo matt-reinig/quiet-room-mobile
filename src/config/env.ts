@@ -89,6 +89,10 @@ export const FIREBASE_CONFIG: FirebaseConfig = {
   projectId: process.env.EXPO_PUBLIC_FB_PROJECT_ID || "",
 };
 
+export const FIREBASE_AUTH_EMULATOR_HOST = (
+  process.env.EXPO_PUBLIC_FB_AUTH_EMULATOR_HOST || ""
+).trim();
+
 export const GOOGLE_AUTH_CONFIG: GoogleAuthConfig = {
   androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || "",
   clientId: process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID || "",
@@ -113,4 +117,3 @@ export function resolveVoiceUrl(): string {
 
   return `${API_BASE}/api/voice_stream`;
 }
-

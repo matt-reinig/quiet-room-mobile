@@ -3,6 +3,7 @@ import type { User } from "firebase/auth";
 import { StyleSheet, View } from "react-native";
 import Spinner from "../components/Spinner";
 import {
+  deleteAccount as firebaseDeleteAccount,
   ensureAuth as firebaseEnsureAuth,
   loginWithEmail as firebaseLoginWithEmail,
   loginWithGoogle as firebaseLoginWithGoogle,
@@ -12,6 +13,7 @@ import {
 } from "../lib/firebase";
 
 type AuthContextValue = {
+  deleteAccount: () => Promise<void>;
   isAnon: boolean;
   loading: boolean;
   loginWithEmail: (email: string, password: string) => Promise<unknown>;
@@ -144,18 +146,37 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const logout = async () => {
     setState((prev) => ({ ...prev, loading: true }));
 
-    const logoutUser = (await firebaseLogout()) as { user: User };
+    const logoutUser = (await firebaseLogout()) as User;
 
     setState({
       initializing: false,
-      isAnon: Boolean(logoutUser.user?.isAnonymous),
+      isAnon: Boolean(logoutUser?.isAnonymous),
       loading: false,
-      user: logoutUser.user,
+      user: logoutUser,
     });
+  };
+
+  const deleteAccount = async () => {
+    setState((prev) => ({ ...prev, loading: true }));
+
+    try {
+      const nextUser = (await firebaseDeleteAccount()) as User;
+
+      setState({
+        initializing: false,
+        isAnon: Boolean(nextUser?.isAnonymous),
+        loading: false,
+        user: nextUser,
+      });
+    } catch (error) {
+      setState((prev) => ({ ...prev, loading: false }));
+      throw error;
+    }
   };
 
   const value = useMemo<AuthContextValue>(
     () => ({
+      deleteAccount,
       isAnon: state.isAnon,
       loading: state.loading,
       loginWithEmail,

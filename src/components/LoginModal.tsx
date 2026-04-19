@@ -441,7 +441,11 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
 
             {mode === "signin" ? (
               <>
-                {error ? <Text style={styles.error}>{error}</Text> : null}
+                {error ? (
+                  <Text style={styles.error} testID={testIds.loginError}>
+                    {error}
+                  </Text>
+                ) : null}
                 <Pressable
                   disabled={loading}
                   onPress={() => void doSignin()}
@@ -625,5 +629,4 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
 });
-
 

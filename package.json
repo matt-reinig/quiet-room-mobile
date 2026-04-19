@@ -21,6 +21,7 @@
     "smoke:ios:prod": "bash ./scripts/run-ios-smoke.sh prod prod",
     "smoke:android:local-qa": "bash ./scripts/run-android-smoke.sh qa local",
     "smoke:android:qa": "bash ./scripts/run-android-smoke.sh qa qa",
+    "smoke:android:account-deletion:local-qa": "bash ./scripts/run-android-account-deletion.sh qa local",
     "smoke:android:prod": "bash ./scripts/run-android-smoke.sh prod prod",
     "android:play:status:qa": "bash ./scripts/with-mobile-env.sh qa qa bash ./scripts/android-play-status.sh",
     "android:play:status:prod": "bash ./scripts/with-mobile-env.sh prod prod bash ./scripts/android-play-status.sh",
@@ -42,6 +43,8 @@
     "detox:test:response-smoke:5556": "detox test -c android.att.release e2e/quiet-room.response-smoke.test.js --record-logs all --take-screenshots failing",
     "detox:test:ios:smoke": "detox test -c ios.sim.debug e2e/quiet-room.smoke.test.js --record-logs all --take-screenshots failing",
     "detox:test:ios:chat-layout": "detox test -c ios.sim.debug e2e/quiet-room.chat-layout.test.js --record-logs all --take-screenshots failing",
+    "detox:test:account-deletion:5556": "npx detox test -c android.att.release e2e/quiet-room.account-deletion.test.js --record-logs all --take-screenshots failing",
+    "detox:test:account-deletion:emu": "npx detox test -c android.emu.release e2e/quiet-room.account-deletion.test.js --record-logs all --take-screenshots failing",
     "detox:test:streaming:5556": "detox test -c android.att.debug e2e/quiet-room.streaming-smoke.test.js --record-logs all --take-screenshots failing",
     "detox:test:composer:5556": "detox test -c android.att.debug e2e/quiet-room.composer-flow.test.js --record-logs all --take-screenshots failing"
   },

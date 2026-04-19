@@ -91,7 +91,7 @@ function crucifixTopMargin(): number {
 }
 
 export default function QuietRoomScreen() {
-  const { isAnon, logout, user } = useAuth();
+  const { deleteAccount, isAnon, logout, user } = useAuth();
   const voiceModeAvailable = useFeatureFlag("voice_mode", true);
 
   const {
@@ -123,6 +123,7 @@ export default function QuietRoomScreen() {
   const [showCrucifix, setShowCrucifix] = useState(false);
   const [showChatOptions, setShowChatOptions] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
   const [showComposerFullscreen, setShowComposerFullscreen] = useState(false);
   const [showConversations, setShowConversations] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
@@ -131,6 +132,8 @@ export default function QuietRoomScreen() {
   const [keyboardInset, setKeyboardInset] = useState(0);
   const [showNewestButton, setShowNewestButton] = useState(false);
   const [showScrollTopButton, setShowScrollTopButton] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
+  const [deleteAccountPending, setDeleteAccountPending] = useState(false);
 
   const [voiceAutoPlayTarget, setVoiceAutoPlayTarget] = useState<VoiceAutoPlayTarget | null>(null);
 
@@ -726,6 +729,45 @@ export default function QuietRoomScreen() {
     void logout();
   }, [logout]);
 
+  const handleDeleteAccountStart = useCallback(() => {
+    setShowProfileMenu(false);
+    setDeleteAccountError(null);
+    setShowDeleteAccountModal(true);
+  }, []);
+
+  const handleDeleteAccountCancel = useCallback(() => {
+    if (deleteAccountPending) {
+      return;
+    }
+
+    setDeleteAccountError(null);
+    setShowDeleteAccountModal(false);
+  }, [deleteAccountPending]);
+
+  const handleDeleteAccountConfirm = useCallback(() => {
+    if (deleteAccountPending) {
+      return;
+    }
+
+    setDeleteAccountPending(true);
+    setDeleteAccountError(null);
+
+    void deleteAccount()
+      .then(() => {
+        setShowDeleteAccountModal(false);
+      })
+      .catch((error) => {
+        const message =
+          error instanceof Error && error.message.trim()
+            ? error.message.trim()
+            : "Unable to delete account right now.";
+        setDeleteAccountError(message);
+      })
+      .finally(() => {
+        setDeleteAccountPending(false);
+      });
+  }, [deleteAccount, deleteAccountPending]);
+
   const showScrollButtons =
     (showScrollTopButton || showNewestButton) &&
     !chatLoading &&
@@ -830,8 +872,22 @@ export default function QuietRoomScreen() {
                     <Text numberOfLines={1} style={styles.profileMenuName}>
                       {user?.displayName || user?.email || "Signed in"}
                     </Text>
-                    <Pressable onPress={handleContinueAsGuest} style={styles.profileMenuButton}>
-                      <Text style={styles.profileMenuButtonLabel}>Continue as Guest</Text>
+                    <Pressable
+                      onPress={handleContinueAsGuest}
+                      style={styles.profileMenuButton}
+                      testID={testIds.profileLogoutButton}
+                    >
+                      <Text style={styles.profileMenuButtonLabel}>Logout</Text>
+                    </Pressable>
+                    <View style={styles.profileMenuDivider} />
+                    <Pressable
+                      onPress={handleDeleteAccountStart}
+                      style={[styles.profileMenuButton, styles.profileMenuDeleteButton]}
+                      testID={testIds.profileDeleteButton}
+                    >
+                      <Text style={[styles.profileMenuButtonLabel, styles.profileMenuDeleteButtonLabel]}>
+                        Delete Account
+                      </Text>
                     </Pressable>
                   </>
                 )}
@@ -1208,6 +1264,64 @@ export default function QuietRoomScreen() {
 
         <Modal
           animationType="fade"
+          transparent
+          visible={showDeleteAccountModal}
+          onRequestClose={handleDeleteAccountCancel}
+        >
+          <View style={styles.deleteAccountBackdrop}>
+            <Pressable
+              onPress={handleDeleteAccountCancel}
+              style={StyleSheet.absoluteFill}
+              disabled={deleteAccountPending}
+            />
+            <SafeAreaView style={styles.deleteAccountSafeArea}>
+              <View style={styles.deleteAccountCard} testID={testIds.deleteAccountModal}>
+                <Text style={styles.deleteAccountTitle}>Delete Account?</Text>
+                <Text style={styles.deleteAccountBody}>
+                  This permanently deletes your account and associated Quiet Room data. This
+                  action cannot be undone.
+                </Text>
+                {deleteAccountError ? (
+                  <Text style={styles.deleteAccountError} testID={testIds.deleteAccountError}>
+                    {deleteAccountError}
+                  </Text>
+                ) : null}
+                <View style={styles.deleteAccountActions}>
+                  <Pressable
+                    onPress={handleDeleteAccountCancel}
+                    style={({ pressed }) => [
+                      styles.deleteAccountSecondaryButton,
+                      pressed && !deleteAccountPending && styles.deleteAccountSecondaryButtonPressed,
+                    ]}
+                    disabled={deleteAccountPending}
+                    testID={testIds.deleteAccountCancelButton}
+                  >
+                    <Text style={styles.deleteAccountSecondaryButtonLabel}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={handleDeleteAccountConfirm}
+                    style={({ pressed }) => [
+                      styles.deleteAccountPrimaryButton,
+                      deleteAccountPending && styles.deleteAccountPrimaryButtonDisabled,
+                      pressed &&
+                        !deleteAccountPending &&
+                        styles.deleteAccountPrimaryButtonPressed,
+                    ]}
+                    disabled={deleteAccountPending}
+                    testID={testIds.deleteAccountConfirmButton}
+                  >
+                    <Text style={styles.deleteAccountPrimaryButtonLabel}>
+                      {deleteAccountPending ? "Deleting..." : "Delete Account"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </SafeAreaView>
+          </View>
+        </Modal>
+
+        <Modal
+          animationType="fade"
           transparent={false}
           visible={showCrucifix}
           onRequestClose={() => setShowCrucifix(false)}
@@ -1456,6 +1570,7 @@ const styles = StyleSheet.create({
     backgroundColor: mobileWeb.colors.surface,
     borderBottomColor: mobileWeb.colors.gray200,
     borderBottomWidth: 1,
+    overflow: "visible",
     paddingBottom: 16,
     paddingHorizontal: 16,
     paddingTop: headerTopPadding(),
@@ -1520,6 +1635,7 @@ const styles = StyleSheet.create({
   headerRight: {
     flexDirection: "row",
     gap: 8,
+    overflow: "visible",
     position: "absolute",
     right: 16,
     top: headerControlsTop(),
@@ -1788,10 +1904,104 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
+  profileMenuDeleteButton: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
+  },
+  profileMenuDeleteButtonLabel: {
+    color: "#B91C1C",
+  },
+  profileMenuDivider: {
+    backgroundColor: mobileWeb.colors.gray200,
+    height: 1,
+    marginTop: 12,
+  },
   profileMenuButtonLabel: {
     color: mobileWeb.colors.blue600,
     fontSize: 13,
     fontWeight: "600",
+  },
+  deleteAccountActions: {
+    columnGap: 10,
+    flexDirection: "row",
+    marginTop: 20,
+  },
+  deleteAccountBackdrop: {
+    backgroundColor: "rgba(15, 23, 42, 0.35)",
+    flex: 1,
+  },
+  deleteAccountBody: {
+    color: mobileWeb.colors.gray600,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 10,
+  },
+  deleteAccountCard: {
+    backgroundColor: mobileWeb.colors.white,
+    borderColor: mobileWeb.colors.gray200,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginHorizontal: 20,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+  },
+  deleteAccountError: {
+    color: "#B91C1C",
+    fontSize: 13,
+    fontWeight: "500",
+    marginTop: 12,
+  },
+  deleteAccountPrimaryButton: {
+    alignItems: "center",
+    backgroundColor: "#DC2626",
+    borderRadius: 12,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  deleteAccountPrimaryButtonDisabled: {
+    opacity: 0.65,
+  },
+  deleteAccountPrimaryButtonLabel: {
+    color: mobileWeb.colors.white,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  deleteAccountPrimaryButtonPressed: {
+    opacity: 0.88,
+  },
+  deleteAccountSafeArea: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+  },
+  deleteAccountSecondaryButton: {
+    alignItems: "center",
+    backgroundColor: mobileWeb.colors.white,
+    borderColor: mobileWeb.colors.gray200,
+    borderRadius: 12,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  deleteAccountSecondaryButtonLabel: {
+    color: mobileWeb.colors.gray700,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  deleteAccountSecondaryButtonPressed: {
+    backgroundColor: mobileWeb.colors.yellow50,
+  },
+  deleteAccountTitle: {
+    color: mobileWeb.colors.gray700,
+    fontSize: 20,
+    fontWeight: "700",
   },
   profileMenuHint: {
     color: mobileWeb.colors.gray500,
