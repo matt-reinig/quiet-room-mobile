@@ -9,7 +9,7 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "splash": {
-      "image": "./assets/branding/quiet-room-door-wordmark-marketing-splash.jpg",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#FFFFFF"
     },
@@ -41,12 +41,12 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#FFFFFF",
-          "image": "./assets/branding/quiet-room-door-wordmark-marketing.png",
+          "image": "./assets/splash-icon.png",
           "resizeMode": "contain",
           "imageWidth": 320,
           "android": {
             "backgroundColor": "#FFFFFF",
-            "image": "./assets/branding/quiet-room-door-wordmark-marketing.png",
+            "image": "./assets/splash-icon-android.png",
             "resizeMode": "contain",
             "imageWidth": 160
           }
