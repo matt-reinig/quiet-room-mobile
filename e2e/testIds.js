@@ -38,6 +38,8 @@ module.exports = {
   crucifixClose: 'quiet-room.crucifix.close',
   crucifixImage: 'quiet-room.crucifix.image',
   loginModal: 'quiet-room.login.modal',
+  loginAppleButton: 'quiet-room.login.apple',
+  loginGoogleButton: 'quiet-room.login.google',
   loginEmailInput: 'quiet-room.login.email',
   loginPasswordInput: 'quiet-room.login.password',
   loginError: 'quiet-room.login.error',

@@ -6,12 +6,11 @@ Ensure the iOS build does not violate App Store Guideline 4.8 (login requirement
 
 ---
 
-## Decision Required
+## Decision
 
-Choose one:
+Selected path:
 
 1. Add Sign in with Apple
-2. Remove Google login from iOS
 
 ---
 
@@ -19,8 +18,11 @@ Choose one:
 
 ### Option A — Add Apple Login
 
-- integrate Apple sign-in
-- map Apple identity to existing user model
+- integrate native Apple sign-in for iOS
+- exchange Apple identity token into Firebase via `apple.com`
+- keep email/password login available
+- keep Google login available only as a secondary option
+- regenerate native iOS output so Apple sign-in capability is applied
 
 ### Option B — Remove Google Login
 
@@ -35,11 +37,13 @@ None required
 
 ---
 
-## Playwright Test Strategy
+## Test Strategy
+
+Current repo coverage uses Detox for mobile auth flows.
 
 ### Test File
 
-/tests/ios-login-compliance.spec.ts
+`e2e/quiet-room.ios-login-compliance.test.js`
 
 ---
 
@@ -47,11 +51,12 @@ None required
 
 Steps:
 1. launch iOS build
-2. inspect login screen
+2. open login modal
+3. inspect sign-in options
 
 Assertions:
-- only allowed login methods present
-- no conflicting providers
+- Sign in with Apple is present on iOS
+- email/password login remains available
 
 ---
 
@@ -59,4 +64,14 @@ Assertions:
 
 - no guideline 4.8 violation risk
 - login flows consistent
-- verified via Playwright
+- verified via iOS mobile smoke or Detox
+
+---
+
+## Verification Notes
+
+- `npm run typecheck`
+- `npm run mobile:verify:local-qa`
+- `npm run native:sync:local-qa`
+- `bash ./scripts/with-mobile-env.sh qa qa npx detox build -c ios.sim.release`
+- `bash ./scripts/with-mobile-env.sh qa qa npx detox test -c ios.sim.release e2e/quiet-room.ios-login-compliance.test.js --record-logs all --take-screenshots failing`

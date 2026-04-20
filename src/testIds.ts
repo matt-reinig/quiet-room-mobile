@@ -47,6 +47,7 @@ export const testIds = {
   loginTabSignin: "quiet-room.login.tab.signin",
   loginTabSignup: "quiet-room.login.tab.signup",
   loginTabReset: "quiet-room.login.tab.reset",
+  loginAppleButton: "quiet-room.login.apple",
   loginGoogleButton: "quiet-room.login.google",
   loginEmailInput: "quiet-room.login.email",
   loginPasswordInput: "quiet-room.login.password",

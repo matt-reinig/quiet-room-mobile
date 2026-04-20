@@ -1,6 +1,9 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
+import * as AppleAuthentication from "expo-apple-authentication";
 import { makeRedirectUri } from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
+import * as Crypto from "expo-crypto";
 import {
   GoogleSignin,
   isErrorWithCode,
@@ -81,10 +84,41 @@ function mapGoogleNativeError(rawError: unknown) {
   return rawError instanceof Error ? rawError.message : "Google sign-in failed.";
 }
 
-export default function LoginModal({ onClose, visible }: LoginModalProps) {
-  const { loading, loginWithEmail, loginWithGoogle, requestPasswordReset, signUpWithEmail } =
-    useAuth();
+function mapAppleError(rawError: unknown) {
+  const code =
+    typeof rawError === "object" && rawError !== null && "code" in rawError
+      ? String(rawError.code || "")
+      : "";
 
+  if (code === "ERR_REQUEST_CANCELED") {
+    return null;
+  }
+
+  if (code === "ERR_INVALID_OPERATION") {
+    return "Apple sign-in is already in progress.";
+  }
+
+  return rawError instanceof Error ? rawError.message : "Apple sign-in failed.";
+}
+
+function createAppleNonce() {
+  return Array.from(Crypto.getRandomBytes(32), (value) => value.toString(16).padStart(2, "0")).join(
+    ""
+  );
+}
+
+export default function LoginModal({ onClose, visible }: LoginModalProps) {
+  const {
+    loading,
+    loginWithApple,
+    loginWithEmail,
+    loginWithGoogle,
+    requestPasswordReset,
+    signUpWithEmail,
+  } = useAuth();
+
+  const [appleBusy, setAppleBusy] = useState(false);
+  const [appleError, setAppleError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<LoginMode>("signin");
@@ -157,8 +191,12 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
 
     return Boolean(iosGoogleClientId) && Boolean(request);
   }, [iosGoogleClientId, nativeGoogleWebClientId, request]);
+  const showAppleSignIn = Platform.OS === "ios";
+  const socialLoginBusy = loading || appleBusy || googleBusy;
 
   const resetAll = () => {
+    setAppleBusy(false);
+    setAppleError(null);
     setEmail("");
     setError(null);
     setMode("signin");
@@ -310,6 +348,7 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
     }
 
     setGoogleBusy(true);
+    setAppleError(null);
     setGoogleError(null);
 
     if (Platform.OS === "android") {
@@ -318,6 +357,52 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
     }
 
     await doBrowserGoogleSignIn();
+  };
+
+  const doAppleSignIn = async () => {
+    if (Platform.OS !== "ios") {
+      return;
+    }
+
+    setAppleBusy(true);
+    setAppleError(null);
+    setGoogleError(null);
+
+    try {
+      const isAppleAuthAvailable = await AppleAuthentication.isAvailableAsync();
+
+      if (!isAppleAuthAvailable) {
+        throw new Error("Apple sign-in is not available on this device.");
+      }
+
+      const rawNonce = createAppleNonce();
+      const hashedNonce = await Crypto.digestStringAsync(
+        Crypto.CryptoDigestAlgorithm.SHA256,
+        rawNonce
+      );
+      const credential = await AppleAuthentication.signInAsync({
+        nonce: hashedNonce,
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        ],
+      });
+
+      if (!credential.identityToken) {
+        throw new Error("Apple sign-in did not return an identity token.");
+      }
+
+      await loginWithApple(credential.identityToken, rawNonce);
+      onClose?.();
+    } catch (rawError) {
+      const message = mapAppleError(rawError);
+
+      if (message) {
+        setAppleError(message);
+      }
+    } finally {
+      setAppleBusy(false);
+    }
   };
 
   if (!visible) {
@@ -371,36 +456,57 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
 
             {mode === "signin" ? (
               <>
+                {showAppleSignIn ? (
+                  <View
+                    pointerEvents={socialLoginBusy ? "none" : "auto"}
+                    style={socialLoginBusy ? styles.disabledButton : null}
+                  >
+                    <AppleAuthentication.AppleAuthenticationButton
+                      buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                      buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                      cornerRadius={12}
+                      onPress={() => {
+                        void doAppleSignIn();
+                      }}
+                      style={styles.appleButton}
+                      testID={testIds.loginAppleButton}
+                    />
+                  </View>
+                ) : null}
                 <Pressable
-                  disabled={loading || googleBusy || !googleAvailable}
+                  disabled={socialLoginBusy || !googleAvailable}
                   onPress={() => {
                     void doGoogleSignIn();
                   }}
                   style={[
-                    styles.primaryOutlineButton,
-                    (loading || googleBusy || !googleAvailable) && styles.disabledButton,
+                    styles.googleButton,
+                    (socialLoginBusy || !googleAvailable) && styles.disabledButton,
                   ]}
                   testID={testIds.loginGoogleButton}
                 >
-                  <Text style={styles.primaryOutlineButtonLabel}>
-                    {googleBusy
-                      ? Platform.OS === "android"
-                        ? "Opening Google..."
-                        : "Opening Google..."
-                      : "Sign in with Google"}
-                  </Text>
+                  <View style={styles.socialButtonContent}>
+                    <Ionicons name="logo-google" size={20} color="#4285F4" />
+                    <Text style={styles.googleButtonLabel}>
+                      {googleBusy
+                        ? Platform.OS === "android"
+                          ? "Opening Google..."
+                          : "Opening Google..."
+                        : "Sign in with Google"}
+                    </Text>
+                  </View>
                 </Pressable>
 
-                {!googleAvailable ? (
-                  <Text style={styles.helperCopy}>
-                    {Platform.OS === "android"
+                <Text style={styles.helperCopy}>
+                  {!googleAvailable
+                    ? Platform.OS === "android"
                       ? "Google sign-in is disabled until EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is set."
-                      : "Google sign-in is disabled until EXPO_PUBLIC_GOOGLE client IDs are set."}
-                  </Text>
-                ) : (
-                  <Text style={styles.helperCopy}>or use email and password</Text>
-                )}
+                      : "Google sign-in is disabled until EXPO_PUBLIC_GOOGLE client IDs are set. You can still continue with Apple or email and password."
+                    : showAppleSignIn
+                      ? "Continue with Apple, Google, or email and password."
+                      : "or use email and password"}
+                </Text>
 
+                {appleError ? <Text style={styles.error}>{appleError}</Text> : null}
                 {googleError ? <Text style={styles.error}>{googleError}</Text> : null}
               </>
             ) : null}
@@ -529,12 +635,31 @@ const styles = StyleSheet.create({
     color: mobileWeb.colors.gray500,
     fontWeight: "700",
   },
+  appleButton: {
+    height: 46,
+    width: "100%",
+  },
   disabledButton: {
     opacity: 0.6,
   },
   error: {
     color: mobileWeb.colors.red600,
     fontSize: 13,
+  },
+  googleButton: {
+    alignItems: "center",
+    backgroundColor: mobileWeb.colors.white,
+    borderColor: mobileWeb.colors.gray300,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 46,
+    paddingHorizontal: 16,
+  },
+  googleButtonLabel: {
+    color: mobileWeb.colors.gray900,
+    fontSize: 15,
+    fontWeight: "700",
   },
   headerRow: {
     alignItems: "center",
@@ -597,6 +722,12 @@ const styles = StyleSheet.create({
   sheetLifted: {
     marginBottom: 12,
   },
+  socialButtonContent: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+  },
   successButton: {
     alignItems: "center",
     backgroundColor: mobileWeb.colors.blue600,
@@ -629,4 +760,3 @@ const styles = StyleSheet.create({
     paddingRight: 12,
   },
 });
-

@@ -20,6 +20,7 @@ const {
   getAuth,
   GoogleAuthProvider,
   initializeAuth,
+  OAuthProvider,
   sendPasswordResetEmail,
   signInAnonymously,
   signInWithCredential,
@@ -156,6 +157,27 @@ export async function loginWithGoogle(idToken: string) {
   }
 
   const credential = GoogleAuthProvider.credential(trimmedToken);
+  return signInWithCredential(auth, credential);
+}
+
+export async function loginWithApple(idToken: string, rawNonce: string) {
+  const trimmedToken = typeof idToken === "string" ? idToken.trim() : "";
+  const trimmedNonce = typeof rawNonce === "string" ? rawNonce.trim() : "";
+
+  if (!trimmedToken) {
+    throw new Error("Apple sign-in token is missing.");
+  }
+
+  if (!trimmedNonce) {
+    throw new Error("Apple sign-in nonce is missing.");
+  }
+
+  const provider = new OAuthProvider("apple.com");
+  const credential = provider.credential({
+    idToken: trimmedToken,
+    rawNonce: trimmedNonce,
+  });
+
   return signInWithCredential(auth, credential);
 }
 

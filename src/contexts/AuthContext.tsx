@@ -5,6 +5,7 @@ import Spinner from "../components/Spinner";
 import {
   deleteAccount as firebaseDeleteAccount,
   ensureAuth as firebaseEnsureAuth,
+  loginWithApple as firebaseLoginWithApple,
   loginWithEmail as firebaseLoginWithEmail,
   loginWithGoogle as firebaseLoginWithGoogle,
   logout as firebaseLogout,
@@ -15,6 +16,7 @@ import {
 type AuthContextValue = {
   deleteAccount: () => Promise<void>;
   isAnon: boolean;
+  loginWithApple: (idToken: string, rawNonce: string) => Promise<unknown>;
   loading: boolean;
   loginWithEmail: (email: string, password: string) => Promise<unknown>;
   loginWithGoogle: (idToken: string) => Promise<unknown>;
@@ -72,6 +74,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     try {
       const loginUser = (await firebaseLoginWithGoogle(idToken)) as {
+        user: User;
+      };
+
+      setState({
+        initializing: false,
+        isAnon: Boolean(loginUser.user?.isAnonymous),
+        loading: false,
+        user: loginUser.user,
+      });
+
+      return loginUser;
+    } catch (error) {
+      setState((prev) => ({ ...prev, loading: false }));
+      throw error;
+    }
+  };
+
+  const loginWithApple = async (idToken: string, rawNonce: string) => {
+    setState((prev) => ({ ...prev, loading: true }));
+
+    try {
+      const loginUser = (await firebaseLoginWithApple(idToken, rawNonce)) as {
         user: User;
       };
 
@@ -178,6 +202,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     () => ({
       deleteAccount,
       isAnon: state.isAnon,
+      loginWithApple,
       loading: state.loading,
       loginWithEmail,
       loginWithGoogle,

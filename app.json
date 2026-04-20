@@ -17,7 +17,9 @@
       "supportsTablet": true,
       "buildNumber": "11",
       "bundleIdentifier": "com.quietroom.mobile",
+      "usesAppleSignIn": true,
       "infoPlist": {
+        "CFBundleAllowMixedLocalizations": true,
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -52,6 +54,7 @@
           }
         }
       ],
+      "expo-apple-authentication",
       "expo-web-browser",
       "@react-native-google-signin/google-signin"
     ]
