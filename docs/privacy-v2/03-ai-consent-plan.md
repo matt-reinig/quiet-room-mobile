@@ -2,7 +2,7 @@
 
 ## Goal
 
-Prevent sending user data to AI before explicit consent, and verify enforcement via Playwright.
+Prevent sending user data to AI before explicit consent, and verify enforcement on mobile.
 
 ---
 
@@ -33,6 +33,12 @@ Store consent in:
 - local storage (anonymous)
 - backend profile (authenticated)
 
+Backend contract:
+- `GET /api/account/ai-consent`
+- `PUT /api/account/ai-consent`
+- `/test/user-data` includes `consentState`
+- `/test/ai-consent` can seed/reset emulator consent state
+
 ---
 
 ## Test Hooks Required
@@ -42,11 +48,11 @@ Store consent in:
 
 ---
 
-## Playwright Test Strategy
+## Detox Test Strategy
 
 ### Test File
 
-/tests/ai-consent.spec.ts
+`e2e/quiet-room.ai-consent.test.js`
 
 ---
 
@@ -73,6 +79,12 @@ Store consent in:
 - send message
 - assert no modal
 
+### Test 4 — Authenticated Persistence
+
+- sign in with a disposable test user
+- accept consent
+- assert `/test/user-data` reports backend `consentState.aiSharingAccepted === true`
+
 ---
 
 ## Definition Of Done
@@ -80,4 +92,18 @@ Store consent in:
 - no message sent before consent
 - consent persists
 - backend reflects consent if stored
-- Playwright verifies all behavior
+- Detox verifies guest behavior and authenticated backend persistence
+
+---
+
+## Current Status
+
+- mobile gate implemented in `QuietRoomScreen.tsx`
+- anonymous consent persisted locally
+- authenticated consent persisted via `GET/PUT /api/account/ai-consent`
+- emulator test hooks expose consent through `/test/user-data` and `/test/ai-consent`
+- Android local-QA Detox coverage passed for:
+  - block before consent
+  - accept and resume
+  - cold relaunch persistence
+  - authenticated backend persistence

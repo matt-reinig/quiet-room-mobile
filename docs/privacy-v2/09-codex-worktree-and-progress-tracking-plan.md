@@ -87,6 +87,9 @@ For paired-repo streams, keep one row that includes:
 - shared task folder
 - ownership notes
 
+For repo-specific setup details that are easy to miss in a fresh worktree, see:
+- `docs/privacy-v2/10-quiet-room-mobile-worktree-setup-guide.md`
+
 ---
 
 ## Recommended Immediate Next Move

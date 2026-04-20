@@ -1,5 +1,5 @@
 const { expect: jestExpect } = require('@jest/globals');
-const { launchQuietRoom } = require('./helpers');
+const { acceptAiConsentIfVisible, launchQuietRoom } = require('./helpers');
 const ids = require('./testIds');
 
 jest.setTimeout(180000);
@@ -52,6 +52,7 @@ describe('Quiet Room scroll anchor', () => {
   it('pins the first user message near the top while the reply fills below it', async () => {
     await element(by.id(ids.composerInput)).replaceText('anchor smoke');
     await element(by.id(ids.sendButton)).tap();
+    await acceptAiConsentIfVisible();
 
     const messageList = element(by.id(ids.messageList));
     const openingMessage = element(by.id(ids.openingMessage));

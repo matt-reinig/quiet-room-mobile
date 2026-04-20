@@ -119,8 +119,11 @@ async function backendRequest(pathname, options = {}) {
   return payload;
 }
 
-async function launchQuietRoom() {
+async function launchQuietRoom(options = {}) {
+  const { delete: deleteAppData = false } = options;
+
   await device.launchApp({
+    delete: deleteAppData,
     newInstance: true,
     launchArgs: {
       detoxEnableSynchronization: 0,
@@ -137,6 +140,19 @@ async function waitForExistsMaybe(elementHandle, timeoutMs) {
   } catch {
     return false;
   }
+}
+
+async function acceptAiConsentIfVisible(timeoutMs = 4000) {
+  const consentModal = element(by.id(ids.aiConsentModal));
+  const consentVisible = await waitForExistsMaybe(consentModal, timeoutMs);
+
+  if (!consentVisible) {
+    return false;
+  }
+
+  await element(by.id(ids.aiConsentAcceptButton)).tap();
+  await waitFor(consentModal).not.toExist().withTimeout(15000);
+  return true;
 }
 
 async function ensureGuestSession() {
@@ -252,6 +268,24 @@ async function fetchUserData({ uid }) {
   return backendRequest(`/test/user-data?${query}`);
 }
 
+async function waitForUserConsentState({ uid, aiSharingAccepted, timeoutMs = 10000, intervalMs = 500 }) {
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    const userData = await fetchUserData({ uid });
+    if (userData?.consentState?.aiSharingAccepted === aiSharingAccepted) {
+      return userData;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  const lastUserData = await fetchUserData({ uid });
+  throw new Error(
+    `Timed out waiting for consent state ${aiSharingAccepted} for ${uid}: ${JSON.stringify(lastUserData)}`
+  );
+}
+
 async function configureAccountDeletionMode({ uid, mode }) {
   return backendRequest('/test/account-deletion-mode', {
     method: 'POST',
@@ -265,7 +299,23 @@ async function configureAccountDeletionMode({ uid, mode }) {
   });
 }
 
+async function configureAiConsent({ uid, aiSharingAccepted, source }) {
+  return backendRequest('/test/ai-consent', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      uid,
+      aiSharingAccepted,
+      source,
+    }),
+  });
+}
+
 module.exports = {
+  acceptAiConsentIfVisible,
+  configureAiConsent,
   configureAccountDeletionMode,
   createDisposableTestUser,
   fetchUserData,
@@ -278,5 +328,6 @@ module.exports = {
   loginWithKnownAccount,
   openLoginModal,
   seedConversations,
+  waitForUserConsentState,
   waitForExistsMaybe,
 };

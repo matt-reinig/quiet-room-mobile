@@ -3,6 +3,7 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   ScrollView,
   Keyboard,
   Image,
@@ -28,6 +29,7 @@ import Spinner from "../components/Spinner";
 import { useAuth } from "../contexts/AuthContext";
 import { useFeatureFlag } from "../contexts/FeatureFlagsContext";
 import { useChatController } from "../hooks/useChatController";
+import { getAiConsentAccepted, setAiConsentAccepted } from "../lib/aiConsent";
 import { mobileWeb } from "../theme/mobileWeb";
 import { messageBubbleTestId, testIds } from "../testIds";
 import type { ChatMessage } from "../types/chat";
@@ -123,10 +125,15 @@ export default function QuietRoomScreen() {
   const [showCrucifix, setShowCrucifix] = useState(false);
   const [showChatOptions, setShowChatOptions] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showAiConsentModal, setShowAiConsentModal] = useState(false);
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
   const [showComposerFullscreen, setShowComposerFullscreen] = useState(false);
   const [showConversations, setShowConversations] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [aiConsentAcceptedState, setAiConsentAcceptedState] = useState(false);
+  const [aiConsentLoaded, setAiConsentLoaded] = useState(false);
+  const [aiConsentPending, setAiConsentPending] = useState<string | null>(null);
+  const [aiConsentSaving, setAiConsentSaving] = useState(false);
   const [voiceModeEnabled, setVoiceModeEnabled] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
@@ -204,6 +211,31 @@ export default function QuietRoomScreen() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setShowAiConsentModal(false);
+    setAiConsentPending(null);
+    setAiConsentLoaded(false);
+
+    const hydrateAiConsent = async () => {
+      const accepted = await getAiConsentAccepted(user);
+
+      if (cancelled) {
+        return;
+      }
+
+      setAiConsentAcceptedState(accepted);
+      setAiConsentLoaded(true);
+    };
+
+    void hydrateAiConsent();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.isAnonymous, user?.uid]);
 
   useEffect(() => {
     const hydrateVoiceModePreference = async () => {
@@ -704,20 +736,59 @@ export default function QuietRoomScreen() {
     listRef.current?.scrollToEnd({ animated });
   }
 
-  const handleSendPress = useCallback(() => {
-    const nextInput = inputValueRef.current.trim();
-    if (!nextInput || loading) {
-      return;
-    }
-
-    armSendAnchor();
-    void sendMessage(nextInput);
-  }, [armSendAnchor, loading, sendMessage]);
-
   const dismissKeyboard = useCallback(() => {
     composerInputRef.current?.blur();
     Keyboard.dismiss();
   }, []);
+
+  const requestSendWithConsent = useCallback(
+    async (text: string) => {
+      const nextInput = text.trim();
+
+      if (!nextInput || loading) {
+        return;
+      }
+
+      let consentAccepted = aiConsentAcceptedState;
+
+      if (!aiConsentLoaded) {
+        consentAccepted = await getAiConsentAccepted(user);
+        setAiConsentAcceptedState(consentAccepted);
+        setAiConsentLoaded(true);
+      }
+
+      if (!consentAccepted) {
+        dismissKeyboard();
+        setShowComposerFullscreen(false);
+        setAiConsentPending(nextInput);
+        setShowAiConsentModal(true);
+        return;
+      }
+
+      armSendAnchor();
+      void sendMessage(nextInput);
+    },
+    [
+      aiConsentAcceptedState,
+      aiConsentLoaded,
+      armSendAnchor,
+      dismissKeyboard,
+      loading,
+      sendMessage,
+      user,
+    ]
+  );
+
+  const handleSendPress = useCallback(() => {
+    const nextInput = inputValueRef.current.trim();
+
+    if (!nextInput) {
+      return;
+    }
+
+    void requestSendWithConsent(nextInput);
+  }, [requestSendWithConsent]);
+
   const handleProfilePress = useCallback(() => {
     Keyboard.dismiss();
     setShowChatOptions(false);
@@ -767,6 +838,47 @@ export default function QuietRoomScreen() {
         setDeleteAccountPending(false);
       });
   }, [deleteAccount, deleteAccountPending]);
+
+  const handleAiConsentCancel = useCallback(() => {
+    if (aiConsentSaving) {
+      return;
+    }
+
+    setAiConsentPending(null);
+    setShowAiConsentModal(false);
+  }, [aiConsentSaving]);
+
+  const handleAiConsentAccept = useCallback(() => {
+    if (aiConsentSaving) {
+      return;
+    }
+
+    setAiConsentSaving(true);
+
+    void setAiConsentAccepted(user, true)
+      .then(() => {
+        const pendingMessage = aiConsentPending?.trim() || "";
+
+        setAiConsentAcceptedState(true);
+        setAiConsentLoaded(true);
+        setAiConsentPending(null);
+        setShowAiConsentModal(false);
+
+        if (!pendingMessage) {
+          return;
+        }
+
+        armSendAnchor();
+        void sendMessage(pendingMessage);
+      })
+      .catch((error) => {
+        console.error("Failed to persist AI consent", error);
+        Alert.alert("Quiet Room", "We couldn't save your consent right now. Please try again.");
+      })
+      .finally(() => {
+        setAiConsentSaving(false);
+      });
+  }, [aiConsentPending, aiConsentSaving, armSendAnchor, sendMessage, user]);
 
   const showScrollButtons =
     (showScrollTopButton || showNewestButton) &&
@@ -1055,8 +1167,7 @@ export default function QuietRoomScreen() {
                   dismissKeyboard();
                   inputValueRef.current = prompt;
                   setInput(prompt);
-                  armSendAnchor();
-                  void sendMessage(prompt);
+                  void requestSendWithConsent(prompt);
                 }}
               />
             </View>
@@ -1259,6 +1370,57 @@ export default function QuietRoomScreen() {
               </Pressable>
             </View>
           </SafeAreaView>
+        </Modal>
+
+        <Modal
+          animationType="fade"
+          transparent
+          visible={showAiConsentModal}
+          onRequestClose={handleAiConsentCancel}
+        >
+          <View style={styles.aiConsentBackdrop}>
+            <Pressable
+              onPress={handleAiConsentCancel}
+              style={StyleSheet.absoluteFill}
+              disabled={aiConsentSaving}
+            />
+            <SafeAreaView style={styles.aiConsentSafeArea}>
+              <View style={styles.aiConsentCard} testID={testIds.aiConsentModal}>
+                <Text style={styles.aiConsentTitle}>Before you continue</Text>
+                <Text style={styles.aiConsentBody}>
+                  Quiet Room sends the message you type to our AI service so it can generate a
+                  response. Continue only if you consent to sharing that message for this purpose.
+                </Text>
+                <View style={styles.aiConsentActions}>
+                  <Pressable
+                    onPress={handleAiConsentCancel}
+                    style={({ pressed }) => [
+                      styles.aiConsentSecondaryButton,
+                      pressed && !aiConsentSaving && styles.aiConsentSecondaryButtonPressed,
+                    ]}
+                    disabled={aiConsentSaving}
+                    testID={testIds.aiConsentCancelButton}
+                  >
+                    <Text style={styles.aiConsentSecondaryButtonLabel}>Not now</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={handleAiConsentAccept}
+                    style={({ pressed }) => [
+                      styles.aiConsentPrimaryButton,
+                      aiConsentSaving && styles.aiConsentPrimaryButtonDisabled,
+                      pressed && !aiConsentSaving && styles.aiConsentPrimaryButtonPressed,
+                    ]}
+                    disabled={aiConsentSaving}
+                    testID={testIds.aiConsentAcceptButton}
+                  >
+                    <Text style={styles.aiConsentPrimaryButtonLabel}>
+                      {aiConsentSaving ? "Saving..." : "I Consent"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </SafeAreaView>
+          </View>
         </Modal>
 
 
@@ -1920,6 +2082,82 @@ const styles = StyleSheet.create({
     color: mobileWeb.colors.blue600,
     fontSize: 13,
     fontWeight: "600",
+  },
+  aiConsentActions: {
+    columnGap: 10,
+    flexDirection: "row",
+    marginTop: 20,
+  },
+  aiConsentBackdrop: {
+    backgroundColor: "rgba(15, 23, 42, 0.35)",
+    flex: 1,
+  },
+  aiConsentBody: {
+    color: mobileWeb.colors.gray600,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 10,
+  },
+  aiConsentCard: {
+    backgroundColor: mobileWeb.colors.white,
+    borderColor: mobileWeb.colors.gray200,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginHorizontal: 20,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+  },
+  aiConsentPrimaryButton: {
+    alignItems: "center",
+    backgroundColor: mobileWeb.colors.blue600,
+    borderRadius: 12,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  aiConsentPrimaryButtonDisabled: {
+    opacity: 0.65,
+  },
+  aiConsentPrimaryButtonLabel: {
+    color: mobileWeb.colors.white,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  aiConsentPrimaryButtonPressed: {
+    opacity: 0.88,
+  },
+  aiConsentSafeArea: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+  },
+  aiConsentSecondaryButton: {
+    alignItems: "center",
+    backgroundColor: mobileWeb.colors.white,
+    borderColor: mobileWeb.colors.gray200,
+    borderRadius: 12,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  aiConsentSecondaryButtonLabel: {
+    color: mobileWeb.colors.gray700,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  aiConsentSecondaryButtonPressed: {
+    backgroundColor: mobileWeb.colors.yellow50,
+  },
+  aiConsentTitle: {
+    color: mobileWeb.colors.gray700,
+    fontSize: 20,
+    fontWeight: "700",
   },
   deleteAccountActions: {
     columnGap: 10,
