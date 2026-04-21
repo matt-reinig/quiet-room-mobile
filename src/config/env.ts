@@ -22,6 +22,16 @@ function trimTrailingSlashes(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
+function normalizeAndroidHostAliasForPlatform(value: string): string {
+  if (Platform.OS === "android") {
+    return value;
+  }
+
+  return value
+    .replace("://10.0.2.2", "://localhost")
+    .replace(/^10\.0\.2\.2(?=:|$)/, "localhost");
+}
+
 function resolveAppVariant(value: string | undefined): AppVariant {
   return value?.toLowerCase() === "qa" ? "qa" : "prod";
 }
@@ -60,7 +70,7 @@ const webAppUrlRaw =
 export const APP_VARIANT = resolveAppVariant(appVariantRaw);
 export const RELEASE_ENV = resolveReleaseEnv(releaseEnvRaw);
 export const APP_SCHEME = resolveAppScheme(APP_VARIANT);
-export const API_BASE = trimTrailingSlashes(apiBaseRaw);
+export const API_BASE = trimTrailingSlashes(normalizeAndroidHostAliasForPlatform(apiBaseRaw));
 
 export const STREAMING_BASE = trimTrailingSlashes(
   process.env.EXPO_PUBLIC_STREAMING_BASE || ""
@@ -90,7 +100,7 @@ export const FIREBASE_CONFIG: FirebaseConfig = {
 };
 
 export const FIREBASE_AUTH_EMULATOR_HOST = (
-  process.env.EXPO_PUBLIC_FB_AUTH_EMULATOR_HOST || ""
+  normalizeAndroidHostAliasForPlatform(process.env.EXPO_PUBLIC_FB_AUTH_EMULATOR_HOST || "")
 ).trim();
 
 export const GOOGLE_AUTH_CONFIG: GoogleAuthConfig = {

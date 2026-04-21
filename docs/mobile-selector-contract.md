@@ -12,6 +12,7 @@ Source of truth: `src/testIds.ts`
 - `quiet-room.conversations.open`
 - `quiet-room.about.open`
 - `quiet-room.profile.open`
+- `quiet-room.crucifix.wrapper`
 - `quiet-room.crucifix.open`
 
 ## Messages
@@ -38,7 +39,11 @@ Notes:
 
 ## Composer
 
+- `quiet-room.model.picker`
+- `quiet-room.model.selected`
 - `quiet-room.model.toggle`
+- `quiet-room.model.option.{model}`
+- `quiet-room.composer.wrapper`
 - `quiet-room.composer.input`
 - `quiet-room.composer.expand`
 - `quiet-room.send`

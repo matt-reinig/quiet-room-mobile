@@ -15,6 +15,9 @@ module.exports = {
   deleteAccountError: 'quiet-room.delete-account.error',
   messageList: 'quiet-room.messages.list',
   openingMessage: 'quiet-room.message.opening',
+  modelPickerContainer: 'quiet-room.model.picker',
+  modelSelectedLabel: 'quiet-room.model.selected',
+  composerWrapper: 'quiet-room.composer.wrapper',
   composerInput: 'quiet-room.composer.input',
   composerExpand: 'quiet-room.composer.expand',
   composerFullscreenInput: 'quiet-room.composer.fullscreen.input',
@@ -33,6 +36,7 @@ module.exports = {
   conversationsList: 'quiet-room.conversations.list',
   conversationsNew: 'quiet-room.conversations.new',
   conversationsLoadingMore: 'quiet-room.conversations.loading-more',
+  crucifixWrapper: 'quiet-room.crucifix.wrapper',
   crucifixButton: 'quiet-room.crucifix.open',
   crucifixModal: 'quiet-room.crucifix.modal',
   crucifixClose: 'quiet-room.crucifix.close',
@@ -55,5 +59,8 @@ module.exports = {
     voice(role, index) {
       return `quiet-room.message.${role}.${index}.voice`;
     },
+  },
+  modelOption(model) {
+    return `quiet-room.model.option.${model}`;
   },
 };

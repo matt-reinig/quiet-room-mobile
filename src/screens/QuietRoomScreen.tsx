@@ -30,8 +30,9 @@ import { useAuth } from "../contexts/AuthContext";
 import { useFeatureFlag } from "../contexts/FeatureFlagsContext";
 import { useChatController } from "../hooks/useChatController";
 import { getAiConsentAccepted, setAiConsentAccepted } from "../lib/aiConsent";
+import { MODEL_LABELS } from "../lib/chatModels";
 import { mobileWeb } from "../theme/mobileWeb";
-import { messageBubbleTestId, testIds } from "../testIds";
+import { messageBubbleTestId, modelOptionTestId, testIds } from "../testIds";
 import type { ChatMessage } from "../types/chat";
 
 const VOICE_MODE_STORAGE_KEY = "gabriel.voiceModeEnabled";
@@ -63,19 +64,6 @@ type RenderMessage = {
   messageIndex: number | null;
 };
 
-
-function modelLabel(model: string): string {
-  if (model === "gpt-5.1-chat-latest") {
-    return "GPT-5.1";
-  }
-
-  if (model === "gpt-5.3-chat-latest") {
-    return "GPT-5.3";
-  }
-
-  return model;
-}
-
 function headerTopPadding(): number {
   return Platform.OS === "ios" ? 84 : 100;
 }
@@ -94,7 +82,7 @@ function crucifixTopMargin(): number {
 
 export default function QuietRoomScreen() {
   const { deleteAccount, isAnon, logout, user } = useAuth();
-  const voiceModeAvailable = useFeatureFlag("voice_mode", true);
+  const voiceModeAvailable = useFeatureFlag("voice_mode", false);
 
   const {
     chatLoading,
@@ -120,6 +108,11 @@ export default function QuietRoomScreen() {
     showThinking,
     sidebarLoading,
   } = useChatController({ isAnon, user });
+  const showModelSection = modelOptions.length > 1;
+  const showChatOptionsButton = voiceModeAvailable || showModelSection;
+  const composerModelLabel = showChatOptionsButton
+    ? MODEL_LABELS[currentModel] || currentModel || ""
+    : "";
 
   const [showAbout, setShowAbout] = useState(false);
   const [showCrucifix, setShowCrucifix] = useState(false);
@@ -261,6 +254,12 @@ export default function QuietRoomScreen() {
       // Intentionally ignored.
     });
   }, [voiceModeEnabled]);
+
+  useEffect(() => {
+    if (!showChatOptionsButton && showChatOptions) {
+      setShowChatOptions(false);
+    }
+  }, [showChatOptions, showChatOptionsButton]);
 
   useEffect(() => {
     lastVoiceAutoPlayKeyRef.current = null;
@@ -1007,7 +1006,7 @@ export default function QuietRoomScreen() {
             ) : null}
           </View>
           {!isKeyboardVisible ? (
-            <View style={styles.crucifixWrap}>
+            <View style={styles.crucifixWrap} testID={testIds.crucifixWrapper}>
               <Pressable
                 onPress={() => { setShowProfileMenu(false); setShowChatOptions(false); setShowCrucifix(true); }}
                 onPressIn={dismissKeyboard}
@@ -1185,68 +1184,107 @@ export default function QuietRoomScreen() {
               : null,
           ]}
         >
-            <View style={[styles.modelColumn, showChatOptions && styles.modelColumnMenuOpen]}>
-              <Text style={styles.modelCaption}>{modelLabel(currentModel)}</Text>
-              <Pressable
-                disabled={loading}
-                onPress={() => {
-                  setShowProfileMenu(false);
-                  setShowChatOptions((previous) => !previous);
-                }}
-                style={({ pressed }) => [styles.modelButton, pressed && !loading && styles.modelButtonPressed]}
-                testID={testIds.modelMenuButton}
+            {showChatOptionsButton ? (
+              <View
+                style={[styles.modelColumn, showChatOptions && styles.modelColumnMenuOpen]}
+                testID={testIds.modelPickerContainer}
               >
-                <Ionicons name="add" size={22} color={mobileWeb.colors.gray600} style={styles.modelButtonIcon} />
-              </Pressable>
+                <Text style={styles.modelCaption} testID={testIds.modelSelectedLabel}>
+                  {composerModelLabel}
+                </Text>
+                <Pressable
+                  disabled={loading}
+                  onPress={() => {
+                    setShowProfileMenu(false);
+                    setShowChatOptions((previous) => !previous);
+                  }}
+                  style={({ pressed }) => [
+                    styles.modelButton,
+                    pressed && !loading && styles.modelButtonPressed,
+                  ]}
+                  testID={testIds.modelMenuButton}
+                >
+                  <Ionicons
+                    name="add"
+                    size={22}
+                    color={mobileWeb.colors.gray600}
+                    style={styles.modelButtonIcon}
+                  />
+                </Pressable>
 
-              {showChatOptions ? (
-                <View style={styles.modelMenu} testID={testIds.modelMenu}>
-                  {voiceModeAvailable ? (
-                    <Pressable
-                      onPress={() => {
-                        setVoiceModeEnabled((previous) => !previous);
-                      }}
-                      style={styles.modelMenuVoiceRow}
-                      testID={testIds.modelMenuVoiceToggle}
-                    >
-                      <View style={styles.modelMenuVoiceCopy}>
-                        <Text style={styles.modelMenuVoiceTitle}>Voice mode</Text>
-                        <Text style={styles.modelMenuVoiceSubtitle}>Auto-play replies</Text>
-                      </View>
-                      <View style={[styles.modelMenuSwitchTrack, voiceModeEnabled && styles.modelMenuSwitchTrackOn]}>
-                        <View style={[styles.modelMenuSwitchThumb, voiceModeEnabled && styles.modelMenuSwitchThumbOn]} />
-                      </View>
-                    </Pressable>
-                  ) : null}
+                {showChatOptions ? (
+                  <View style={styles.modelMenu} testID={testIds.modelMenu}>
+                    {voiceModeAvailable ? (
+                      <>
+                        <Pressable
+                          onPress={() => {
+                            setVoiceModeEnabled((previous) => !previous);
+                          }}
+                          style={styles.modelMenuVoiceRow}
+                          testID={testIds.modelMenuVoiceToggle}
+                        >
+                          <View style={styles.modelMenuVoiceCopy}>
+                            <Text style={styles.modelMenuVoiceTitle}>Voice mode</Text>
+                            <Text style={styles.modelMenuVoiceSubtitle}>Auto-play replies</Text>
+                          </View>
+                          <View
+                            style={[
+                              styles.modelMenuSwitchTrack,
+                              voiceModeEnabled && styles.modelMenuSwitchTrackOn,
+                            ]}
+                          >
+                            <View
+                              style={[
+                                styles.modelMenuSwitchThumb,
+                                voiceModeEnabled && styles.modelMenuSwitchThumbOn,
+                              ]}
+                            />
+                          </View>
+                        </Pressable>
+                        {showModelSection ? <View style={styles.modelMenuDivider} /> : null}
+                      </>
+                    ) : null}
 
-                  {voiceModeAvailable ? <View style={styles.modelMenuDivider} /> : null}
+                    {showModelSection ? (
+                      <>
+                        <Text style={styles.modelMenuSectionLabel}>MODEL</Text>
 
-                  <Text style={styles.modelMenuSectionLabel}>MODEL</Text>
+                        {modelOptions.map((option) => {
+                          const active = option === currentModel;
 
-                  {modelOptions.map((option) => {
-                    const active = option === currentModel;
+                          return (
+                            <Pressable
+                              key={option}
+                              onPress={() => {
+                                setCurrentModel(option);
+                                setShowChatOptions(false);
+                              }}
+                              style={[
+                                styles.modelMenuOption,
+                                active && styles.modelMenuOptionActive,
+                              ]}
+                              testID={modelOptionTestId(option)}
+                            >
+                              <Text
+                                style={[
+                                  styles.modelMenuOptionLabel,
+                                  active && styles.modelMenuOptionLabelActive,
+                                ]}
+                              >
+                                {MODEL_LABELS[option] || option}
+                              </Text>
+                              {active ? <Text style={styles.modelMenuOptionBadge}>Active</Text> : null}
+                            </Pressable>
+                          );
+                        })}
+                      </>
+                    ) : null}
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
 
-                    return (
-                      <Pressable
-                        key={option}
-                        onPress={() => {
-                          setCurrentModel(option);
-                          setShowChatOptions(false);
-                        }}
-                        style={[styles.modelMenuOption, active && styles.modelMenuOptionActive]}
-                      >
-                        <Text style={[styles.modelMenuOptionLabel, active && styles.modelMenuOptionLabelActive]}>
-                          {modelLabel(option)}
-                        </Text>
-                        {active ? <Text style={styles.modelMenuOptionBadge}>Active</Text> : null}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ) : null}
-            </View>
-
-            <View style={styles.composerWrap}>
+            <View style={styles.composerWrap} testID={testIds.composerWrapper}>
               {(voiceModeAvailable || (!showComposerFullscreen && composerVisibleLines > 3)) ? (
                 <View style={styles.composerMetaRow}>
                   {voiceModeAvailable ? (

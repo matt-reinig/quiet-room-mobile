@@ -4,6 +4,7 @@ const ids = require('./testIds');
 
 let cachedCreds = null;
 let cachedBackendConfig = null;
+const DEFAULT_E2E_APP_SCHEME = process.env.E2E_APP_SCHEME || 'quietroommobileqa';
 
 function parseEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -120,17 +121,40 @@ async function backendRequest(pathname, options = {}) {
 }
 
 async function launchQuietRoom(options = {}) {
-  const { delete: deleteAppData = false } = options;
+  const {
+    appScheme = DEFAULT_E2E_APP_SCHEME,
+    delete: deleteAppData = false,
+    featureFlags = null,
+    url,
+  } = options;
+  const launchUrl =
+    typeof url === 'string' && url.trim()
+      ? url.trim()
+      : featureFlags && typeof featureFlags === 'object'
+        ? `${appScheme}://quiet-room?ff=${encodeURIComponent(JSON.stringify(featureFlags))}`
+      : undefined;
 
   await device.launchApp({
     delete: deleteAppData,
     newInstance: true,
+    url: launchUrl,
     launchArgs: {
       detoxEnableSynchronization: 0,
     },
   });
 
   await device.disableSynchronization();
+}
+
+function buildQuietRoomFeatureFlagsUrl(featureFlags, appScheme = DEFAULT_E2E_APP_SCHEME) {
+  return `${appScheme}://quiet-room?ff=${encodeURIComponent(JSON.stringify(featureFlags))}`;
+}
+
+async function updateQuietRoomFeatureFlags(featureFlags, options = {}) {
+  const { appScheme = DEFAULT_E2E_APP_SCHEME } = options;
+  await device.openURL({
+    url: buildQuietRoomFeatureFlagsUrl(featureFlags, appScheme),
+  });
 }
 
 async function waitForExistsMaybe(elementHandle, timeoutMs) {
@@ -315,6 +339,7 @@ async function configureAiConsent({ uid, aiSharingAccepted, source }) {
 
 module.exports = {
   acceptAiConsentIfVisible,
+  buildQuietRoomFeatureFlagsUrl,
   configureAiConsent,
   configureAccountDeletionMode,
   createDisposableTestUser,
@@ -328,6 +353,7 @@ module.exports = {
   loginWithKnownAccount,
   openLoginModal,
   seedConversations,
+  updateQuietRoomFeatureFlags,
   waitForUserConsentState,
   waitForExistsMaybe,
 };

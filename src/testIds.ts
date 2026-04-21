@@ -15,6 +15,7 @@ export const testIds = {
   deleteAccountConfirmButton: "quiet-room.delete-account.confirm",
   deleteAccountError: "quiet-room.delete-account.error",
   conversationsButton: "quiet-room.conversations.open",
+  crucifixWrapper: "quiet-room.crucifix.wrapper",
   crucifixButton: "quiet-room.crucifix.open",
   crucifixModal: "quiet-room.crucifix.modal",
   crucifixClose: "quiet-room.crucifix.close",
@@ -25,10 +26,13 @@ export const testIds = {
   promptCuesRoot: "quiet-room.prompt-cues.root",
   promptCuesToggle: "quiet-room.prompt-cues.toggle",
   promptCuesPanel: "quiet-room.prompt-cues.panel",
+  modelPickerContainer: "quiet-room.model.picker",
+  modelSelectedLabel: "quiet-room.model.selected",
   modelMenuButton: "quiet-room.model.toggle",
   modelMenu: "quiet-room.model.menu",
   modelMenuVoiceToggle: "quiet-room.model.voice-toggle",
   voiceModeIndicator: "quiet-room.voice-mode.indicator",
+  composerWrapper: "quiet-room.composer.wrapper",
   composerInput: "quiet-room.composer.input",
   composerExpand: "quiet-room.composer.expand",
   composerFullscreenInput: "quiet-room.composer.fullscreen.input",
@@ -87,4 +91,8 @@ export function conversationRenameButtonTestId(id: string): string {
 
 export function conversationDeleteButtonTestId(id: string): string {
   return `quiet-room.conversation.${id}.delete`;
+}
+
+export function modelOptionTestId(model: string): string {
+  return `quiet-room.model.option.${model}`;
 }
