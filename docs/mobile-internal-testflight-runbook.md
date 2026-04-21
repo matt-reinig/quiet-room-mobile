@@ -147,6 +147,19 @@ Pick the lane before you archive:
   - release env: `prod`
   - destination record: prod App Store Connect app
 
+## Known Signing Profiles
+
+Known-good signing from prior App Store Connect exports:
+
+- QA used Xcode automatic signing against Apple team `SV7SPMY2Q8`.
+- QA export profile: `iOS Team Store Provisioning Profile: com.quietroom.mobile.qa`
+- QA export profile UUID: `0aa92c3d-7853-48e2-8064-6b3f4191a6b7`
+- QA certificate: `Apple Distribution`, SHA1 `ADDA1EC5846049A5B4DD0FEA4D81E4EB6D5E5A9E`
+- QA app identifier entitlement: `SV7SPMY2Q8.com.quietroom.mobile.qa`
+- PROD has also been uploaded manually with local profile `matt profile`, UUID `813aa861-2624-427f-a3bf-2818af5f10c4`, for `SV7SPMY2Q8.com.quietroom.mobile`.
+
+The QA profile above was observed in `build-records/ios/QuietRoomQA-export/DistributionSummary.plist` from the store-distribution worktree. It is not currently installed as a named local profile under `~/Library/MobileDevice/Provisioning Profiles`; the retained local profile there is the prod `matt profile`.
+
 ## Archive And Upload
 
 Current proven repo-side order:
