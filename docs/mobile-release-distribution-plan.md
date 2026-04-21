@@ -7,7 +7,7 @@ Current priority:
 1. Clear the review-critical compliance blockers identified in `docs/deep-research-report.md`
 2. Align the privacy-policy site, in-app UX, and store-console disclosures with one verified data story
 3. Turn the new QA/prod store records into a working distribution pipeline
-4. Validate first QA uploads on Apple and Play
+4. Validate QA install/tester distribution from the newly proven Apple and Play upload paths
 5. Validate first prod-candidate uploads on Apple and Play
 6. Capture final release blockers from real-device testing
 
@@ -26,6 +26,8 @@ What has changed since this plan was first written:
 - the four matching Apple / Play app records now exist for QA and prod
 - Android release signing is now wired locally with a real upload-key path
 - branded QA and prod iOS builds have already uploaded successfully to App Store Connect
+- QA iOS build `12` was uploaded from the main `develop` tree on April 21, 2026 using the documented unsigned-archive plus automatic export/upload path
+- QA Android `versionCode 5` was uploaded from the main `develop` tree on April 21, 2026 as a draft internal Play release
 - the first QA Play upload reached Google Play and was blocked by missing privacy-policy metadata because the app requests `android.permission.RECORD_AUDIO`
 - the privacy-policy URL gate is no longer the main issue; the deeper remaining work is review alignment across policy copy, in-app behavior, and store disclosures
 - the next planning focus should shift from "make the split possible" to "finish store compliance and make the split operational for release and tester distribution"
@@ -69,10 +71,11 @@ Important current gaps:
 - explicit AI-sharing disclosure/consent is not yet implemented
 - privacy policy and store disclosure work are not yet fully aligned with the app's real data flows
 - mobile is not yet aligned with the desktop app's latest feature-flagged model-picker and conditional graphic/chrome behavior
-- Play app-content metadata still needs to be completed before Android internal-testing uploads can finish
+- Play app-content metadata still needs to be completed before broader rollout/review can be considered ready
 - the Android permission surface still needs a final store-policy audit
 - the iOS privacy-manifest requirement has not been audited yet
-- the QA / prod Play records still need first successful upload, tester-group, and track validation
+- the QA Play record now has a proven upload path, but still needs tester install validation and any console-owned draft rollout/review steps
+- the prod Play record still needs prod-candidate internal tester validation before public release planning
 
 Current review-critical blockers from the April 15, 2026 report:
 
