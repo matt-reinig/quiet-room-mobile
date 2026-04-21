@@ -52,6 +52,19 @@ Include:
 
 ---
 
+### Step 5 — Verify Store-Candidate Builds In Emulators
+
+Before submitting, install and launch the store-candidate builds on both local test surfaces:
+- iOS simulator using the App Store/TestFlight candidate bundle
+- Android emulator using the Play Store candidate package
+
+Confirm:
+- the app opens to the expected production-branded Quiet Room experience
+- privacy, support, and account-deletion links resolve to the public production site
+- no QA app name, QA bundle/package reference, or QA-only backend copy appears in the production submission path
+
+---
+
 ## Test Hooks Required
 
 None
@@ -85,3 +98,4 @@ Assertions:
 - reviewer notes prepared
 - no contradictions between app, backend, and policy
 - Playwright verifies links
+- iOS simulator and Android emulator store-candidate checks are recorded

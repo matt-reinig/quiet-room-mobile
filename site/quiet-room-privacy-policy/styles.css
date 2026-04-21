@@ -77,7 +77,8 @@ img {
   border-radius: 14px;
   box-shadow: var(--shadow);
   background: #ffffff;
-  padding: 6px;
+  padding: 5px;
+  object-fit: contain;
 }
 
 .brand-text {
@@ -223,16 +224,21 @@ img {
   background: radial-gradient(circle, rgba(176, 136, 99, 0.2), transparent 72%);
 }
 
-.wordmark-frame {
+.door-icon-frame {
   background: linear-gradient(180deg, #fffdf9 0%, #f3e9df 100%);
   border-radius: 28px;
   padding: 18px;
   border: 1px solid rgba(94, 61, 43, 0.1);
+  display: flex;
+  justify-content: center;
+  min-height: 360px;
 }
 
-.wordmark-frame img {
-  width: 100%;
+.door-icon-frame img {
+  width: min(100%, 320px);
+  max-height: 380px;
   border-radius: 18px;
+  object-fit: contain;
 }
 
 .hero-list {

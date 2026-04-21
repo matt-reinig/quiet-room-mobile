@@ -1,7 +1,7 @@
 # Quiet Room Privacy Policy Site
 
 This folder is a tiny static site for the public Quiet Room privacy, support, and
-account-deletion URLs used by the mobile apps and store review.
+account-deletion URLs used by the production mobile app and store review.
 
 ## Suggested deployment
 
@@ -33,7 +33,7 @@ account-deletion URLs used by the mobile apps and store review.
 
 ## Notes
 
-- The content currently assumes the same public site can serve both `Quiet Room`
-  and `Quiet Room QA`.
+- The content is production-only and should not reference non-production app
+  names, bundle identifiers, package identifiers, or backend details.
 - Deployed operational logs are described as metadata-first and retained for up to
   90 days, matching the privacy-v2 Task 11 policy.
