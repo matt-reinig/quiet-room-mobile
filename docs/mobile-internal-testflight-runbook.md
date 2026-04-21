@@ -26,10 +26,16 @@ Observed by April 11, 2026:
 From `quiet-room-mobile`:
 
 ```bash
-npm run ios:testflight:status
+npm run ios:testflight:status:qa
 ```
 
-Shows the current iOS release metadata in both Expo config and native Xcode files so we can catch version drift before upload.
+```bash
+npm run ios:testflight:status:prod
+```
+
+These explicit status commands load the correct QA or prod env first, then show
+the iOS release metadata, selected Firebase plist, and runtime backend values so
+we can catch a prod build accidentally pointing at QA before upload.
 
 ```bash
 npm run ios:testflight:prepare
@@ -57,23 +63,25 @@ bash ./scripts/prepare-ios-testflight.sh --dry-run --version 1.0.1 --build-numbe
 
 Before archiving:
 
-- Confirm local `.env` plus the correct overlay env point at the backend you want the selected variant to hit.
+- Prefer the explicit variant-aware status and preflight commands instead of
+  relying on bare `.env`.
 - Confirm the correct variant-specific Google services plist is present if the build still depends on Firebase startup:
   - QA: `GoogleService-Info.qa.plist`
   - PROD: `GoogleService-Info.prod.plist`
 - Sync the selected variant before opening Xcode:
 
 ```bash
-bash ./scripts/sync-native-variant.sh qa qa ios
+npm run native:sync:qa
 ```
 
 or
 
 ```bash
-bash ./scripts/sync-native-variant.sh prod prod ios
+npm run native:sync:prod
 ```
 
-- Run `npm run ios:testflight:status`.
+- Run `npm run ios:testflight:status:qa` for QA uploads or
+  `npm run ios:testflight:status:prod` for prod uploads.
 - If the next upload needs a new build number, run `npm run ios:testflight:prepare`.
 - Review the metadata diff before uploading:
 
@@ -89,16 +97,23 @@ Current intentional product caveats for the first beta:
 Fast repo-side readiness check:
 
 ```bash
-npm run ios:testflight:preflight
+npm run ios:testflight:preflight:qa
+```
+
+or
+
+```bash
+npm run ios:testflight:preflight:prod
 ```
 
 This checks for:
 
-- local `.env`
-- `GoogleService-Info.plist`
-- required Firebase and Google auth env keys
+- the base and overlay env files actually loaded for the selected lane
+- the selected variant-specific Google services plist
+- required Firebase and Google auth env keys from the current environment
+- whether the resolved runtime config matches the expected variant and release env
 - current iOS version/build metadata alignment
-- whether the app still shows the placeholder visible name
+- the actual runtime backend and Firebase project values that will ship in the archive
 
 ## App Store Connect Setup
 
@@ -137,10 +152,11 @@ Pick the lane before you archive:
 Current proven repo-side order:
 
 1. Bump the build number with `npm run ios:testflight:prepare` when needed.
-2. Sync the target variant with `bash ./scripts/sync-native-variant.sh <variant> <env> ios`.
-3. Open the generated iOS workspace under `ios/`.
-4. Archive a Release build.
-5. Upload it to App Store Connect with your logged-in Apple account session.
+2. Sync the target variant with `npm run native:sync:qa` or `npm run native:sync:prod`.
+3. Run the matching `npm run ios:testflight:preflight:qa` or `npm run ios:testflight:preflight:prod`.
+4. Open the generated iOS workspace under `ios/`.
+5. Archive a Release build.
+6. Upload it to App Store Connect with your logged-in Apple account session.
 
 From repo root:
 
@@ -219,6 +235,7 @@ For each follow-up beta:
 1. Fix the issue.
 2. Run `npm run ios:testflight:prepare`.
 3. Re-sync the intended QA or prod variant.
-4. Archive and upload again from Xcode.
-5. Attach the new build to the internal group.
-6. Have testers retest only the narrow area we changed, plus one smoke check.
+4. Run the matching iOS TestFlight preflight for that lane.
+5. Archive and upload again from Xcode.
+6. Attach the new build to the internal group.
+7. Have testers retest only the narrow area we changed, plus one smoke check.
