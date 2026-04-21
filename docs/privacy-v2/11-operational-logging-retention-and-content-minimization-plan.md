@@ -2,12 +2,37 @@
 
 ## Goal
 
-Define, configure, and document a production-safe operational logging policy for Quiet Room.
+Finalize, implement, and document a production-safe operational logging policy for Quiet Room.
 
-This task exists to close the remaining truth gap in the privacy inventory and privacy-policy/store disclosures around:
-- how long deployed logs are kept
-- what user-related data appears in those logs
-- when logs should be used vs when support/debugging should rely on database access
+This task closes the remaining truth gap in the privacy inventory and privacy-policy/store disclosures around:
+- how long deployed logs are retained
+- what user-related data is allowed in production logs
+- how error logging should be handled so user content is not leaked indirectly
+- when support/debugging should inspect canonical database records instead of logs
+- how CloudWatch should continue to support recent operational visibility without becoming a long-term product analytics store
+
+---
+
+## Decisions Locked For This Task
+
+These decisions are already made and should not be re-opened during implementation unless a real blocker appears.
+
+### Retention
+- deployed operational logs should be retained for **90 days**
+
+### Production logging posture
+- production logs should be **metadata-first**
+- production logs should **not** store message/content previews by default
+- production error logging must be reviewed so request/response bodies or user-content payloads are not leaked indirectly
+
+### Support/debugging rule
+- if user-content review is needed for support/debugging, use the **canonical database record** (Firestore or equivalent), not operational logs
+- logs should help locate the affected record, not duplicate the record
+
+### Analytics boundary
+- CloudWatch remains the recent operational visibility window
+- CloudWatch is **not** the long-term product analytics system
+- long-term traffic/usage analytics is a separate future concern and is not part of this task
 
 ---
 
@@ -15,270 +40,374 @@ This task exists to close the remaining truth gap in the privacy inventory and p
 
 The current data inventory on `develop` says:
 - the backend logs partial user content today
-- deployed log retention is not yet defined in the repository
+- deployed log retention is not yet concretely defined in the repository
 - policy/store wording cannot honestly claim a concrete retention period until this is fixed
 
-This is now a distinct workstream because it affects:
-- privacy-policy wording
-- account-deletion exceptions language
-- store disclosures
-- backend logging behavior
+This task affects:
+- backend logging code
+- deployed CloudWatch configuration
+- privacy inventory wording
+- privacy policy wording inputs
+- account-deletion exception language
 - internal support/debugging practice
 
 ---
 
 ## Problem Statement
 
-Right now, the app has two different ways sensitive information can exist server-side:
+Right now, Quiet Room has two different places where user-related information may exist server-side:
 
 1. **Canonical product data** in Firestore
    - conversations
    - assistant replies
    - profile/memory docs
 
-2. **Operational logs** in the deployed logging sink
-   - request and status metadata
+2. **Operational logs** in CloudWatch or equivalent deployed logging sink
+   - request/status metadata
    - token usage
    - IDs
-   - some truncated content previews
+   - some content-bearing preview fields today
 
-The system should treat these differently.
+These must be treated differently.
 
-### Desired principle
+### Intended operating principle
 
-- the database is the canonical place for user content
-- logs are for operational diagnostics, not for storing a second copy of user content
-
-A useful rule:
-
-> Logs should help locate the affected record, not duplicate the record.
+- Firestore is the canonical source of user content
+- production logs are operational breadcrumbs, not a second archive of user content
+- logs should support recent operational debugging and usage checks, especially inside the 90-day window
+- anything beyond that 90-day operational window should be handled through separate analytics/metrics later if needed
 
 ---
 
 ## Outputs
 
-This task should produce all of the following:
+This task must produce all of the following:
 
-1. a chosen deployed operational-log retention period in days
-2. deployed log-retention configuration that matches that number
-3. a reviewed decision on which log fields are acceptable in production
-4. updates to `docs/privacy/data-inventory.md`
-5. updates to privacy-policy/store wording assumptions in Task 02/07 docs if needed
-6. a clear internal rule for when support/debugging should inspect Firestore instead of logs
-
----
-
-## Recommended Policy Direction
-
-### Retention recommendation
-
-Default recommendation:
-- retain deployed operational logs for **90 days**
-
-Why:
-- long enough for support, incident investigation, and debugging
-- short enough to avoid indefinite retention of user-linked operational history
-- closer to real operational needs than a 30-day default
-
-If leadership/privacy posture later prefers shorter retention, 30 days is still viable, but 90 days is the recommended first target.
+1. a final deployed operational-log retention period: **90 days**
+2. deployed CloudWatch retention configured to match 90 days across all relevant Gabriel log groups
+3. a reviewed allowlist/blocklist for production log fields
+4. a reviewed decision on production error logging behavior
+5. an updated `docs/privacy/data-inventory.md`
+6. any necessary updates to Task 02/07 assumptions so privacy/store wording can be finalized truthfully later
+7. a written internal support/debugging rule that logs are not the primary content-review path
 
 ---
 
-### Content minimization recommendation
+## Production Logging Policy
 
-For **production logs**, prefer metadata-first logging.
+### Allowed in production logs
 
-Good production log fields:
-- request ID
-- UID or a privacy-safe identifier
-- conversation ID
-- route / handler name
+These fields are acceptable in production logs unless a stronger reason emerges to reduce them further:
+
+- `request_id`
+- `uid`
+- `conversation_id`
+- route / handler / event name
 - model name
 - token usage
-- status / error category
-- latency / timing
-- feature-flag or mode indicators when operationally necessary
+- status
+- error category / exception class
+- latency / duration
+- retryable flag
+- feature-flag / mode indicators only when operationally necessary
 
-Fields to reduce or remove from production logs where possible:
+### Not allowed in production logs
+
+The following should be removed from production logs or gated out of production by default:
+
 - `last_user_message`
 - `profile_preview`
 - `text_preview`
-- full or partial assistant reply text
-- any long conversation-content excerpts
+- any user-message preview
+- any assistant-reply preview
+- any TTS input text preview
+- full OpenAI request payloads
+- full OpenAI response payloads
+- full request/response dumps containing user content
+- serialized request bodies containing conversation/profile content
 
-If content previews remain temporarily, they should be:
-- explicitly justified
-- kept short
-- reviewed for removal later
-- reflected honestly in the privacy inventory and policy
+### Temporary exceptions
+
+If any content-bearing field must remain temporarily:
+- it must be explicitly documented
+- it must have a real operational justification
+- it should be treated as a temporary exception, not a baseline policy
+- the data inventory and future policy wording must reflect it honestly
 
 ---
 
-### Support / debugging access principle
+## Error Logging Policy
 
-If a specific user asks for help and gives permission to investigate their issue, review should come from the **database record** for the relevant conversation/account data, not from operational logs.
+This task must explicitly review error logging, not just standard happy-path logging.
 
-That means:
-- logs help locate the issue
-- Firestore is used for intentional, scoped content review when needed
+Production error logs should prefer:
+- request ID
+- UID
+- conversation ID
+- route / handler
+- model
+- error category / exception class
+- status code
+- short internal diagnostic code if available
+- whether the error is retryable
 
-This distinction should inform both internal practice and policy wording.
+Production error logs should avoid:
+- raw request bodies
+- raw response bodies
+- prompt text
+- assistant response text
+- profile text
+- TTS text
+- serialized upstream payload dumps
+- tracebacks that include user-content payloads through repr/debug formatting where avoidable
+
+The practical standard is:
+- operationally useful
+- content-minimized
+- no accidental conversation leak through exception handling
+
+---
+
+## Support / Debugging Access Rule
+
+If a user asks for help and gives permission to investigate a specific issue:
+- logs may be used to identify request IDs, conversation IDs, timing, and error state
+- content review should come from the canonical Firestore record for that specific issue
+- operational logs are not the primary place to read user conversations
+
+This rule should remain true even after this task is complete.
+
+---
+
+## CloudWatch Scope And Verification Requirements
+
+### Relevant deployed log groups
+
+Identify all production-relevant Gabriel log groups used by the app, including all deployed services that write Quiet Room operational logs.
+
+At minimum this likely includes:
+- main backend Lambda log group
+- streaming Lambda log group
+- profile builder Lambda log group
+- any additional deployed backend service log groups participating in request handling
+
+### Required CloudWatch confirmation
+
+For each relevant deployed log group, confirm:
+- the log group is actually used by the production/QA deployment path you care about
+- retention is set to **90 days**
+- retention is not `Never expire`
+- the setting is consistent across all relevant log groups unless a documented exception exists
+
+### Proof requirement
+
+Capture at least one concrete proof artifact, such as:
+- AWS console screenshot
+- AWS CLI output
+- IaC configuration
+- deployment configuration reference
+
+This task is not done until the deployed configuration is real and verifiable.
+
+---
+
+## Recent CloudWatch Usage Model
+
+This task should preserve the fact that CloudWatch is still useful for recent operational checks.
+
+It should remain acceptable to use CloudWatch within the 90-day window for questions like:
+- which UIDs used the app recently?
+- how many `chat.started` events occurred in the last 12 days?
+- what did recent request volume look like?
+- which routes/models errored recently?
+- what happened during a recent incident?
+
+This task does **not** require replacing recent operational CloudWatch usage.
+It only limits CloudWatch from becoming the long-term storage layer for raw operational history.
 
 ---
 
 ## Implementation Plan
 
-### Step 1 — Audit Current Production-Relevant Logging Fields
+### Step 1 — Audit Current Logging Fields
 
-Inspect the backend logging code and identify:
-- all structured fields currently emitted in deployed environments
-- which of those contain user content or derived-content previews
-- which are essential for debugging vs merely convenient
+Inspect backend logging code and identify:
+- all structured fields emitted in production-oriented code paths
+- which fields contain content-bearing previews
+- which fields are required for real debugging
+- which fields are convenience-only and can be removed
 
 Deliverable:
-- one reviewed list of current log fields, marked as:
+- one reviewed list of fields marked:
   - keep in prod
-  - reduce in prod
   - remove from prod
+  - temporary exception
 
 ---
 
-### Step 2 — Choose Final Retention Number
+### Step 2 — Audit Error Logging Paths
 
-Decide the deployed operational-log retention number in days.
+Inspect production-relevant error logging paths and identify whether any of these can leak user content:
+- serialized request bodies
+- serialized response bodies
+- OpenAI payload dumps
+- repr/debug logging of exception context
+- traceback helper fields containing prompt/profile text
 
-Recommended default:
-- `90`
-
-This number must be concrete and must match the actual deployed configuration.
-
----
-
-### Step 3 — Configure Deployed Retention
-
-Configure the actual deployed logging sink so retention matches the chosen number.
-
-Examples depending on deployment setup:
-- CloudWatch log group retention policy
-- equivalent managed logging sink retention settings
-
-This task is not done until the deployed environment enforces the chosen value.
+Deliverable:
+- one reviewed list of error-path content risks marked:
+  - acceptable
+  - remove
+  - gate out of prod
 
 ---
 
-### Step 4 — Minimize Production Content Logging
+### Step 3 — Set Final Retention Number
 
-Adjust backend logging so production-oriented logs emphasize metadata rather than content.
+Retention for deployed operational logs is fixed at:
+- `90 days`
 
-Possible approach:
-- always log metadata fields
-- gate content-preview fields behind a non-prod / debug-only condition if truly needed
-
-The final behavior should make it easy to say, truthfully:
-- production logs are primarily operational metadata
-- sensitive content review is done through scoped database access when necessary
+No further decision needed unless infrastructure makes this impossible.
 
 ---
 
-### Step 5 — Update Data Inventory
+### Step 4 — Configure CloudWatch Retention
+
+Set the relevant deployed Gabriel log groups to **90 days**.
+
+This includes:
+- identifying each relevant log group
+- updating retention where needed
+- capturing proof that the deployed setting is real
+
+If a log group cannot be changed immediately, document it explicitly as a blocker.
+
+---
+
+### Step 5 — Remove Or Gate Content-Bearing Production Fields
+
+Adjust backend logging so production-oriented logs are metadata-first.
+
+Expected outcome:
+- allowed metadata fields remain
+- content-bearing preview fields are removed from production logs or gated to non-prod/debug contexts
+- error paths do not dump user content by accident
+
+The final behavior should support the statement:
+- production logs primarily contain operational metadata
+
+---
+
+### Step 6 — Update Data Inventory
 
 Update `docs/privacy/data-inventory.md` so the operational-logs row includes:
-- exact retention number
-- final production content policy
+- exact retention: `90 days`
+- final production logging policy
 - accurate deletion language
+- accurate description of whether any temporary content-bearing exceptions remain
 
-Example target wording:
-- operational logs retained for up to 90 days and then expire automatically
-- not individually deleted as part of account deletion
-- production logs avoid storing conversation-content previews where possible
+The placeholder wording about undefined deployed retention must be removed.
 
 ---
 
-### Step 6 — Update Policy/Store Inputs
+### Step 7 — Update Policy/Store Inputs
 
-After the technical decision is real, update:
-- `docs/privacy-v2/02-privacy-policy-update-plan.md` assumptions if needed
-- any store-disclosure prep notes
-- account-deletion exception language where logs are mentioned
+After the technical truth is settled, update any planning assumptions that were waiting on this decision.
 
-This does not require the full policy-site copy to be rewritten inside this task, but it must unblock that work with a final truth source.
+At minimum review:
+- `docs/privacy-v2/02-privacy-policy-update-plan.md`
+- any store-disclosure prep notes referencing log retention or deletion exceptions
 
----
-
-## Decision Checklist
-
-This task should explicitly answer all of these:
-
-- What is the deployed log-retention number in days?
-- Is that number actually configured in the deployed logging sink?
-- Do production logs include user-message or profile previews?
-- If yes, which specific preview fields remain and why?
-- If a user gives permission for support review, do we inspect Firestore rather than logs?
-- What exact wording should the data inventory and policy use for operational logs?
+This task does not need to rewrite the public privacy-policy site directly, but it must fully unblock that work.
 
 ---
 
-## Test / Verification Strategy
+## Questions This Task Must Answer Definitively
 
-This task is mostly policy-and-backend configuration work, but it still needs verification.
+By the end of this task, the answer to each must be explicit:
 
-### Verification 1 — Configuration proof
-
-Capture proof that the deployed log-retention setting is configured to the chosen number.
-
-Examples:
-- infrastructure screenshot
-- CLI output
-- IaC config
-- deployment config file reference
+- What is the deployed operational-log retention period?
+- Is CloudWatch actually configured to enforce 90 days on all relevant log groups?
+- Which fields are still allowed in production logs?
+- Have content-preview fields been removed or gated out of production?
+- Do production error logs still risk capturing user-content payloads?
+- If user-content review is needed for support, do we use Firestore instead of logs?
+- What exact wording should `docs/privacy/data-inventory.md` use for operational logs?
 
 ---
 
-### Verification 2 — Logging field review
+## Verification Strategy
 
-Capture one reviewed example of production-oriented log events and verify whether content previews are still present.
+### Verification 1 — CloudWatch retention proof
+
+Confirm each relevant deployed Gabriel log group shows `90 days` retention.
+
+Accepted proof:
+- AWS console screenshot
+- AWS CLI output
+- IaC/deployment config showing the effective setting
+
+---
+
+### Verification 2 — Production log field review
+
+Capture one reviewed production-oriented log sample and verify that:
+- metadata fields remain
+- removed preview/content fields are absent
 
 Outcome should be documented as:
-- accepted for now
-- reduced
-- removed
+- compliant
+- temporary exception remains
+- blocked
 
 ---
 
-### Verification 3 — Data inventory updated
+### Verification 3 — Error logging review
+
+Capture one reviewed error-path example and verify that:
+- no raw content payloads are dumped
+- the log remains operationally useful
+
+---
+
+### Verification 4 — Data inventory truth updated
 
 Confirm `docs/privacy/data-inventory.md` now includes:
-- exact retention number
-- no placeholder language about undefined deployed retention
+- 90-day retention
+- no placeholder retention language
+- final production log-content posture
 
 ---
 
 ## Suggested Deliverables
 
 - updated backend logging field review notes
-- deployed retention configured
+- updated error-logging review notes
+- CloudWatch retention proof
 - updated `docs/privacy/data-inventory.md`
-- any follow-up issue if content-preview removal is deferred
+- follow-up issue only if a temporary exception remains
 
 ---
 
-## Recommended Follow-Up Wording Direction
+## Future-Boundary Note
 
-For future policy copy, the intended truth should move toward something like:
+This task does **not** implement long-term product analytics.
 
-- Quiet Room retains operational logs for up to 90 days for security, reliability, debugging, and abuse prevention.
-- Operational logs are not generally deleted individually when an account is deleted, but they expire automatically according to the configured retention schedule.
-- Quiet Room does not rely on operational logs as the primary place to review user conversations; support review of user content should be scoped to the relevant database record when needed.
+If long-term traffic, retention, funnel, or usage-trend analysis is needed later, that should be handled by a dedicated analytics/metrics task or tool.
 
-Do not ship wording stronger than the actual implementation.
+For now:
+- CloudWatch remains the recent operational window
+- 90-day retention is enough for recent usage/debugging visibility
+- long-term analytics is a separate future concern
 
 ---
 
 ## Definition Of Done
 
-- a deployed operational-log retention period in days is chosen
-- the deployed logging sink is configured to enforce that retention
-- production logging fields have been reviewed for content minimization
-- a clear decision exists on whether content-preview fields remain in production
-- `docs/privacy/data-inventory.md` is updated with the final retention number and accurate log wording
-- the privacy-policy/store-disclosure work is unblocked by a concrete, truthful operational-logging policy
+- deployed operational-log retention is fixed at 90 days
+- all relevant deployed Gabriel log groups are configured to enforce 90-day retention
+- production log fields have been audited and reduced to metadata-first logging
+- content-preview fields are removed from production logs or explicitly documented as temporary exceptions
+- production error logging has been reviewed for accidental user-content leakage
+- `docs/privacy/data-inventory.md` is updated with the final 90-day retention and accurate log wording
+- privacy-policy/store-disclosure work is fully unblocked by a concrete and truthful operational-logging policy
