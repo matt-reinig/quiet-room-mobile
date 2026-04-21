@@ -1,7 +1,7 @@
 # Quiet Room Privacy Policy Site
 
-This folder is a tiny static site intended to unblock the first public privacy-policy
-URL for the Quiet Room mobile apps.
+This folder is a tiny static site for the public Quiet Room privacy, support, and
+account-deletion URLs used by the mobile apps and store review.
 
 ## Suggested deployment
 
@@ -21,11 +21,19 @@ URL for the Quiet Room mobile apps.
 
 - `/privacy` for the Play Console and App Store Connect privacy-policy URL
 - `/support` for store support/contact metadata
-- `/account-deletion` for the public deletion-request URL if needed
+- `/account-deletion` for the public account-deletion explanation URL
+
+## Reviewer-note inputs
+
+- Privacy policy: `https://quiet-room-privacy-policy.vercel.app/privacy`
+- Account deletion: `https://quiet-room-privacy-policy.vercel.app/account-deletion`
+- Support: `https://quiet-room-privacy-policy.vercel.app/support`
+- In-app deletion path: open Quiet Room, tap the profile icon, choose `Delete Account`, then confirm.
+- AI disclosure/consent: Quiet Room shows an AI-sharing consent prompt before the first message is sent to the AI service.
 
 ## Notes
 
-- The current copy is intentionally first-pass and should be tightened as the app's
-  final store disclosures and account-deletion flow are finalized.
 - The content currently assumes the same public site can serve both `Quiet Room`
   and `Quiet Room QA`.
+- Deployed operational logs are described as metadata-first and retained for up to
+  90 days, matching the privacy-v2 Task 11 policy.
