@@ -33,55 +33,68 @@
           <span class="eyebrow">Policy</span>
           <h1 class="page-title">Quiet Room Privacy Policy</h1>
           <div class="meta-row">
-            <span>Last updated: April 11, 2026</span>
+            <span>Last updated: April 21, 2026</span>
             <span>Applies to: Quiet Room and Quiet Room QA</span>
             <span>Support: matthew.reinig@gmail.com</span>
           </div>
           <p class="lede">
-            This Privacy Policy explains how Quiet Room may collect, use, store, and
-            share information when you use the app and related support services.
+            This Privacy Policy explains how Quiet Room collects, uses, stores, and
+            shares information when you use the app, related AI features, and support
+            services.
           </p>
         </div>
 
         <section class="section">
-          <h2 class="section-title">1. Scope</h2>
+          <h2 class="section-title">1. Who Operates Quiet Room</h2>
           <p>
-            This Privacy Policy applies to the Quiet Room mobile applications,
-            including the production app distributed as <strong>Quiet Room</strong>
-            and the QA app distributed as
-            <strong>Quiet Room QA</strong>, along with this support website.
+            Quiet Room is operated by Matthew Reinig. For privacy, support, account,
+            or app questions, email
+            <a href="mailto:matthew.reinig@gmail.com">matthew.reinig@gmail.com</a>
+            or visit the <a href="../support/">support page</a>.
           </p>
         </section>
 
         <section class="section">
-          <h2 class="section-title">2. Information We May Collect</h2>
-          <p>Depending on how you use the app, we may collect the following categories of information:</p>
+          <h2 class="section-title">2. Information We Collect</h2>
+          <p>Depending on how you use the app, Quiet Room may collect:</p>
           <ul>
             <li>
-              <strong>Account information.</strong> If you create an account or sign
-              in, we may receive your email address and basic account identifiers from
-              the authentication provider you use, including email/password or Google
-              sign-in.
+              <strong>Account and authentication data.</strong> Quiet Room creates an
+              anonymous Firebase Auth session by default. If you sign in or create an
+              account, we may receive account identifiers, email address, display name,
+              provider information, and session data from email/password, Google, or
+              Apple sign-in.
             </li>
             <li>
-              <strong>Content you provide.</strong> We may process prompts, messages,
-              conversation titles, support requests, and other content you choose to
-              submit through the app.
+              <strong>Messages and conversation data.</strong> We process the prompts
+              you send, assistant replies, conversation titles, selected model, and
+              related conversation metadata.
             </li>
             <li>
-              <strong>Conversation history.</strong> If you use a signed-in account,
-              conversation history may be stored so your chats can be revisited across
-              sessions and devices.
+              <strong>Profile and memory data.</strong> Quiet Room may derive and
+              store profile or memory information from conversation content so future
+              replies can keep continuity and personalization.
             </li>
             <li>
-              <strong>Technical and device information.</strong> We may receive basic
-              technical information needed to run and secure the service, such as app
-              version, platform, request metadata, and operational logs.
+              <strong>AI-sharing consent state.</strong> Quiet Room asks for consent
+              before the first message is sent to the AI service. For signed-in users,
+              this consent state is stored with the account. For anonymous users, it is
+              stored locally on the device.
             </li>
             <li>
-              <strong>Local device data.</strong> The app may store limited local
-              preferences on your device, such as playback or interface settings. The
-              app may also temporarily cache audio files on-device for playback.
+              <strong>Technical metadata.</strong> We may process request IDs,
+              user/account IDs, conversation IDs, model names, token usage, status,
+              error categories, app/platform information, timing, and related
+              operational metadata.
+            </li>
+            <li>
+              <strong>Voice-related request data.</strong> If you use voice playback,
+              the text being turned into audio is sent to the voice service. Generated
+              audio may be temporarily cached on your device for playback.
+            </li>
+            <li>
+              <strong>Support content.</strong> If you contact support, we collect the
+              information you include in your message.
             </li>
           </ul>
         </section>
@@ -89,47 +102,40 @@
         <section class="section">
           <h2 class="section-title">3. How We Use Information</h2>
           <ul>
-            <li>Provide authentication and account access.</li>
-            <li>Deliver Quiet Room responses and conversation functionality.</li>
-            <li>Support audio playback and related app features.</li>
-            <li>Respond to support requests, feedback, and operational issues.</li>
-            <li>Maintain security, reliability, and policy compliance.</li>
-            <li>Improve the product and resolve bugs over time.</li>
+            <li>Provide chat, account, and conversation-history functionality.</li>
+            <li>Maintain signed-in account state and app sessions.</li>
+            <li>Support continuity and personalization across conversations.</li>
+            <li>Generate AI chat responses and voice responses after consent.</li>
+            <li>Respond to support, privacy, account, and deletion requests.</li>
+            <li>Debug issues, protect the service, and maintain reliability.</li>
           </ul>
         </section>
 
         <section class="section">
-          <h2 class="section-title">4. Anonymous and Signed-In Use</h2>
+          <h2 class="section-title">4. AI Provider Use And Consent</h2>
           <p>
-            Quiet Room may allow limited use without a traditional registered account.
-            Some features, such as preserving and revisiting conversations across
-            sessions, may depend on signing in. If you sign in, information can be
-            associated with your account so the service works consistently across use.
+            Quiet Room uses OpenAI to generate chat responses, create voice responses,
+            and help maintain derived profile or memory context. Conversation content,
+            relevant prior context, selected profile/memory information, timezone
+            context, model selection, and the text used for voice generation may be
+            sent to OpenAI for those purposes.
+          </p>
+          <p>
+            Before your first message is sent to the AI service, Quiet Room shows a
+            consent prompt. If you choose <strong>Not now</strong>, the pending message
+            is not sent.
           </p>
         </section>
 
         <section class="section">
-          <h2 class="section-title">5. Audio and Microphone-Related Features</h2>
-          <p>
-            The app includes audio-related functionality, including playback of voice
-            responses. Audio content used for playback may be retrieved from the
-            service and temporarily cached on your device.
-          </p>
-          <div class="callout">
-            Quiet Room is not described as an always-listening app. If audio or
-            microphone-related features change materially in the future, this policy
-            will be updated accordingly.
-          </div>
-        </section>
-
-        <section class="section">
-          <h2 class="section-title">6. How Information May Be Shared</h2>
-          <p>We may share information with service providers that help us operate Quiet Room, such as providers used for:</p>
+          <h2 class="section-title">5. Third-Party Services</h2>
+          <p>Quiet Room uses service providers that help operate the app, including:</p>
           <ul>
-            <li>authentication and account management,</li>
-            <li>cloud hosting and backend infrastructure,</li>
-            <li>storage and delivery of conversation or audio-related content, and</li>
-            <li>AI or model-backed response generation.</li>
+            <li><strong>Firebase Authentication</strong> for sign-in and account sessions.</li>
+            <li><strong>Firebase Firestore</strong> for account-linked app data such as conversations, consent state, profile, and memory records.</li>
+            <li><strong>OpenAI</strong> for AI-generated chat, profile/memory processing, and text-to-speech.</li>
+            <li><strong>Hosting and logging infrastructure</strong>, such as backend hosting and CloudWatch or equivalent operational logging.</li>
+            <li><strong>Vercel or equivalent static hosting</strong> for this public policy and support site.</li>
           </ul>
           <p>
             We may also disclose information if required by law, to protect rights or
@@ -138,31 +144,76 @@
         </section>
 
         <section class="section">
-          <h2 class="section-title">7. Retention</h2>
-          <p>
-            We keep information for as long as reasonably necessary to operate the
-            service, maintain security, comply with legal obligations, and support
-            user requests. The exact retention period can vary depending on whether
-            the data is tied to an account, an active conversation history, or a
-            short-lived operational log.
-          </p>
-        </section>
-
-        <section class="section">
-          <h2 class="section-title">8. Your Choices</h2>
+          <h2 class="section-title">6. Retention</h2>
           <ul>
-            <li>You may choose whether to use available sign-in methods.</li>
-            <li>You can contact support to ask questions about your data.</li>
             <li>
-              If you want to request account or account-linked data deletion, contact
-              us at <a href="mailto:matthew.reinig@gmail.com">matthew.reinig@gmail.com</a>.
+              <strong>Account-linked product data.</strong> Conversation, profile,
+              memory, and signed-in AI-consent data are retained until you delete the
+              relevant conversation or delete your account, unless otherwise stated.
             </li>
-            <li>You can remove app-local data by uninstalling the app or clearing app data on your device.</li>
+            <li>
+              <strong>Operational logs.</strong> Deployed operational logs are
+              metadata-first and are retained for up to 90 days, then expire
+              automatically. Local development logs may persist until manually rotated
+              or deleted.
+            </li>
+            <li>
+              <strong>Device-local data.</strong> Local sessions, consent cache, and
+              temporary audio cache files may remain on your device until app cleanup,
+              operating-system cache eviction, uninstall, or manual app-data clearing.
+            </li>
           </ul>
         </section>
 
         <section class="section">
-          <h2 class="section-title">9. Children</h2>
+          <h2 class="section-title">7. Account Deletion</h2>
+          <p>
+            Signed-in users can delete their account in the app. Open Quiet Room, tap
+            the profile icon, choose <strong>Delete Account</strong>, and confirm.
+            The backend deletes the Firebase Auth user and known Firestore user data,
+            including conversations, memory/profile records, profile history entries,
+            and signed-in AI-consent state under that user account.
+          </p>
+          <p>
+            Operational logs are not generally deleted individually during account
+            deletion and may remain until the 90-day retention window expires. Device
+            cache or app-local data may also remain until local cleanup, OS cache
+            eviction, uninstall, or manual app-data clearing.
+          </p>
+          <p>
+            More details are available on the
+            <a href="../account-deletion/">account deletion page</a>.
+          </p>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">8. Support And Debugging Access</h2>
+          <p>
+            Quiet Room does not rely on operational logs as the primary place to
+            review conversations. Operational logs are meant to help locate request
+            IDs, timing, status, model, error categories, and related metadata.
+          </p>
+          <p>
+            If support or debugging requires review of user content, review should be
+            scoped to the relevant account or conversation data rather than broad log
+            review.
+          </p>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">9. Your Choices</h2>
+          <ul>
+            <li>You may choose whether to sign in or continue with an anonymous session.</li>
+            <li>You may choose whether to consent before sending messages to the AI service.</li>
+            <li>You may delete individual conversations where available.</li>
+            <li>You may delete a signed-in account from the profile icon menu.</li>
+            <li>You can remove app-local data by uninstalling the app or clearing app data on your device.</li>
+            <li>You can contact support at <a href="mailto:matthew.reinig@gmail.com">matthew.reinig@gmail.com</a>.</li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">10. Children</h2>
           <p>
             Quiet Room is not intended for children under 13, and we do not knowingly
             collect personal information from children under 13.
@@ -170,7 +221,7 @@
         </section>
 
         <section class="section">
-          <h2 class="section-title">10. Changes To This Policy</h2>
+          <h2 class="section-title">11. Changes To This Policy</h2>
           <p>
             We may update this Privacy Policy from time to time. When we do, we will
             revise the "Last updated" date on this page.
@@ -178,7 +229,7 @@
         </section>
 
         <section class="section">
-          <h2 class="section-title">11. Contact</h2>
+          <h2 class="section-title">12. Contact</h2>
           <p>
             For privacy or support questions, contact
             <a href="mailto:matthew.reinig@gmail.com">matthew.reinig@gmail.com</a>.

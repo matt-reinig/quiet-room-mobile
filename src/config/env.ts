@@ -79,6 +79,18 @@ export const STREAMING_BASE = trimTrailingSlashes(
 export const CONTACT_EMAIL =
   process.env.EXPO_PUBLIC_CONTACT_EMAIL || "your-email@example.com";
 
+export const PRIVACY_POLICY_URL =
+  process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL ||
+  "https://quiet-room-privacy-policy.vercel.app/privacy";
+
+export const SUPPORT_URL =
+  process.env.EXPO_PUBLIC_SUPPORT_URL ||
+  "https://quiet-room-privacy-policy.vercel.app/support";
+
+export const ACCOUNT_DELETION_URL =
+  process.env.EXPO_PUBLIC_ACCOUNT_DELETION_URL ||
+  "https://quiet-room-privacy-policy.vercel.app/account-deletion";
+
 export const DEFAULT_MODEL =
   process.env.EXPO_PUBLIC_DEFAULT_MODEL || "gpt-5.1-chat-latest";
 
