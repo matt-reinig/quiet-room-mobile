@@ -50,6 +50,21 @@ Track the execution status of the privacy workstreams defined in `docs/privacy-v
   - Android installed on `emulator-16744` as `com.quietroom.mobile.qa`; after an Android System UI ANR prompt, selecting `Wait` revealed the Quiet Room home screen.
 - Screenshots confirmed both release builds opened to the Quiet Room welcome screen. No automated smoke suite was run in this session; this note records manual QA environment readiness only.
 
+### 2026-04-21 QA store release artifact attempt
+
+- Resynced native projects to QA only with `npm run native:sync:qa`.
+- Re-verified QA mobile config with `npm run mobile:verify:qa`: app name `Quiet Room QA`, iOS bundle ID `com.quietroom.mobile.qa`, Android package `com.quietroom.mobile.qa`, QA Firebase files, QA API/streaming URLs, and no warnings or failures.
+- Android QA Play preflight passed with `npm run android:play:preflight:qa`: version `1.0.0`, versionCode `4`, package `com.quietroom.mobile.qa`, `google-services.qa.json`, upload keystore, and Gradle release signing were all aligned.
+- Built the signed QA Android App Bundle with `bash ./scripts/with-mobile-env.sh qa qa bash -lc 'cd android && ./gradlew bundleRelease'`.
+  - Output: `android/app/build/outputs/bundle/release/app-release.aab`.
+  - Size: about 30 MB.
+  - SHA256: `98988f24d8649dfd7eb439ecc7e5ca29c54a2919c7a068ddea658fc479defbe4`.
+- iOS QA TestFlight preflight passed when run through the QA environment, with remaining non-blocking metadata warnings already known from the generated native project.
+- iOS QA command-line archive was attempted for `QuietRoomQA` / `com.quietroom.mobile.qa` / build `11`, but did not produce an archive because this machine has no matching QA provisioning profile. The installed local profile is for `com.quietroom.mobile`, not `com.quietroom.mobile.qa`.
+- Store uploads were not completed from this shell:
+  - Android: no local Play upload script or Google Play service-account credentials were present.
+  - iOS: QA App Store/TestFlight upload remains blocked until Xcode/App Store Connect has a QA provisioning profile or the upload is performed from a properly signed-in Xcode session.
+
 ## Account Deletion Stream Notes
 
 Recommended local structure:
