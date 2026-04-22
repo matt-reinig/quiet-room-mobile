@@ -34,9 +34,10 @@ The first version should be intentionally lightweight.
 ### V1 behavior
 
 - users can report an assistant response directly from the response UI
+- the report action lives alongside the existing assistant-response actions such as voice and copy
 - the report is attached to the specific assistant message / conversation context
 - the user can optionally choose a reason and/or add a short note
-- the app stores enough context for later review
+- the report is stored in the database as the primary durable record
 - the app confirms that the report was submitted
 
 ### Not required for V1
@@ -46,6 +47,7 @@ The first version should be intentionally lightweight.
 - user-to-user abuse systems
 - a complex case-management workflow
 - appeal flows
+- email as the primary storage mechanism for reports
 
 ---
 
@@ -53,18 +55,22 @@ The first version should be intentionally lightweight.
 
 The reporting action should live on assistant responses, not as a generic app-wide help action.
 
-### Recommended entry point
+### Chosen V1 entry point
 
-Expose a `Report response` action from the assistant message UI.
+Add a `Report response` action alongside the existing assistant-response actions such as:
+- voice
+- copy
 
-Acceptable placements include:
-- long-press action sheet on assistant messages
-- overflow menu on assistant message bubble/card
-- dedicated small report affordance on assistant responses if the design already supports inline actions
+This should be a visible response-level action, not hidden only behind an about modal or generic support/contact flow.
 
-Do not bury this only in the About modal or generic support/contact flow.
+If the current response-action row uses icons, the report action can also be represented as an icon, as long as it remains understandable and accessible.
 
-The user should be able to report the specific response that caused concern.
+Do not bury this only in:
+- the About modal
+- generic support/contact flow
+- a long-press-only pattern unless the current response actions already rely on that pattern
+
+The user should be able to report the specific response that caused concern from the same surface where they already interact with that response.
 
 ---
 
@@ -72,11 +78,11 @@ The user should be able to report the specific response that caused concern.
 
 ### Step 1 — Open report action
 
-User opens the action surface on a specific assistant response.
+User taps the report action on a specific assistant response.
 
 ### Step 2 — Start report
 
-User taps `Report response`.
+The report flow opens for that specific response.
 
 ### Step 3 — Choose reason
 
@@ -152,9 +158,9 @@ Recommended fields:
 
 ## Storage Model
 
-The report must be stored somewhere reviewable.
+The report must be stored in the database as the primary durable record.
 
-### Recommended first storage approach
+### Chosen V1 storage approach
 
 Store reports in Firestore or the existing backend data store in a dedicated collection.
 
@@ -169,6 +175,12 @@ Example shape:
   - `reportedAt`
   - `model`
   - `status` (optional, default `open`)
+
+### Email decision
+
+Email is not the primary system for V1.
+
+If desired later, an email notification may be added on top of DB storage, but the durable source of truth should remain the database record.
 
 The goal is not to invent a whole moderation system now.
 The goal is simply to capture reports reliably for later review.
@@ -186,7 +198,9 @@ That means the stored report should point clearly to:
 
 If the app does not currently have a stable assistant-message identifier, this task may need to define a practical equivalent.
 
-Do not solve this by dumping full response text into operational logs.
+Do not solve this by:
+- dumping full response text into operational logs
+- using email alone as the only durable record
 
 ---
 
@@ -224,19 +238,19 @@ unless you can actually support that operationally.
 
 ## Implementation Plan
 
-### Step 1 — Confirm assistant-response action surface
+### Step 1 — Confirm assistant-response action row placement
 
-Identify the existing assistant-message UI action surface and choose the concrete V1 placement for `Report response`.
+Identify the current assistant-response action row and add a concrete `Report response` action alongside the existing actions such as voice and copy.
 
 Deliverable:
-- one stable UI location for the action
+- one stable visible response-level action for reporting
 
 ---
 
 ### Step 2 — Add lightweight report flow UI
 
 Implement:
-- action entry point
+- report action entry point
 - reason picker
 - optional note input
 - submit button
@@ -257,7 +271,7 @@ Confirm how the backend will identify:
 
 ---
 
-### Step 4 — Store reports in a reviewable location
+### Step 4 — Store reports in the database
 
 Persist the report in a dedicated backend collection/store so reports can be reviewed later.
 
@@ -266,6 +280,8 @@ The storage model must preserve:
 - a timestamp
 - the selected reason
 - any user note
+
+DB storage is the primary system of record for V1.
 
 ---
 
@@ -338,17 +354,17 @@ Suggested:
 
 Steps:
 1. create/load conversation with an assistant response
-2. open assistant-message action surface
+2. inspect the assistant-response action row
 
 Assertions:
-- `Report response` action is visible
+- `Report response` action is visible alongside the expected response actions
 
 ---
 
 ### Test 2 — Submit report successfully
 
 Steps:
-1. open `Report response`
+1. tap `Report response`
 2. choose a reason
 3. optionally enter a note
 4. submit
@@ -373,10 +389,10 @@ Assertions:
 
 ## Suggested Deliverables
 
-- assistant-response report entry point
+- assistant-response report action alongside voice/copy
 - report reason picker / note UI
 - `POST /api/report-response`
-- backend report storage
+- backend DB report storage
 - optional emulator/test inspection hook
 - automated verification for the basic flow
 
@@ -385,8 +401,9 @@ Assertions:
 ## Definition Of Done
 
 - users can report a specific assistant response from the response UI
+- the report action is present alongside the existing assistant-response actions such as voice/copy
 - the app captures enough context to investigate the reported response later
-- reports are stored in a reviewable backend location
+- reports are stored in the database as the primary durable record
 - the flow provides clear success/failure feedback
 - the feature does not rely on operational logs as the primary storage for reported content context
 - automated verification exists for the core happy path
