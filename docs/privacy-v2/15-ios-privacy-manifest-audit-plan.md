@@ -154,6 +154,69 @@ Accepted proof may include:
 
 ---
 
+## Audit Result - April 23, 2026
+
+Status: complete for the current local QA iOS release-candidate path.
+
+### App-level answer
+
+Yes. Quiet Room needs an app-level privacy manifest. Apple privacy manifests describe data collected by the app and required-reason API usage, and Quiet Room collects account identifiers, user content, support/reporting content, interaction metadata, and operational diagnostics. The app also ships React Native/CocoaPods native code that uses required-reason API categories.
+
+The tracked source of truth is `expo.ios.privacyManifests` in `app.json`. Expo prebuild writes that into `ios/QuietRoomQA/PrivacyInfo.xcprivacy`, and React Native's CocoaPods privacy-manifest aggregation appends required-reason API declarations during `pod install`. The generated `ios/` tree is intentionally not the persistent source because it is ignored in this repo.
+
+### Reviewed shipped iOS dependencies/APIs
+
+Reviewed the current iOS dependency set from `package.json`, `ios/Podfile`, `ios/Podfile.lock`, the generated `ios/Pods` privacy resources, and app source usage:
+
+- Expo SDK `~54.0.33` and React Native `0.81.5`
+- `@react-native-async-storage/async-storage` / `RNCAsyncStorage`
+- `@react-native-google-signin/google-signin`, `GoogleSignIn 9.1.0`, `AppAuth 2.0.0`, `GTMAppAuth 5.0.0`, `GTMSessionFetcher 3.5.0`, `GoogleUtilities 8.1.0`, `PromisesObjC 2.4.0`, and `AppCheckCore 11.2.0`
+- Expo modules used by the app, including Apple authentication, auth session/web browser, file system, AV playback, clipboard, crypto, constants, application, linking, splash screen, and related Expo modules
+- `react-native-webview`
+- Firebase JS SDK usage for authentication in `src/lib/firebase.ts`
+- App data flows from the privacy inventory/policy: account identity, auth identifiers, conversation/profile/memory content, support/report content, conversation/model/consent metadata, performance data, and error/operational diagnostics
+
+SDK privacy resources found in the generated iOS dependency tree include AppAuth, GTMAppAuth, GTMSessionFetcher, GoogleSignIn, GoogleUtilities, PromisesObjC, React Native core/cxxreact, Expo Application, Expo Constants, Expo FileSystem, and RNCAsyncStorage.
+
+### Manifest declarations
+
+`app.json` now declares `NSPrivacyTracking: false` and no tracking domains. It declares these linked, non-tracking collected data types:
+
+- `NSPrivacyCollectedDataTypeName`
+- `NSPrivacyCollectedDataTypeEmailAddress`
+- `NSPrivacyCollectedDataTypeUserID`
+- `NSPrivacyCollectedDataTypeSensitiveInfo`
+- `NSPrivacyCollectedDataTypeOtherUserContent`
+- `NSPrivacyCollectedDataTypeCustomerSupport`
+- `NSPrivacyCollectedDataTypeProductInteraction`
+- `NSPrivacyCollectedDataTypePerformanceData`
+- `NSPrivacyCollectedDataTypeOtherDiagnosticData`
+
+The app-level purposes are App Functionality for all declared data types, with Product Personalization also declared for sensitive info, other user content, and product interaction data because conversation/memory/profile context is used to personalize the in-app experience.
+
+React Native/CocoaPods aggregation appends the required-reason API categories in the generated app manifest:
+
+- `NSPrivacyAccessedAPICategoryFileTimestamp`: `C617.1`, `0A2A.1`, `3B52.1`
+- `NSPrivacyAccessedAPICategoryUserDefaults`: `CA92.1`, `C56D.1`
+- `NSPrivacyAccessedAPICategoryDiskSpace`: `E174.1`, `85F4.1`
+- `NSPrivacyAccessedAPICategorySystemBootTime`: `35F9.1`
+
+### Verification
+
+- `npm run native:sync:qa -- ios` completed successfully. CocoaPods logged privacy-manifest aggregation and appended the required-reason APIs to the generated app manifest.
+- `plutil -lint ios/QuietRoomQA/PrivacyInfo.xcprivacy` returned `OK`.
+- `ios/QuietRoomQA.xcodeproj/project.pbxproj` includes `PrivacyInfo.xcprivacy in Resources`, so the generated app manifest is included in the QuietRoomQA target.
+- `npm run ios:testflight:preflight:qa` passed with no blocking failures.
+- `npm run detox:build:ios:qa` completed successfully and produced `ios/build/Build/Products/Release-iphonesimulator/QuietRoomQA.app`.
+- `plutil -lint ios/build/Build/Products/Release-iphonesimulator/QuietRoomQA.app/PrivacyInfo.xcprivacy` returned `OK`.
+- The built app bundle contains the app-level `PrivacyInfo.xcprivacy` plus dependency privacy bundles for Google/Auth, Expo, React Native, PromisesObjC, and RNCAsyncStorage.
+
+### Correctness explanation
+
+The app-level manifest is required because the app itself collects data types covered by Apple's privacy manifest schema; dependency manifests alone do not describe Quiet Room's own account, content, support, interaction, and diagnostics data collection. The implementation is correct for this Expo-managed native flow because the persistent declarations live in tracked Expo config, prebuild generates the app target manifest, CocoaPods/React Native aggregation adds required-reason API declarations, and the release simulator artifact contains a valid packaged manifest.
+
+---
+
 ## Definition Of Done
 
 - Quiet Room has a documented yes/no answer on app-level privacy-manifest requirements
