@@ -219,3 +219,61 @@ For Quiet Room, the main check is:
 - `RECORD_AUDIO` is removed unless a real shipped microphone feature truly requires it
 - the final Android permission surface matches Quiet Room's real shipped behavior
 - Play disclosure work is unblocked by a concrete and verified permission set
+
+---
+
+## Audit Result — 2026-04-22
+
+Status: complete for the current local Android release candidate.
+
+### Verified build
+
+- Command: `cd android && ./gradlew :app:bundleRelease`
+- Result: success
+- Release manifest proof:
+  - `android/app/build/intermediates/merged_manifest/release/processReleaseMainManifest/AndroidManifest.xml`
+  - `android/app/build/intermediates/bundle_manifest/release/processApplicationManifestReleaseForBundle/AndroidManifest.xml`
+  - `android/app/build/intermediates/packaged_manifests/release/processReleaseManifestForPackage/AndroidManifest.xml`
+
+### Final release permissions
+
+The rebuilt release manifests contain:
+
+- `android.permission.INTERNET`
+- `android.permission.MODIFY_AUDIO_SETTINGS`
+- `android.permission.ACCESS_NETWORK_STATE`
+- `com.quietroom.mobile.qa.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`
+- `com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE`
+
+### Permission decisions
+
+| Permission | Source | Product behavior | Decision |
+|---|---|---|---|
+| `android.permission.INTERNET` | app manifest and `expo-file-system` | API calls, auth, web content, and voice playback downloads | keep |
+| `android.permission.MODIFY_AUDIO_SETTINGS` | `expo-av` playback config | voice/TTS playback uses `Audio.setAudioModeAsync` | keep |
+| `android.permission.ACCESS_NETWORK_STATE` | AndroidX/Google Play dependencies | network-aware platform/library behavior | keep |
+| `com.quietroom.mobile.qa.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` | AndroidX Core generated app-specific permission | protects dynamically registered app receivers | keep |
+| `com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE` | Google Play install referrer dependency through Google services/auth stack | Play services install-referrer integration | keep |
+| `android.permission.RECORD_AUDIO` | previously present in generated native manifest; `expo-av` can request it when microphone support is enabled | Quiet Room does not record microphone audio | remove |
+| `android.permission.READ_EXTERNAL_STORAGE` | Expo template / `expo-file-system` manifest | Quiet Room writes generated voice MP3 files to app cache only; no broad user media read flow ships | remove |
+| `android.permission.WRITE_EXTERNAL_STORAGE` | Expo template / `expo-file-system` manifest | Quiet Room writes generated voice MP3 files to app cache only; no broad external storage write flow ships | remove |
+| `android.permission.SYSTEM_ALERT_WINDOW` | Expo template optional permission | no shipped overlay feature | remove |
+| `android.permission.VIBRATE` | Expo template optional permission | no shipped haptics/vibration feature | remove |
+
+### Changes made
+
+- Added `expo-av` config in `app.json` with `"microphonePermission": false`.
+- Added Android `blockedPermissions` in `app.json` for:
+  - `android.permission.READ_EXTERNAL_STORAGE`
+  - `android.permission.RECORD_AUDIO`
+  - `android.permission.SYSTEM_ALERT_WINDOW`
+  - `android.permission.VIBRATE`
+  - `android.permission.WRITE_EXTERNAL_STORAGE`
+- Updated the local generated Android manifest with `tools:node="remove"` entries so the current local release build immediately reflects the same removals. The generated `android/` project is gitignored, so `app.json` is the tracked source of truth for future native syncs.
+
+### Play disclosure alignment
+
+- `RECORD_AUDIO` is absent from the rebuilt release manifest.
+- Quiet Room should not declare microphone collection or microphone recording in Play Console answers.
+- No camera, notification, storage/media, or microphone runtime permissions remain in the release manifest.
+- Remaining permissions match the shipped app behavior and do not require new sensitive-data policy copy.

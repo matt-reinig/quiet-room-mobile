@@ -175,7 +175,7 @@ Deliverables:
 - [ ] Implement the backend account deletion path for auth plus persisted user data.
 - [ ] Implement the mobile in-app account deletion UX and post-delete cleanup flow.
 - [ ] Implement Sign in with Apple or explicitly remove the conflicting iOS login path before submission.
-- [ ] Audit Android permissions and remove or disclose any sensitive permissions that remain.
+- [x] Audit Android permissions and remove or disclose any sensitive permissions that remain.
 - [ ] Decide whether the iOS app needs a `PrivacyInfo.xcprivacy` file and add it if required.
 - [ ] Draft Play Data safety answers.
 - [ ] Draft Play app-content declarations.

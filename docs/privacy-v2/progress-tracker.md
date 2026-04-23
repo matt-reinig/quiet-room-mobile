@@ -24,6 +24,7 @@ Track the execution status of the privacy workstreams defined in `docs/privacy-v
 | 08 Model gating parity | `codex/privacy/task-08-model-gating-parity` | — | `../worktrees/quiet-room-mobile-task-08-model-gating-parity` | Codex | qa | full model-gating matrix is implemented and passing in iOS Detox, including stale-model fallback and live feature-flag refresh | — | mobile now derives allowed chat models from `GET /api/feature_flags`, hides chat chrome for the single-model/no-voice state, supports launch-url flag overrides for deterministic Detox permutations, and normalizes Android-only local host aliases to `localhost` on iOS simulator |
 | 12 Policy site/account deletion update | `develop` (`1d7dafc`) | — | `../quiet-room-mobile` | Codex | merged | production privacy site redeployed on 2026-04-21 with prod-only copy, the current app door icon, and all public routes returning 200 | direct commit/deploy from `develop` | refreshed data inventory and public `/privacy`, `/account-deletion`, and `/support` copy now reflect the profile icon deletion flow, concrete support path, OpenAI sharing/consent behavior, and 90-day metadata-first log retention/deletion exceptions; About modal no longer exposes build/API details and links to Privacy Policy, Support, and Account Deletion; latest Vercel deployment `dpl_3xe3j8HQ6JbvHPrLTFheh4CPQJJu` is aliased to `https://quiet-room-privacy-policy.vercel.app`; site package no longer references Quiet Room QA, old door wordmark/crossmark assets, or the crucifix graphic |
 | 13 In-app response reporting | `codex/privacy/task-13-report-response` | `codex/privacy/task-13-report-response-backend` | `../privacy-task-13` | Codex | qa | V1 report action, modal, backend storage, and test hooks are implemented; Android local-QA Detox happy path passes on `emulator-16744` | — | paired worktree created with local-only mobile env/Firebase/signing files copied in; native projects regenerated for local QA; verified TypeScript, local-QA config, focused backend route tests, Detox build, and `e2e/quiet-room.report-response.test.js` |
+| 14 Android permission audit | `develop` | — | `../quiet-room-mobile` | Codex | qa | Android release manifest rebuilt and verified without microphone, storage/media, overlay, camera, or notification permissions | — | `app.json` now blocks unnecessary Android permissions and configures `expo-av` with `microphonePermission: false`; the current local generated Android release manifest/AAB was rebuilt with `./gradlew :app:bundleRelease` and ships only internet, audio-settings, network-state, app-local AndroidX receiver, and Play install-referrer permissions |
 
 ## Production Release Notes
 
@@ -35,6 +36,13 @@ Track the execution status of the privacy workstreams defined in `docs/privacy-v
 - Verified `200` responses for `/`, `/privacy`, `/support`, `/account-deletion`, and `/assets/quiet-room-door-icon.png`.
 - Verified live pages reference `quiet-room-door-icon.png`, and the live PNG matches `assets/icon.png`.
 - Verified the published privacy-site HTML has no `Quiet Room QA`/QA references and no old door wordmark, crossmark, or crucifix asset references.
+
+### 2026-04-22 Privacy site redeploy
+
+- Redeployed `site/quiet-room-privacy-policy` to production Vercel with `npx vercel deploy --prod --yes`.
+- Production deployment: `dpl_BG8SFKTEGq522kzdRnGDwSDYmtAV`.
+- Canonical alias: `https://quiet-room-privacy-policy.vercel.app`.
+- Verified `200` responses for `/`, `/privacy`, `/support`, `/account-deletion`, and `/assets/quiet-room-door-icon.png` with Node `fetch`.
 
 ## QA Release Testing Notes
 
