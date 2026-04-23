@@ -59,11 +59,11 @@
           <p>Depending on how you use the app, Quiet Room may collect:</p>
           <ul>
             <li>
-              <strong>Account and authentication data.</strong> Quiet Room creates an
-              anonymous Firebase Auth session by default. If you sign in or create an
-              account, we may receive account identifiers, email address, display name,
-              provider information, and session data from email/password, Google, or
-              Apple sign-in.
+              <strong>Account and sign-in information.</strong> If you use Quiet Room
+              without signing in, the app may create a temporary anonymous account or
+              session so the app can function properly. If you sign in or create an
+              account, we may receive information such as your email address, display
+              name, sign-in method, account identifiers, and session information.
             </li>
             <li>
               <strong>Messages and conversation data.</strong> We process the prompts
@@ -71,21 +71,26 @@
               related conversation metadata.
             </li>
             <li>
-              <strong>Profile and memory data.</strong> Quiet Room may derive and
-              store profile or memory information from conversation content so future
-              replies can keep continuity and personalization.
+              <strong>Profile and memory data.</strong> Quiet Room may infer and store
+              profile or memory information from conversation content so future replies
+              can keep continuity and personalization.
             </li>
             <li>
               <strong>AI-sharing consent state.</strong> Quiet Room asks for consent
               before the first message is sent to the AI service. For signed-in users,
-              this consent state is stored with the account. For anonymous users, it is
-              stored locally on the device.
+              this consent state may be stored with the account. For anonymous users,
+              it may be stored locally on the device.
             </li>
             <li>
-              <strong>Technical metadata.</strong> We may process request IDs,
-              user/account IDs, conversation IDs, model names, token usage, status,
-              error categories, app/platform information, timing, and related
-              operational metadata.
+              <strong>Safety feedback and reports.</strong> If you choose to report a
+              response, we may collect your report, selected reason, optional note, and
+              the related account or conversation context needed to review the issue.
+            </li>
+            <li>
+              <strong>Technical and operational metadata.</strong> We may process
+              request IDs, account or user IDs, conversation IDs, model names, token
+              usage, status, error categories, app or platform information, timing, and
+              related operational metadata.
             </li>
             <li>
               <strong>Voice-related request data.</strong> If you use voice playback,
@@ -106,6 +111,7 @@
             <li>Maintain signed-in account state and app sessions.</li>
             <li>Support continuity and personalization across conversations.</li>
             <li>Generate AI chat responses and voice responses after consent.</li>
+            <li>Review reported responses and improve safety, quality, and reliability.</li>
             <li>Respond to support, privacy, account, and deletion requests.</li>
             <li>Debug issues, protect the service, and maintain reliability.</li>
           </ul>
@@ -115,8 +121,8 @@
           <h2 class="section-title">4. AI Provider Use And Consent</h2>
           <p>
             Quiet Room uses OpenAI to generate chat responses, create voice responses,
-            and help maintain derived profile or memory context. Conversation content,
-            relevant prior context, selected profile/memory information, timezone
+            and help maintain profile or memory context. Conversation content,
+            relevant prior context, selected profile or memory information, timezone
             context, model selection, and the text used for voice generation may be
             sent to OpenAI for those purposes.
           </p>
@@ -131,10 +137,9 @@
           <h2 class="section-title">5. Third-Party Services</h2>
           <p>Quiet Room uses service providers that help operate the app, including:</p>
           <ul>
-            <li><strong>Firebase Authentication</strong> for sign-in and account sessions.</li>
-            <li><strong>Firebase Firestore</strong> for account-linked app data such as conversations, consent state, profile, and memory records.</li>
-            <li><strong>OpenAI</strong> for AI-generated chat, profile/memory processing, and text-to-speech.</li>
-            <li><strong>Hosting and logging infrastructure</strong>, such as backend hosting and CloudWatch or equivalent operational logging.</li>
+            <li><strong>Google Firebase</strong> for sign-in, account sessions, and secure data storage.</li>
+            <li><strong>OpenAI</strong> for AI-generated chat, profile or memory processing, and text-to-speech.</li>
+            <li><strong>Hosting and logging infrastructure</strong> used to run the app and keep it reliable.</li>
             <li><strong>Vercel or equivalent static hosting</strong> for this public policy and support site.</li>
           </ul>
           <p>
@@ -152,8 +157,9 @@
               relevant conversation or delete your account, unless otherwise stated.
             </li>
             <li>
-              <strong>Operational logs.</strong> Deployed operational logs are
-              metadata-first and are retained for up to 90 days, then expire
+              <strong>Operational logs.</strong> Operational logs are primarily
+              technical records used for reliability, security, and debugging. Deployed
+              operational logs are retained for up to 90 days and then expire
               automatically. Local development logs may persist until manually rotated
               or deleted.
             </li>
@@ -170,9 +176,9 @@
           <p>
             Signed-in users can delete their account in the app. Open Quiet Room, tap
             the profile icon, choose <strong>Delete Account</strong>, and confirm.
-            The backend deletes the Firebase Auth user and known Firestore user data,
-            including conversations, memory/profile records, profile history entries,
-            and signed-in AI-consent state under that user account.
+            The backend deletes the account and known app data tied to that account,
+            including conversations, profile or memory records, profile history
+            entries, and signed-in AI-consent state.
           </p>
           <p>
             Operational logs are not generally deleted individually during account
@@ -207,6 +213,7 @@
             <li>You may choose whether to consent before sending messages to the AI service.</li>
             <li>You may delete individual conversations where available.</li>
             <li>You may delete a signed-in account from the profile icon menu.</li>
+            <li>You may report a response from the response actions shown in the app.</li>
             <li>You can remove app-local data by uninstalling the app or clearing app data on your device.</li>
             <li>You can contact support at <a href="mailto:matthew.reinig@gmail.com">matthew.reinig@gmail.com</a>.</li>
           </ul>
