@@ -57,12 +57,12 @@
           <h2 class="section-title">What account deletion deletes</h2>
           <p>When account deletion succeeds, Quiet Room deletes:</p>
           <ul>
-            <li>the Firebase Auth user for the signed-in account,</li>
-            <li>the backend user document for that account,</li>
-            <li>conversation documents under that user account,</li>
-            <li>memory and profile records under that user account,</li>
-            <li>profile history entries under that user account, and</li>
-            <li>signed-in AI-sharing consent state stored with that user account.</li>
+            <li>the signed-in account,</li>
+            <li>account data associated with that account,</li>
+            <li>conversation history saved under that account,</li>
+            <li>profile and memory records associated with that account,</li>
+            <li>profile history records associated with that account, and</li>
+            <li>AI-sharing consent state stored with that signed-in account.</li>
           </ul>
           <p>
             After deletion succeeds, the app resets to a new anonymous session.
@@ -84,10 +84,9 @@
               clearing.
             </li>
             <li>
-              <strong>Administrative configuration.</strong> If an internal
-              feature-flag allowlist manually references a user ID, that configuration
-              is handled administratively and is not the normal place Quiet Room stores
-              user conversations.
+              <strong>Internal administrative configuration.</strong> In limited cases,
+              internal rollout or configuration records may reference an account
+              identifier separately from normal conversation storage.
             </li>
           </ul>
         </section>
