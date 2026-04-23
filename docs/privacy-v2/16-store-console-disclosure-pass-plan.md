@@ -238,6 +238,124 @@ Confirm the final worksheets match:
 
 ---
 
+## Task Result — 2026-04-22
+
+Status: complete for the current repository truth set, with final release-candidate
+checks still listed below.
+
+Primary deliverable:
+
+- `docs/privacy/store-console-disclosure-worksheet.md`
+
+### Truth Set Stability Check
+
+Stable enough for final store answers: **Yes**, with one Apple release-candidate
+verification note.
+
+Verified truth sources:
+
+- data inventory: `docs/privacy/data-inventory.md`
+- public site: `site/quiet-room-privacy-policy`
+- site deployment notes: `site/quiet-room-privacy-policy/README.md` and `docs/privacy-v2/progress-tracker.md`
+- Android permission audit result: `docs/privacy-v2/14-android-permission-audit-plan.md`
+- app URL wiring: `src/config/env.ts` and `src/components/AboutModal.tsx`
+- account deletion path: `src/screens/QuietRoomScreen.tsx`
+- AI consent path: `src/screens/QuietRoomScreen.tsx`
+- iOS Apple sign-in: `app.json` and `src/components/LoginModal.tsx`
+- current generated iOS privacy manifest: `ios/QuietRoomQA/PrivacyInfo.xcprivacy`
+
+The current generated native iOS project is the QA target and includes
+`PrivacyInfo.xcprivacy` in target resources. Before final Apple upload, run the
+production native sync/build path and confirm the production target includes the
+equivalent manifest.
+
+### Confirmed Public URLs
+
+Checked with Node `fetch` on April 22, 2026:
+
+- `https://quiet-room-privacy-policy.vercel.app/` — `200`
+- `https://quiet-room-privacy-policy.vercel.app/privacy` — `200`
+- `https://quiet-room-privacy-policy.vercel.app/support` — `200`
+- `https://quiet-room-privacy-policy.vercel.app/account-deletion` — `200`
+
+Final console URLs:
+
+- Privacy policy URL: `https://quiet-room-privacy-policy.vercel.app/privacy`
+- Support URL: `https://quiet-room-privacy-policy.vercel.app/support`
+- Account deletion URL: `https://quiet-room-privacy-policy.vercel.app/account-deletion`
+
+### In-App Entry Points Confirmed
+
+- About modal links to Privacy Policy, Support, and Account Deletion through
+  `PRIVACY_POLICY_URL`, `SUPPORT_URL`, and `ACCOUNT_DELETION_URL`.
+- Signed-in account deletion is available from the profile icon menu through
+  `Delete Account`, then a confirmation modal.
+- AI consent is shown before the first content send. `Not now` does not send the
+  pending message; `I Consent` persists consent and resumes the pending send.
+- iOS Sign in with Apple is configured and exposed in the login modal.
+
+### Reviewer Note Copy
+
+The final copy/paste reviewer notes are in:
+
+- `docs/privacy/store-console-disclosure-worksheet.md`
+
+Short version:
+
+```text
+Privacy Policy: https://quiet-room-privacy-policy.vercel.app/privacy
+Support: https://quiet-room-privacy-policy.vercel.app/support
+Account deletion: https://quiet-room-privacy-policy.vercel.app/account-deletion
+
+In-app account deletion: open Quiet Room, tap the profile icon, choose Delete Account, then confirm.
+
+AI consent: Quiet Room shows an AI-sharing consent prompt before the first message is sent to the AI service. If the user chooses Not now, the pending message is not sent.
+```
+
+Apple-specific addition:
+
+```text
+iOS login: Sign in with Apple is available on iOS. Google and email/password sign-in may also be available when configured.
+
+In-app privacy links: open the About screen to access Privacy Policy, Support, and Account Deletion links.
+```
+
+Google-specific addition:
+
+```text
+Permissions: Quiet Room supports AI chat and text-to-speech playback. The Android release manifest does not request microphone recording, camera, contacts, location, notification, or broad media/storage permissions.
+```
+
+### Store Answer Dependencies
+
+No store-answer blockers remain from the Android permission audit, AI consent
+implementation, account-deletion implementation, public site URLs, or iOS login
+compliance.
+
+Remaining final-submission checks:
+
+- confirm the production iOS target/output includes `PrivacyInfo.xcprivacy`
+  after `npm run native:sync:prod`
+- confirm the production backend is using HTTPS/TLS URLs and 90-day deployed
+  operational-log retention
+- install the exact production store-candidate builds and smoke-check About
+  links, AI consent, Apple sign-in on iOS, and signed-in account deletion
+
+### Official Store Documentation Spot Check
+
+Checked official store documentation on April 22, 2026:
+
+- Google Play Data safety still requires developers to complete the form, review
+  SDK/provider collection, disclose off-device collection, and identify deletion
+  mechanisms:
+  `https://support.google.com/googleplay/android-developer/answer/10787469`
+- Apple App Privacy still requires privacy details for data collected by the app
+  or third-party partners and a Privacy Policy URL in App Store Connect:
+  `https://developer.apple.com/app-store/app-privacy-details/` and
+  `https://developer.apple.com/help/app-store-connect/reference/app-information/app-privacy`
+
+---
+
 ## Suggested Deliverables
 
 - Play Console disclosure worksheet
