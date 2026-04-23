@@ -14,6 +14,13 @@ export const testIds = {
   deleteAccountCancelButton: "quiet-room.delete-account.cancel",
   deleteAccountConfirmButton: "quiet-room.delete-account.confirm",
   deleteAccountError: "quiet-room.delete-account.error",
+  reportResponseModal: "quiet-room.report-response.modal",
+  reportResponseCancel: "quiet-room.report-response.cancel",
+  reportResponseDone: "quiet-room.report-response.done",
+  reportResponseError: "quiet-room.report-response.error",
+  reportResponseNote: "quiet-room.report-response.note",
+  reportResponseSubmit: "quiet-room.report-response.submit",
+  reportResponseReason: "quiet-room.report-response.reason",
   conversationsButton: "quiet-room.conversations.open",
   crucifixWrapper: "quiet-room.crucifix.wrapper",
   crucifixButton: "quiet-room.crucifix.open",
@@ -71,6 +78,10 @@ export function messageCopyButtonTestId(index: number): string {
 
 export function messageVoiceButtonTestId(role: "assistant" | "user", index: number): string {
   return `quiet-room.message.${role}.${index}.voice`;
+}
+
+export function messageReportButtonTestId(index: number): string {
+  return `quiet-room.message.assistant.${index}.report`;
 }
 
 export function promptCueTestId(id: string): string {

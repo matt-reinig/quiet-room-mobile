@@ -13,6 +13,13 @@ module.exports = {
   deleteAccountCancelButton: 'quiet-room.delete-account.cancel',
   deleteAccountConfirmButton: 'quiet-room.delete-account.confirm',
   deleteAccountError: 'quiet-room.delete-account.error',
+  reportResponseModal: 'quiet-room.report-response.modal',
+  reportResponseCancel: 'quiet-room.report-response.cancel',
+  reportResponseDone: 'quiet-room.report-response.done',
+  reportResponseError: 'quiet-room.report-response.error',
+  reportResponseNote: 'quiet-room.report-response.note',
+  reportResponseSubmit: 'quiet-room.report-response.submit',
+  reportResponseReason: 'quiet-room.report-response.reason',
   messageList: 'quiet-room.messages.list',
   openingMessage: 'quiet-room.message.opening',
   modelPickerContainer: 'quiet-room.model.picker',
@@ -58,6 +65,14 @@ module.exports = {
     },
     voice(role, index) {
       return `quiet-room.message.${role}.${index}.voice`;
+    },
+    report(index) {
+      return `quiet-room.message.assistant.${index}.report`;
+    },
+  },
+  conversation: {
+    row(id) {
+      return `quiet-room.conversation.${id}.row`;
     },
   },
   modelOption(model) {

@@ -25,12 +25,17 @@ import ConversationsModal from "../components/ConversationsModal";
 import LoginModal from "../components/LoginModal";
 import MessageBubble from "../components/MessageBubble";
 import PromptCues from "../components/PromptCues";
+import ReportResponseModal from "../components/ReportResponseModal";
 import Spinner from "../components/Spinner";
 import { useAuth } from "../contexts/AuthContext";
 import { useFeatureFlag } from "../contexts/FeatureFlagsContext";
 import { useChatController } from "../hooks/useChatController";
 import { getAiConsentAccepted, setAiConsentAccepted } from "../lib/aiConsent";
 import { MODEL_LABELS } from "../lib/chatModels";
+import {
+  submitResponseReport,
+  type ReportResponseReason,
+} from "../lib/reportResponse";
 import { mobileWeb } from "../theme/mobileWeb";
 import { messageBubbleTestId, modelOptionTestId, testIds } from "../testIds";
 import type { ChatMessage } from "../types/chat";
@@ -62,6 +67,12 @@ type RenderMessage = {
   id: string;
   message: ChatMessage;
   messageIndex: number | null;
+};
+
+type ReportResponseTarget = {
+  assistantMessageId: string;
+  assistantMessageIndex: number;
+  conversationId: string;
 };
 
 function headerTopPadding(): number {
@@ -134,6 +145,10 @@ export default function QuietRoomScreen() {
   const [showScrollTopButton, setShowScrollTopButton] = useState(false);
   const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
   const [deleteAccountPending, setDeleteAccountPending] = useState(false);
+  const [reportResponseTarget, setReportResponseTarget] = useState<ReportResponseTarget | null>(null);
+  const [reportResponseError, setReportResponseError] = useState<string | null>(null);
+  const [reportResponsePending, setReportResponsePending] = useState(false);
+  const [reportResponseSubmitted, setReportResponseSubmitted] = useState(false);
 
   const [voiceAutoPlayTarget, setVoiceAutoPlayTarget] = useState<VoiceAutoPlayTarget | null>(null);
 
@@ -260,6 +275,59 @@ export default function QuietRoomScreen() {
       setShowChatOptions(false);
     }
   }, [showChatOptions, showChatOptionsButton]);
+
+  const closeReportResponse = useCallback(() => {
+    if (reportResponsePending) {
+      return;
+    }
+
+    setReportResponseTarget(null);
+    setReportResponseError(null);
+    setReportResponseSubmitted(false);
+  }, [reportResponsePending]);
+
+  const openReportResponse = useCallback(
+    (target: { conversationId: string; message: ChatMessage; messageIndex: number }) => {
+      if (!target.conversationId || target.message.role !== "assistant") {
+        return;
+      }
+
+      setReportResponseTarget({
+        assistantMessageId: `${target.conversationId}:${target.messageIndex}`,
+        assistantMessageIndex: target.messageIndex,
+        conversationId: target.conversationId,
+      });
+      setReportResponseError(null);
+      setReportResponseSubmitted(false);
+    },
+    []
+  );
+
+  const submitReportResponse = useCallback(
+    async (reason: ReportResponseReason, note: string) => {
+      if (!user || !reportResponseTarget || reportResponsePending) {
+        return;
+      }
+
+      setReportResponsePending(true);
+      setReportResponseError(null);
+
+      try {
+        await submitResponseReport({
+          ...reportResponseTarget,
+          note,
+          reason,
+          user,
+        });
+        setReportResponseSubmitted(true);
+      } catch {
+        setReportResponseError("Unable to submit this report. Please try again.");
+      } finally {
+        setReportResponsePending(false);
+      }
+    },
+    [reportResponsePending, reportResponseTarget, user]
+  );
 
   useEffect(() => {
     lastVoiceAutoPlayKeyRef.current = null;
@@ -1097,6 +1165,7 @@ export default function QuietRoomScreen() {
                           conversationId={item.conversationId}
                           message={item.message}
                           messageIndex={item.messageIndex ?? undefined}
+                          onReportResponse={user ? openReportResponse : undefined}
                           testID={index === 0 ? testIds.openingMessage : messageBubbleTestId(item.message.role, index - 1)}
                           testIndex={index === 0 ? undefined : index - 1}
                         />
@@ -1552,6 +1621,15 @@ export default function QuietRoomScreen() {
             </View>
           </SafeAreaView>
         </Modal>
+
+        <ReportResponseModal
+          error={reportResponseError}
+          onClose={closeReportResponse}
+          onSubmit={submitReportResponse}
+          pending={reportResponsePending}
+          submitted={reportResponseSubmitted}
+          visible={Boolean(reportResponseTarget)}
+        />
 
         <LoginModal onClose={() => setShowLogin(false)} visible={showLogin} />
 

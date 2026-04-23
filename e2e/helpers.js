@@ -292,6 +292,11 @@ async function fetchUserData({ uid }) {
   return backendRequest(`/test/user-data?${query}`);
 }
 
+async function fetchReports({ uid }) {
+  const query = new URLSearchParams({ uid }).toString();
+  return backendRequest(`/test/reports?${query}`);
+}
+
 async function waitForUserConsentState({ uid, aiSharingAccepted, timeoutMs = 10000, intervalMs = 500 }) {
   const start = Date.now();
 
@@ -343,6 +348,7 @@ module.exports = {
   configureAiConsent,
   configureAccountDeletionMode,
   createDisposableTestUser,
+  fetchReports,
   fetchUserData,
   dismissIosPasswordSavePromptIfPresent,
   ensureGuestSession,
