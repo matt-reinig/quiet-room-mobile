@@ -16,9 +16,16 @@ Observed by April 21, 2026:
 - PROD bundle uploads now work through the Android Publisher API
 - the privacy-policy URL gate is cleared for both app records
 - `Quiet Room QA` now has QA build records in the `internal` track through `versionCode 5`, with the latest upload paired to iOS QA build `12`
-- `Quiet Room` now has prod build records in the `internal` track through `versionCode 2`, with the latest rebuild tied to the refreshed prod Firebase config
+- `Quiet Room` now has prod build records in the `internal` track through `versionCode 6`, with the latest upload paired to iOS prod build `13`
 - both Play app records still behave like draft apps, so API attempts to create a `completed` internal release can fail with `Only releases with status draft may be created on draft app.`
 - tester emails make users eligible, but the practical install path is still the Play shareable opt-in link
+
+Observed on April 24, 2026:
+
+- PROD `versionCode 6` uploaded from the prod rollout worktree as a draft internal release.
+- Play edit `00409671943079567863` was committed successfully.
+- Internal track readback showed `PROD internal 6`, `versionCodes: ["6"]`, `status: draft`.
+- The uploaded AAB SHA256 was `514818e8d18b729ac834dfea06393cf81a9597925f9a106e16ddc21aedaf2e0c`.
 
 ## Previously Observed Privacy-Policy Gate
 
@@ -81,6 +88,16 @@ Dry run:
 ```bash
 bash ./scripts/prepare-android-play.sh --dry-run --version 1.0.1 --version-code 7
 ```
+
+## Build Number Policy
+
+Keep QA and prod Android counters separate.
+
+- QA package id `com.quietroom.mobile.qa` owns its own increasing `versionCode` sequence.
+- PROD package id `com.quietroom.mobile` owns its own increasing `versionCode` sequence.
+- QA can increment freely for tester iterations.
+- PROD should increment only when uploading a prod-candidate build.
+- Android `versionCode` does not need to match iOS `CFBundleVersion`; record the mapping in release notes instead.
 
 ## Android Upload Key Setup
 
@@ -327,6 +344,82 @@ After upload, verify local state:
 
 ```bash
 npm run android:play:status:qa
+```
+
+## Proven PROD Build And Upload Path
+
+This is the exact path that produced the successful PROD Android `versionCode 6` upload from the prod rollout worktree on April 24, 2026.
+
+Start with the prod checks:
+
+```bash
+git fetch origin
+git checkout master
+git pull --ff-only
+npm run android:play:preflight:prod
+```
+
+Regenerate the prod native project if needed:
+
+```bash
+npm run native:sync:prod
+```
+
+Prepare the exact Android version and versionCode after native sync:
+
+```bash
+bash ./scripts/prepare-android-play.sh --version 1.0.0 --version-code 6
+```
+
+Run preflight again. The expected PROD evidence for `versionCode 6` was:
+
+```text
+Package id: com.quietroom.mobile
+Release env: prod
+android.versionCode: 6
+Upload key SHA1: D2:6F:2C:F6:85:1D:FC:8C:11:CA:91:A9:C0:23:C9:61:ED:D9:AA:53
+Upload key SHA256: 39:70:61:3B:B5:4B:DC:FD:D4:6A:2A:F3:43:F4:E5:BE:6E:C3:AF:71:E1:35:01:43:D7:24:2F:4D:3C:88:F7:97
+```
+
+Build the signed PROD AAB:
+
+```bash
+bash ./scripts/with-mobile-env.sh prod prod bash -lc 'cd android && ./gradlew bundleRelease'
+```
+
+Expected output:
+
+```text
+android/app/build/outputs/bundle/release/app-release.aab
+BUILD SUCCESSFUL
+```
+
+Upload through the Android Publisher API using the same script pattern as QA, changing only:
+
+```ruby
+package_name = 'com.quietroom.mobile'
+track = 'internal'
+release_name = 'PROD internal 6'
+release_notes = 'prod/prod internal testing build versionCode 6; paired with iOS prod build 13.'
+```
+
+Keep `status: 'draft'` while the prod app record still behaves like a draft Play app.
+
+Expected output for the April 24 upload:
+
+```text
+Created Play edit 00409671943079567863
+Uploaded AAB versionCode 6
+Updated internal track as draft release
+Committed Play edit 00409671943079567863
+```
+
+Verify with a temporary edit readback:
+
+```text
+PROD internal 6
+versionCodes: ["6"]
+status: draft
 ```
 
 ## Play Console Setup

@@ -16,6 +16,7 @@ Observed by April 21, 2026:
 - both App Store Connect app records exist
 - branded QA and prod uploads both succeeded
 - QA build `12` was uploaded successfully from the main `develop` tree
+- PROD build `13` was uploaded successfully from the prod rollout worktree on April 24, 2026 with `testFlightInternalTestingOnly: true`
 - current working app split is:
   - QA: `Quiet Room QA` / `com.quietroom.mobile.qa`
   - PROD: `Quiet Room` / `com.quietroom.mobile`
@@ -62,6 +63,17 @@ Dry run:
 ```bash
 bash ./scripts/prepare-ios-testflight.sh --dry-run --version 1.0.1 --build-number 7
 ```
+
+## Build Number Policy
+
+Keep QA and prod iOS build numbers separate.
+
+- QA bundle id `com.quietroom.mobile.qa` owns its own increasing `CFBundleVersion` sequence.
+- PROD bundle id `com.quietroom.mobile` owns its own increasing `CFBundleVersion` sequence.
+- QA can increment freely for tester iterations.
+- PROD should increment only when uploading a prod-candidate build.
+- iOS `CFBundleVersion` does not need to match Android `versionCode`; record the mapping in release notes instead.
+- The shared marketing version, such as `1.0.0`, can stay aligned across QA and prod when both lanes represent the same product version.
 
 ## Repo-Side Prep Checklist
 
@@ -313,6 +325,140 @@ npm run ios:testflight:status:qa
 ```
 
 Then use App Store Connect to wait for processing and attach the build to the intended internal TestFlight group.
+
+## Proven CLI Upload Path For PROD
+
+This is the exact path that produced the successful PROD iOS build `13` upload from the prod rollout worktree on April 24, 2026.
+
+Start from a fresh `master` checkout and make sure the intended prod environment files are present locally:
+
+```bash
+git fetch origin
+git checkout master
+git pull --ff-only
+npm run ios:testflight:preflight:prod
+```
+
+Regenerate the prod native project before preparing final build numbers:
+
+```bash
+npm run native:sync:prod
+```
+
+Important ordering note:
+
+- `native:sync:prod` can regenerate the Xcode project.
+- After sync, the Xcode project may temporarily have stale `MARKETING_VERSION` or `CURRENT_PROJECT_VERSION` values.
+- Run the prepare script after sync so `app.json`, `Info.plist`, and the Xcode project all agree.
+
+For the April 24 PROD upload, the intended store versions were Android `versionCode 6` and iOS build `13`, so iOS was prepared explicitly:
+
+```bash
+bash ./scripts/prepare-ios-testflight.sh --version 1.0.0 --build-number 13
+```
+
+Verify the PROD identity and native metadata before archiving:
+
+```bash
+npm run ios:testflight:preflight:prod
+```
+
+The expected PROD preflight evidence for build `13` was:
+
+```text
+App name: Quiet Room
+Bundle id: com.quietroom.mobile
+Release env: prod
+Info.plist CFBundleVersion: 13
+MARKETING_VERSION: 1.0.0
+CURRENT_PROJECT_VERSION: 13
+```
+
+Create an unsigned Release archive:
+
+```bash
+rm -rf build/QuietRoom-b13-unsigned.xcarchive
+
+bash ./scripts/with-mobile-env.sh prod prod xcodebuild \
+  -workspace ios/QuietRoom.xcworkspace \
+  -scheme QuietRoom \
+  -configuration Release \
+  -destination 'generic/platform=iOS' \
+  -archivePath build/QuietRoom-b13-unsigned.xcarchive \
+  CODE_SIGNING_ALLOWED=NO \
+  archive
+```
+
+Confirm the archive identity before upload:
+
+```bash
+plutil -p build/QuietRoom-b13-unsigned.xcarchive/Products/Applications/QuietRoom.app/Info.plist | rg 'CFBundleIdentifier|CFBundleShortVersionString|CFBundleVersion'
+```
+
+Expected values:
+
+```text
+CFBundleIdentifier = com.quietroom.mobile
+CFBundleShortVersionString = 1.0.0
+CFBundleVersion = 13
+```
+
+Create an App Store Connect upload export options plist for internal-only TestFlight:
+
+```bash
+rm -rf build/testflight-export-prod-b13
+mkdir -p build/testflight-export-prod-b13
+cp scripts/ios-export-options-app-store.plist build/exportOptions-upload-prod-b13.plist
+plutil -replace destination -string upload build/exportOptions-upload-prod-b13.plist
+plutil -insert testFlightInternalTestingOnly -bool true build/exportOptions-upload-prod-b13.plist 2>/dev/null || \
+  plutil -replace testFlightInternalTestingOnly -bool true build/exportOptions-upload-prod-b13.plist
+```
+
+The important export plist settings are:
+
+```text
+destination = upload
+method = app-store-connect
+signingStyle = automatic
+teamID = SV7SPMY2Q8
+manageAppVersionAndBuildNumber = false
+stripSwiftSymbols = true
+uploadSymbols = true
+testFlightInternalTestingOnly = true
+```
+
+Export and upload:
+
+```bash
+xcodebuild -exportArchive \
+  -archivePath build/QuietRoom-b13-unsigned.xcarchive \
+  -exportPath build/testflight-export-prod-b13 \
+  -exportOptionsPlist build/exportOptions-upload-prod-b13.plist \
+  -allowProvisioningUpdates
+```
+
+Successful output includes:
+
+```text
+Uploaded QuietRoom
+** EXPORT SUCCEEDED **
+```
+
+The April 24 upload logs also included:
+
+```text
+Upload succeeded.
+UPLOAD SUCCEEDED with no errors
+testFlightInternalTestingOnly: true
+```
+
+After upload, run the status command one more time:
+
+```bash
+npm run ios:testflight:status:prod
+```
+
+Then use App Store Connect to wait for processing and attach build `13` to the intended internal TestFlight group.
 
 ## Archive And Upload
 
