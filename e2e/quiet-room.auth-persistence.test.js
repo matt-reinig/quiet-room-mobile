@@ -16,6 +16,6 @@ describe('Quiet Room auth persistence', () => {
     await waitFor(element(by.id(ids.header))).toBeVisible().withTimeout(60000);
     await waitFor(element(by.id(ids.profileButton))).toExist().withTimeout(10000);
     await element(by.id(ids.profileButton)).tap();
-    await waitFor(element(by.text('Continue as Guest'))).toExist().withTimeout(10000);
+    await waitFor(element(by.text('Logout'))).toExist().withTimeout(10000);
   });
 });

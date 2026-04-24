@@ -1,13 +1,20 @@
 import { useMemo } from "react";
 import {
+  Linking,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
-import { API_BASE, APP_VARIANT, CONTACT_EMAIL, RELEASE_ENV } from "../config/env";
+import {
+  ACCOUNT_DELETION_URL,
+  CONTACT_EMAIL,
+  PRIVACY_POLICY_URL,
+  SUPPORT_URL,
+} from "../config/env";
 import { getPromptCues } from "../promptCues";
 
 type AboutModalProps = {
@@ -16,7 +23,12 @@ type AboutModalProps = {
   visible: boolean;
 };
 
+function openExternalUrl(url: string) {
+  void Linking.openURL(url);
+}
+
 export default function AboutModal({ isAnon, onClose, visible }: AboutModalProps) {
+  const { height } = useWindowDimensions();
   const promptCues = useMemo(
     () => getPromptCues({ isAnon, variant: "quiet_room" }),
     [isAnon]
@@ -31,10 +43,12 @@ export default function AboutModal({ isAnon, onClose, visible }: AboutModalProps
       <View style={styles.backdrop}>
         <Pressable onPress={onClose} style={StyleSheet.absoluteFill} />
 
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { height: Math.min(Math.max(height - 160, 360), 720) }]}>
           <View style={styles.headerRow}>
             <View style={styles.headerCopyWrap}>
-              <Text style={styles.title}>About Quiet Room</Text>
+              <Text style={styles.title} testID="quiet-room.about.title">
+                About Quiet Room
+              </Text>
               <Text style={styles.subtitle}>A quiet space to return to.</Text>
             </View>
             <Pressable onPress={onClose} style={styles.closeButton}>
@@ -42,7 +56,11 @@ export default function AboutModal({ isAnon, onClose, visible }: AboutModalProps
             </Pressable>
           </View>
 
-          <ScrollView contentContainerStyle={styles.body}>
+          <ScrollView
+            contentContainerStyle={styles.body}
+            style={styles.scrollArea}
+            testID="quiet-room.about.body"
+          >
             <Text style={styles.paragraph}>
               Quiet Room is a quiet, digital space designed to support your
               relationship with Jesus.
@@ -88,7 +106,7 @@ export default function AboutModal({ isAnon, onClose, visible }: AboutModalProps
 
             {promptCues.map((cue) => (
               <Text key={cue.id} style={styles.bullet}>
-                ? {cue.label}
+                - {cue.label}
               </Text>
             ))}
 
@@ -102,12 +120,34 @@ export default function AboutModal({ isAnon, onClose, visible }: AboutModalProps
 
             <Text style={styles.email}>Email: {CONTACT_EMAIL}</Text>
 
-            <Text style={styles.sectionTitle}>Build details</Text>
-            <Text style={styles.meta}>App variant: {APP_VARIANT}</Text>
-            <Text style={styles.meta}>Release env: {RELEASE_ENV}</Text>
-            <Text selectable style={styles.meta}>
-              API base: {API_BASE}
-            </Text>
+            <Text style={styles.sectionTitle}>Privacy and account information</Text>
+
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => openExternalUrl(PRIVACY_POLICY_URL)}
+              style={styles.linkRow}
+              testID="quiet-room.about.privacy-link"
+            >
+              <Text style={styles.linkText}>Privacy Policy</Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => openExternalUrl(SUPPORT_URL)}
+              style={styles.linkRow}
+              testID="quiet-room.about.support-link"
+            >
+              <Text style={styles.linkText}>Support</Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => openExternalUrl(ACCOUNT_DELETION_URL)}
+              style={styles.linkRow}
+              testID="quiet-room.about.account-deletion-link"
+            >
+              <Text style={styles.linkText}>Account Deletion</Text>
+            </Pressable>
 
             <Text style={styles.paragraph}>Thank you for being here.</Text>
           </ScrollView>
@@ -164,10 +204,15 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingBottom: 12,
   },
-  meta: {
-    color: "#4B5563",
-    fontSize: 12,
-    lineHeight: 18,
+  linkRow: {
+    alignSelf: "flex-start",
+    paddingVertical: 2,
+  },
+  linkText: {
+    color: "#1D4ED8",
+    fontSize: 14,
+    fontWeight: "600",
+    lineHeight: 20,
   },
   paragraph: {
     color: "#111827",
@@ -180,12 +225,16 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 6,
   },
+  scrollArea: {
+    flex: 1,
+    flexShrink: 1,
+  },
   sheet: {
     backgroundColor: "#FFFFFF",
     borderRadius: 14,
     gap: 12,
-    maxHeight: "84%",
     maxWidth: 520,
+    overflow: "hidden",
     padding: 14,
     width: "100%",
   },

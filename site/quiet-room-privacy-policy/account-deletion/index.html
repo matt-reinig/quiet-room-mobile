@@ -6,7 +6,7 @@
     <title>Quiet Room Account Deletion</title>
     <meta
       name="description"
-      content="Account deletion request information for Quiet Room and Quiet Room QA."
+      content="Account deletion information for Quiet Room."
     />
     <link rel="stylesheet" href="../styles.css" />
   </head>
@@ -14,7 +14,7 @@
     <div class="page-shell">
       <header class="topbar">
         <a class="brand-lockup" href="../">
-          <img alt="Quiet Room crossmark" src="../assets/quiet-room-crossmark.svg" />
+          <img alt="Quiet Room door icon" src="../assets/quiet-room-door-icon.png" />
           <span class="brand-text">
             <strong>Quiet Room</strong>
             <span>Account deletion</span>
@@ -30,34 +30,78 @@
 
       <main class="content-card">
         <div class="page-header">
-          <span class="eyebrow">Account requests</span>
-          <h1 class="page-title">Request account deletion</h1>
+          <span class="eyebrow">Account deletion</span>
+          <h1 class="page-title">Delete your Quiet Room account</h1>
           <p class="lede">
-            If you would like to request deletion of your Quiet Room account or
-            account-linked data, use the contact details below.
+            Signed-in users can delete their Quiet Room account directly inside the
+            app. This page explains where to find the control, what is deleted, and
+            what may remain temporarily.
           </p>
         </div>
 
         <section class="section">
-          <h2 class="section-title">How to request deletion</h2>
+          <h2 class="section-title">How to delete your account in the app</h2>
+          <ol>
+            <li>Open the Quiet Room app.</li>
+            <li>Tap the profile icon.</li>
+            <li>Choose <strong>Delete Account</strong>.</li>
+            <li>Confirm deletion in the dialog.</li>
+          </ol>
           <p>
-            Email
-            <a href="mailto:matthew.reinig@gmail.com">matthew.reinig@gmail.com</a>
-            from the address associated with your Quiet Room account, or include the
-            account email in your message.
+            The in-app deletion flow is available for signed-in accounts. Guest or
+            anonymous sessions do not show the signed-in account deletion control.
           </p>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">What account deletion deletes</h2>
+          <p>When account deletion succeeds, Quiet Room deletes:</p>
           <ul>
-            <li>Subject line suggestion: "Quiet Room account deletion request"</li>
-            <li>Tell us whether you are using Quiet Room or Quiet Room QA.</li>
-            <li>Include any details that will help us identify the correct account.</li>
+            <li>the signed-in account,</li>
+            <li>account data associated with that account,</li>
+            <li>conversation history saved under that account,</li>
+            <li>profile and memory records associated with that account,</li>
+            <li>profile history records associated with that account, and</li>
+            <li>AI-sharing consent state stored with that signed-in account.</li>
+          </ul>
+          <p>
+            After deletion succeeds, the app resets to a new anonymous session.
+          </p>
+        </section>
+
+        <section class="section">
+          <h2 class="section-title">What may remain temporarily</h2>
+          <ul>
+            <li>
+              <strong>Operational logs.</strong> Deployed operational logs are retained
+              for up to 90 days and then expire automatically. They are not generally
+              deleted individually during account deletion.
+            </li>
+            <li>
+              <strong>Device-local data.</strong> Temporary cache data, local consent
+              cache, or audio playback files may remain on your device until app
+              cleanup, operating-system cache eviction, uninstall, or manual app-data
+              clearing.
+            </li>
+            <li>
+              <strong>Internal administrative configuration.</strong> In limited cases,
+              internal rollout or configuration records may reference an account
+              identifier separately from normal conversation storage.
+            </li>
           </ul>
         </section>
 
         <section class="section">
-          <h2 class="section-title">Current status</h2>
+          <h2 class="section-title">If deletion fails</h2>
           <p>
-            Account deletion requests are currently handled through email support.
-            Additional in-app account management options may be added in the future.
+            If the in-app deletion flow fails, please contact
+            <a href="mailto:matthew.reinig@gmail.com">matthew.reinig@gmail.com</a>
+            with the email address associated with your Quiet Room account, which app
+            you are using, and a short description of what happened.
+          </p>
+          <p>
+            You can also use the <a href="../support/">support page</a> for account,
+            privacy, and support questions.
           </p>
         </section>
       </main>
@@ -65,7 +109,7 @@
       <footer class="footer">
         <div>
           <div class="footer-title">Quiet Room</div>
-          <div class="footer-note">Account request information for Quiet Room.</div>
+          <div class="footer-note">Account deletion information for Quiet Room.</div>
         </div>
 
         <div class="footer-links">

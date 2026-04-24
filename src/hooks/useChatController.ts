@@ -4,9 +4,13 @@ import type { User } from "firebase/auth";
 import {
   API_BASE,
   DEFAULT_MODEL,
-  MODEL_OPTIONS,
   resolveStreamingUrl,
 } from "../config/env";
+import { useFeatureFlags } from "../contexts/FeatureFlagsContext";
+import {
+  normalizeChatModel,
+  resolveEnabledChatModels,
+} from "../lib/chatModels";
 import type { ChatMessage, Conversation, ConversationsById } from "../types/chat";
 
 const STREAM_FLUSH_INTERVAL_MS = 120;
@@ -66,7 +70,8 @@ function normalizeConversationListPayload(payload: unknown): ConversationListPag
 
 function mergeConversationPage(
   previous: ConversationsById,
-  items: Record<string, unknown>[]
+  items: Record<string, unknown>[],
+  enabledModels: readonly string[],
 ): ConversationsById {
   const next: ConversationsById = { ...previous };
 
@@ -85,10 +90,12 @@ function mergeConversationPage(
         typeof item.createdAt === "number"
           ? item.createdAt
           : existing?.createdAt,
-      currentModel:
+      currentModel: normalizeChatModel(
         typeof item.currentModel === "string"
           ? item.currentModel
           : existing?.currentModel || DEFAULT_MODEL,
+        enabledModels,
+      ),
       id,
       messages: existing?.messages || [],
       messagesLoaded: existing?.messagesLoaded ?? false,
@@ -337,6 +344,7 @@ export function useChatController({
   isAnon,
   user,
 }: UseChatControllerArgs): UseChatControllerResult {
+  const { values: featureFlagValues } = useFeatureFlags();
   const [conversations, setConversations] = useState<ConversationsById>({});
   const [conversationsHydrated, setConversationsHydrated] = useState(false);
   const [currentId, setCurrentId] = useState<string | null>(null);
@@ -349,17 +357,51 @@ export function useChatController({
   const [loadingMoreConversations, setLoadingMoreConversations] = useState(false);
   const [nextConversationCursor, setNextConversationCursor] = useState<string | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
-  const [currentModel, setCurrentModelState] = useState(DEFAULT_MODEL);
+  const modelOptions = useMemo(
+    () => resolveEnabledChatModels(featureFlagValues),
+    [featureFlagValues],
+  );
+  const [currentModel, setCurrentModelState] = useState(() =>
+    normalizeChatModel(DEFAULT_MODEL, modelOptions),
+  );
 
   const chatLoadRequestIdRef = useRef(0);
   const currentIdRef = useRef<string | null>(null);
   currentIdRef.current = currentId;
 
   useEffect(() => {
+    setCurrentModelState((previous) => normalizeChatModel(previous, modelOptions));
+  }, [modelOptions]);
+
+  useEffect(() => {
+    setConversations((previous) => {
+      let changed = false;
+      const next: ConversationsById = {};
+
+      for (const [conversationId, conversation] of Object.entries(previous)) {
+        const normalizedModel = normalizeChatModel(
+          conversation?.currentModel,
+          modelOptions,
+        );
+
+        if (normalizedModel !== conversation?.currentModel) {
+          next[conversationId] = { ...conversation, currentModel: normalizedModel };
+          changed = true;
+          continue;
+        }
+
+        next[conversationId] = conversation;
+      }
+
+      return changed ? next : previous;
+    });
+  }, [modelOptions]);
+
+  useEffect(() => {
     if (!user) {
       setConversations({});
       setCurrentId(null);
-      setCurrentModelState(DEFAULT_MODEL);
+      setCurrentModelState(normalizeChatModel(DEFAULT_MODEL, modelOptions));
       setSidebarLoading(false);
       setLoadingMoreConversations(false);
       setNextConversationCursor(null);
@@ -370,7 +412,7 @@ export function useChatController({
     if (isAnon) {
       setConversations({});
       setCurrentId(null);
-      setCurrentModelState(DEFAULT_MODEL);
+      setCurrentModelState(normalizeChatModel(DEFAULT_MODEL, modelOptions));
       setSidebarLoading(false);
       setLoadingMoreConversations(false);
       setNextConversationCursor(null);
@@ -401,7 +443,7 @@ export function useChatController({
         }
 
         const payload = normalizeConversationListPayload((await response.json()) as unknown);
-        const mapped = mergeConversationPage({}, payload.items);
+        const mapped = mergeConversationPage({}, payload.items, modelOptions);
         const sorted = Object.values(mapped).sort(
           (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)
         );
@@ -430,11 +472,11 @@ export function useChatController({
     return () => {
       cancelled = true;
     };
-  }, [isAnon, user]);
+  }, [isAnon, modelOptions, user]);
 
   const setCurrentModel = useCallback(
     (model: string) => {
-      const nextModel = typeof model === "string" && model.trim() ? model.trim() : DEFAULT_MODEL;
+      const nextModel = normalizeChatModel(model, modelOptions);
 
       setCurrentModelState((previous: string) => {
         if (previous === nextModel) {
@@ -465,7 +507,7 @@ export function useChatController({
         };
       });
     },
-    []
+    [modelOptions]
   );
 
   useEffect(() => {
@@ -533,10 +575,12 @@ export function useChatController({
           .reverse()
           .find((message) => typeof message.model === "string")?.model;
 
-        const resolvedModel =
+        const resolvedModel = normalizeChatModel(
           typeof data.currentModel === "string"
             ? data.currentModel
-            : latestModelFromMessages || DEFAULT_MODEL;
+            : latestModelFromMessages || DEFAULT_MODEL,
+          modelOptions,
+        );
 
         setConversations((previous) => {
           const previousConversation = previous[currentId] || {
@@ -599,7 +643,7 @@ export function useChatController({
     return () => {
       abortController.abort();
     };
-  }, [conversations, currentId, isAnon, user]);
+  }, [conversations, currentId, isAnon, modelOptions, user]);
 
   useEffect(() => {
     if (!currentId) {
@@ -612,16 +656,18 @@ export function useChatController({
       return;
     }
 
-    const latestModel =
+    const latestModel = normalizeChatModel(
       conversation.currentModel ||
-      [...(conversation.messages || [])]
-        .reverse()
-        .find((message) => typeof message.model === "string")?.model;
+        [...(conversation.messages || [])]
+          .reverse()
+          .find((message) => typeof message.model === "string")?.model,
+      modelOptions,
+    );
 
     if (latestModel && latestModel !== currentModel) {
       setCurrentModel(latestModel);
     }
-  }, [conversations, currentId, currentModel]);
+  }, [conversations, currentId, currentModel, modelOptions, setCurrentModel]);
 
   const createNewChat = useCallback(() => {
     setCurrentId(null);
@@ -851,7 +897,7 @@ export function useChatController({
 
       const payload = normalizeConversationListPayload((await response.json()) as unknown);
 
-      setConversations((previous) => mergeConversationPage(previous, payload.items));
+      setConversations((previous) => mergeConversationPage(previous, payload.items, modelOptions));
       setNextConversationCursor(payload.nextCursor);
     } catch (error) {
       console.error("Failed to load more conversations", error);
@@ -865,7 +911,7 @@ export function useChatController({
 
       setLoadingMoreConversations(false);
     }
-  }, [isAnon, loadingMoreConversations, nextConversationCursor, sidebarLoading, user]);
+  }, [isAnon, loadingMoreConversations, modelOptions, nextConversationCursor, sidebarLoading, user]);
 
   const renameConversation = useCallback(
     async (conversationId: string, title: string) => {
@@ -1013,7 +1059,7 @@ export function useChatController({
     loading,
     loadingMoreConversations,
     messages,
-    modelOptions: MODEL_OPTIONS,
+    modelOptions,
     renameConversation,
     sendMessage,
     setCurrentId,

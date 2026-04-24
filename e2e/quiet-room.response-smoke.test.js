@@ -1,4 +1,5 @@
 const {
+  acceptAiConsentIfVisible,
   dismissIosPasswordSavePromptIfPresent,
   launchQuietRoom,
   waitForExistsMaybe,
@@ -47,6 +48,7 @@ async function sendPrompt(text) {
       await waitFor(fullscreenComposer).toBeVisible().withTimeout(10000);
       await fullscreenComposer.replaceText(text);
       await fullscreenSendButton.tap();
+      await acceptAiConsentIfVisible();
       return sendButton;
     }
   }
@@ -54,6 +56,7 @@ async function sendPrompt(text) {
   await composer.tap();
   await composer.replaceText(text);
   await sendButton.tap();
+  await acceptAiConsentIfVisible();
   return sendButton;
 }
 

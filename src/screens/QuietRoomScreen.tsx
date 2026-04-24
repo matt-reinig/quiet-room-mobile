@@ -3,6 +3,7 @@ import { Feather, Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
+  Alert,
   ScrollView,
   Keyboard,
   Image,
@@ -24,12 +25,19 @@ import ConversationsModal from "../components/ConversationsModal";
 import LoginModal from "../components/LoginModal";
 import MessageBubble from "../components/MessageBubble";
 import PromptCues from "../components/PromptCues";
+import ReportResponseModal from "../components/ReportResponseModal";
 import Spinner from "../components/Spinner";
 import { useAuth } from "../contexts/AuthContext";
 import { useFeatureFlag } from "../contexts/FeatureFlagsContext";
 import { useChatController } from "../hooks/useChatController";
+import { getAiConsentAccepted, setAiConsentAccepted } from "../lib/aiConsent";
+import { MODEL_LABELS } from "../lib/chatModels";
+import {
+  submitResponseReport,
+  type ReportResponseReason,
+} from "../lib/reportResponse";
 import { mobileWeb } from "../theme/mobileWeb";
-import { messageBubbleTestId, testIds } from "../testIds";
+import { messageBubbleTestId, modelOptionTestId, testIds } from "../testIds";
 import type { ChatMessage } from "../types/chat";
 
 const VOICE_MODE_STORAGE_KEY = "gabriel.voiceModeEnabled";
@@ -61,18 +69,11 @@ type RenderMessage = {
   messageIndex: number | null;
 };
 
-
-function modelLabel(model: string): string {
-  if (model === "gpt-5.1-chat-latest") {
-    return "GPT-5.1";
-  }
-
-  if (model === "gpt-5.3-chat-latest") {
-    return "GPT-5.3";
-  }
-
-  return model;
-}
+type ReportResponseTarget = {
+  assistantMessageId: string;
+  assistantMessageIndex: number;
+  conversationId: string;
+};
 
 function headerTopPadding(): number {
   return Platform.OS === "ios" ? 84 : 100;
@@ -91,8 +92,8 @@ function crucifixTopMargin(): number {
 }
 
 export default function QuietRoomScreen() {
-  const { isAnon, logout, user } = useAuth();
-  const voiceModeAvailable = useFeatureFlag("voice_mode", true);
+  const { deleteAccount, isAnon, logout, user } = useAuth();
+  const voiceModeAvailable = useFeatureFlag("voice_mode", false);
 
   const {
     chatLoading,
@@ -118,19 +119,36 @@ export default function QuietRoomScreen() {
     showThinking,
     sidebarLoading,
   } = useChatController({ isAnon, user });
+  const showModelSection = modelOptions.length > 1;
+  const showChatOptionsButton = voiceModeAvailable || showModelSection;
+  const composerModelLabel = showChatOptionsButton
+    ? MODEL_LABELS[currentModel] || currentModel || ""
+    : "";
 
   const [showAbout, setShowAbout] = useState(false);
   const [showCrucifix, setShowCrucifix] = useState(false);
   const [showChatOptions, setShowChatOptions] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showAiConsentModal, setShowAiConsentModal] = useState(false);
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
   const [showComposerFullscreen, setShowComposerFullscreen] = useState(false);
   const [showConversations, setShowConversations] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [aiConsentAcceptedState, setAiConsentAcceptedState] = useState(false);
+  const [aiConsentLoaded, setAiConsentLoaded] = useState(false);
+  const [aiConsentPending, setAiConsentPending] = useState<string | null>(null);
+  const [aiConsentSaving, setAiConsentSaving] = useState(false);
   const [voiceModeEnabled, setVoiceModeEnabled] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
   const [showNewestButton, setShowNewestButton] = useState(false);
   const [showScrollTopButton, setShowScrollTopButton] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null);
+  const [deleteAccountPending, setDeleteAccountPending] = useState(false);
+  const [reportResponseTarget, setReportResponseTarget] = useState<ReportResponseTarget | null>(null);
+  const [reportResponseError, setReportResponseError] = useState<string | null>(null);
+  const [reportResponsePending, setReportResponsePending] = useState(false);
+  const [reportResponseSubmitted, setReportResponseSubmitted] = useState(false);
 
   const [voiceAutoPlayTarget, setVoiceAutoPlayTarget] = useState<VoiceAutoPlayTarget | null>(null);
 
@@ -203,6 +221,31 @@ export default function QuietRoomScreen() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
+    setShowAiConsentModal(false);
+    setAiConsentPending(null);
+    setAiConsentLoaded(false);
+
+    const hydrateAiConsent = async () => {
+      const accepted = await getAiConsentAccepted(user);
+
+      if (cancelled) {
+        return;
+      }
+
+      setAiConsentAcceptedState(accepted);
+      setAiConsentLoaded(true);
+    };
+
+    void hydrateAiConsent();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.isAnonymous, user?.uid]);
+
+  useEffect(() => {
     const hydrateVoiceModePreference = async () => {
       try {
         const value = await AsyncStorage.getItem(VOICE_MODE_STORAGE_KEY);
@@ -226,6 +269,65 @@ export default function QuietRoomScreen() {
       // Intentionally ignored.
     });
   }, [voiceModeEnabled]);
+
+  useEffect(() => {
+    if (!showChatOptionsButton && showChatOptions) {
+      setShowChatOptions(false);
+    }
+  }, [showChatOptions, showChatOptionsButton]);
+
+  const closeReportResponse = useCallback(() => {
+    if (reportResponsePending) {
+      return;
+    }
+
+    setReportResponseTarget(null);
+    setReportResponseError(null);
+    setReportResponseSubmitted(false);
+  }, [reportResponsePending]);
+
+  const openReportResponse = useCallback(
+    (target: { conversationId: string; message: ChatMessage; messageIndex: number }) => {
+      if (!target.conversationId || target.message.role !== "assistant") {
+        return;
+      }
+
+      setReportResponseTarget({
+        assistantMessageId: `${target.conversationId}:${target.messageIndex}`,
+        assistantMessageIndex: target.messageIndex,
+        conversationId: target.conversationId,
+      });
+      setReportResponseError(null);
+      setReportResponseSubmitted(false);
+    },
+    []
+  );
+
+  const submitReportResponse = useCallback(
+    async (reason: ReportResponseReason, note: string) => {
+      if (!user || !reportResponseTarget || reportResponsePending) {
+        return;
+      }
+
+      setReportResponsePending(true);
+      setReportResponseError(null);
+
+      try {
+        await submitResponseReport({
+          ...reportResponseTarget,
+          note,
+          reason,
+          user,
+        });
+        setReportResponseSubmitted(true);
+      } catch {
+        setReportResponseError("Unable to submit this report. Please try again.");
+      } finally {
+        setReportResponsePending(false);
+      }
+    },
+    [reportResponsePending, reportResponseTarget, user]
+  );
 
   useEffect(() => {
     lastVoiceAutoPlayKeyRef.current = null;
@@ -701,20 +803,59 @@ export default function QuietRoomScreen() {
     listRef.current?.scrollToEnd({ animated });
   }
 
-  const handleSendPress = useCallback(() => {
-    const nextInput = inputValueRef.current.trim();
-    if (!nextInput || loading) {
-      return;
-    }
-
-    armSendAnchor();
-    void sendMessage(nextInput);
-  }, [armSendAnchor, loading, sendMessage]);
-
   const dismissKeyboard = useCallback(() => {
     composerInputRef.current?.blur();
     Keyboard.dismiss();
   }, []);
+
+  const requestSendWithConsent = useCallback(
+    async (text: string) => {
+      const nextInput = text.trim();
+
+      if (!nextInput || loading) {
+        return;
+      }
+
+      let consentAccepted = aiConsentAcceptedState;
+
+      if (!aiConsentLoaded) {
+        consentAccepted = await getAiConsentAccepted(user);
+        setAiConsentAcceptedState(consentAccepted);
+        setAiConsentLoaded(true);
+      }
+
+      if (!consentAccepted) {
+        dismissKeyboard();
+        setShowComposerFullscreen(false);
+        setAiConsentPending(nextInput);
+        setShowAiConsentModal(true);
+        return;
+      }
+
+      armSendAnchor();
+      void sendMessage(nextInput);
+    },
+    [
+      aiConsentAcceptedState,
+      aiConsentLoaded,
+      armSendAnchor,
+      dismissKeyboard,
+      loading,
+      sendMessage,
+      user,
+    ]
+  );
+
+  const handleSendPress = useCallback(() => {
+    const nextInput = inputValueRef.current.trim();
+
+    if (!nextInput) {
+      return;
+    }
+
+    void requestSendWithConsent(nextInput);
+  }, [requestSendWithConsent]);
+
   const handleProfilePress = useCallback(() => {
     Keyboard.dismiss();
     setShowChatOptions(false);
@@ -725,6 +866,86 @@ export default function QuietRoomScreen() {
     setShowProfileMenu(false);
     void logout();
   }, [logout]);
+
+  const handleDeleteAccountStart = useCallback(() => {
+    setShowProfileMenu(false);
+    setDeleteAccountError(null);
+    setShowDeleteAccountModal(true);
+  }, []);
+
+  const handleDeleteAccountCancel = useCallback(() => {
+    if (deleteAccountPending) {
+      return;
+    }
+
+    setDeleteAccountError(null);
+    setShowDeleteAccountModal(false);
+  }, [deleteAccountPending]);
+
+  const handleDeleteAccountConfirm = useCallback(() => {
+    if (deleteAccountPending) {
+      return;
+    }
+
+    setDeleteAccountPending(true);
+    setDeleteAccountError(null);
+
+    void deleteAccount()
+      .then(() => {
+        setShowDeleteAccountModal(false);
+      })
+      .catch((error) => {
+        const message =
+          error instanceof Error && error.message.trim()
+            ? error.message.trim()
+            : "Unable to delete account right now.";
+        setDeleteAccountError(message);
+      })
+      .finally(() => {
+        setDeleteAccountPending(false);
+      });
+  }, [deleteAccount, deleteAccountPending]);
+
+  const handleAiConsentCancel = useCallback(() => {
+    if (aiConsentSaving) {
+      return;
+    }
+
+    setAiConsentPending(null);
+    setShowAiConsentModal(false);
+  }, [aiConsentSaving]);
+
+  const handleAiConsentAccept = useCallback(() => {
+    if (aiConsentSaving) {
+      return;
+    }
+
+    setAiConsentSaving(true);
+
+    void setAiConsentAccepted(user, true)
+      .then(() => {
+        const pendingMessage = aiConsentPending?.trim() || "";
+
+        setAiConsentAcceptedState(true);
+        setAiConsentLoaded(true);
+        setAiConsentPending(null);
+        setShowAiConsentModal(false);
+
+        if (!pendingMessage) {
+          return;
+        }
+
+        armSendAnchor();
+        void sendMessage(pendingMessage);
+      })
+      .catch((error) => {
+        console.error("Failed to persist AI consent", error);
+        Alert.alert("Quiet Room", "We couldn't save your consent right now. Please try again.");
+      })
+      .finally(() => {
+        setAiConsentSaving(false);
+      });
+  }, [aiConsentPending, aiConsentSaving, armSendAnchor, sendMessage, user]);
 
   const showScrollButtons =
     (showScrollTopButton || showNewestButton) &&
@@ -830,8 +1051,22 @@ export default function QuietRoomScreen() {
                     <Text numberOfLines={1} style={styles.profileMenuName}>
                       {user?.displayName || user?.email || "Signed in"}
                     </Text>
-                    <Pressable onPress={handleContinueAsGuest} style={styles.profileMenuButton}>
-                      <Text style={styles.profileMenuButtonLabel}>Continue as Guest</Text>
+                    <Pressable
+                      onPress={handleContinueAsGuest}
+                      style={styles.profileMenuButton}
+                      testID={testIds.profileLogoutButton}
+                    >
+                      <Text style={styles.profileMenuButtonLabel}>Logout</Text>
+                    </Pressable>
+                    <View style={styles.profileMenuDivider} />
+                    <Pressable
+                      onPress={handleDeleteAccountStart}
+                      style={[styles.profileMenuButton, styles.profileMenuDeleteButton]}
+                      testID={testIds.profileDeleteButton}
+                    >
+                      <Text style={[styles.profileMenuButtonLabel, styles.profileMenuDeleteButtonLabel]}>
+                        Delete Account
+                      </Text>
                     </Pressable>
                   </>
                 )}
@@ -839,7 +1074,7 @@ export default function QuietRoomScreen() {
             ) : null}
           </View>
           {!isKeyboardVisible ? (
-            <View style={styles.crucifixWrap}>
+            <View style={styles.crucifixWrap} testID={testIds.crucifixWrapper}>
               <Pressable
                 onPress={() => { setShowProfileMenu(false); setShowChatOptions(false); setShowCrucifix(true); }}
                 onPressIn={dismissKeyboard}
@@ -930,6 +1165,7 @@ export default function QuietRoomScreen() {
                           conversationId={item.conversationId}
                           message={item.message}
                           messageIndex={item.messageIndex ?? undefined}
+                          onReportResponse={user ? openReportResponse : undefined}
                           testID={index === 0 ? testIds.openingMessage : messageBubbleTestId(item.message.role, index - 1)}
                           testIndex={index === 0 ? undefined : index - 1}
                         />
@@ -999,8 +1235,7 @@ export default function QuietRoomScreen() {
                   dismissKeyboard();
                   inputValueRef.current = prompt;
                   setInput(prompt);
-                  armSendAnchor();
-                  void sendMessage(prompt);
+                  void requestSendWithConsent(prompt);
                 }}
               />
             </View>
@@ -1018,68 +1253,107 @@ export default function QuietRoomScreen() {
               : null,
           ]}
         >
-            <View style={[styles.modelColumn, showChatOptions && styles.modelColumnMenuOpen]}>
-              <Text style={styles.modelCaption}>{modelLabel(currentModel)}</Text>
-              <Pressable
-                disabled={loading}
-                onPress={() => {
-                  setShowProfileMenu(false);
-                  setShowChatOptions((previous) => !previous);
-                }}
-                style={({ pressed }) => [styles.modelButton, pressed && !loading && styles.modelButtonPressed]}
-                testID={testIds.modelMenuButton}
+            {showChatOptionsButton ? (
+              <View
+                style={[styles.modelColumn, showChatOptions && styles.modelColumnMenuOpen]}
+                testID={testIds.modelPickerContainer}
               >
-                <Ionicons name="add" size={22} color={mobileWeb.colors.gray600} style={styles.modelButtonIcon} />
-              </Pressable>
+                <Text style={styles.modelCaption} testID={testIds.modelSelectedLabel}>
+                  {composerModelLabel}
+                </Text>
+                <Pressable
+                  disabled={loading}
+                  onPress={() => {
+                    setShowProfileMenu(false);
+                    setShowChatOptions((previous) => !previous);
+                  }}
+                  style={({ pressed }) => [
+                    styles.modelButton,
+                    pressed && !loading && styles.modelButtonPressed,
+                  ]}
+                  testID={testIds.modelMenuButton}
+                >
+                  <Ionicons
+                    name="add"
+                    size={22}
+                    color={mobileWeb.colors.gray600}
+                    style={styles.modelButtonIcon}
+                  />
+                </Pressable>
 
-              {showChatOptions ? (
-                <View style={styles.modelMenu} testID={testIds.modelMenu}>
-                  {voiceModeAvailable ? (
-                    <Pressable
-                      onPress={() => {
-                        setVoiceModeEnabled((previous) => !previous);
-                      }}
-                      style={styles.modelMenuVoiceRow}
-                      testID={testIds.modelMenuVoiceToggle}
-                    >
-                      <View style={styles.modelMenuVoiceCopy}>
-                        <Text style={styles.modelMenuVoiceTitle}>Voice mode</Text>
-                        <Text style={styles.modelMenuVoiceSubtitle}>Auto-play replies</Text>
-                      </View>
-                      <View style={[styles.modelMenuSwitchTrack, voiceModeEnabled && styles.modelMenuSwitchTrackOn]}>
-                        <View style={[styles.modelMenuSwitchThumb, voiceModeEnabled && styles.modelMenuSwitchThumbOn]} />
-                      </View>
-                    </Pressable>
-                  ) : null}
+                {showChatOptions ? (
+                  <View style={styles.modelMenu} testID={testIds.modelMenu}>
+                    {voiceModeAvailable ? (
+                      <>
+                        <Pressable
+                          onPress={() => {
+                            setVoiceModeEnabled((previous) => !previous);
+                          }}
+                          style={styles.modelMenuVoiceRow}
+                          testID={testIds.modelMenuVoiceToggle}
+                        >
+                          <View style={styles.modelMenuVoiceCopy}>
+                            <Text style={styles.modelMenuVoiceTitle}>Voice mode</Text>
+                            <Text style={styles.modelMenuVoiceSubtitle}>Auto-play replies</Text>
+                          </View>
+                          <View
+                            style={[
+                              styles.modelMenuSwitchTrack,
+                              voiceModeEnabled && styles.modelMenuSwitchTrackOn,
+                            ]}
+                          >
+                            <View
+                              style={[
+                                styles.modelMenuSwitchThumb,
+                                voiceModeEnabled && styles.modelMenuSwitchThumbOn,
+                              ]}
+                            />
+                          </View>
+                        </Pressable>
+                        {showModelSection ? <View style={styles.modelMenuDivider} /> : null}
+                      </>
+                    ) : null}
 
-                  {voiceModeAvailable ? <View style={styles.modelMenuDivider} /> : null}
+                    {showModelSection ? (
+                      <>
+                        <Text style={styles.modelMenuSectionLabel}>MODEL</Text>
 
-                  <Text style={styles.modelMenuSectionLabel}>MODEL</Text>
+                        {modelOptions.map((option) => {
+                          const active = option === currentModel;
 
-                  {modelOptions.map((option) => {
-                    const active = option === currentModel;
+                          return (
+                            <Pressable
+                              key={option}
+                              onPress={() => {
+                                setCurrentModel(option);
+                                setShowChatOptions(false);
+                              }}
+                              style={[
+                                styles.modelMenuOption,
+                                active && styles.modelMenuOptionActive,
+                              ]}
+                              testID={modelOptionTestId(option)}
+                            >
+                              <Text
+                                style={[
+                                  styles.modelMenuOptionLabel,
+                                  active && styles.modelMenuOptionLabelActive,
+                                ]}
+                              >
+                                {MODEL_LABELS[option] || option}
+                              </Text>
+                              {active ? <Text style={styles.modelMenuOptionBadge}>Active</Text> : null}
+                            </Pressable>
+                          );
+                        })}
+                      </>
+                    ) : null}
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
 
-                    return (
-                      <Pressable
-                        key={option}
-                        onPress={() => {
-                          setCurrentModel(option);
-                          setShowChatOptions(false);
-                        }}
-                        style={[styles.modelMenuOption, active && styles.modelMenuOptionActive]}
-                      >
-                        <Text style={[styles.modelMenuOptionLabel, active && styles.modelMenuOptionLabelActive]}>
-                          {modelLabel(option)}
-                        </Text>
-                        {active ? <Text style={styles.modelMenuOptionBadge}>Active</Text> : null}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ) : null}
-            </View>
-
-            <View style={styles.composerWrap}>
+            <View style={styles.composerWrap} testID={testIds.composerWrapper}>
               {(voiceModeAvailable || (!showComposerFullscreen && composerVisibleLines > 3)) ? (
                 <View style={styles.composerMetaRow}>
                   {voiceModeAvailable ? (
@@ -1205,6 +1479,115 @@ export default function QuietRoomScreen() {
           </SafeAreaView>
         </Modal>
 
+        <Modal
+          animationType="fade"
+          transparent
+          visible={showAiConsentModal}
+          onRequestClose={handleAiConsentCancel}
+        >
+          <View style={styles.aiConsentBackdrop}>
+            <Pressable
+              onPress={handleAiConsentCancel}
+              style={StyleSheet.absoluteFill}
+              disabled={aiConsentSaving}
+            />
+            <SafeAreaView style={styles.aiConsentSafeArea}>
+              <View style={styles.aiConsentCard} testID={testIds.aiConsentModal}>
+                <Text style={styles.aiConsentTitle}>Before you continue</Text>
+                <Text style={styles.aiConsentBody}>
+                  Quiet Room sends the message you type to our AI service so it can generate a
+                  response. Continue only if you consent to sharing that message for this purpose.
+                </Text>
+                <View style={styles.aiConsentActions}>
+                  <Pressable
+                    onPress={handleAiConsentCancel}
+                    style={({ pressed }) => [
+                      styles.aiConsentSecondaryButton,
+                      pressed && !aiConsentSaving && styles.aiConsentSecondaryButtonPressed,
+                    ]}
+                    disabled={aiConsentSaving}
+                    testID={testIds.aiConsentCancelButton}
+                  >
+                    <Text style={styles.aiConsentSecondaryButtonLabel}>Not now</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={handleAiConsentAccept}
+                    style={({ pressed }) => [
+                      styles.aiConsentPrimaryButton,
+                      aiConsentSaving && styles.aiConsentPrimaryButtonDisabled,
+                      pressed && !aiConsentSaving && styles.aiConsentPrimaryButtonPressed,
+                    ]}
+                    disabled={aiConsentSaving}
+                    testID={testIds.aiConsentAcceptButton}
+                  >
+                    <Text style={styles.aiConsentPrimaryButtonLabel}>
+                      {aiConsentSaving ? "Saving..." : "I Consent"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </SafeAreaView>
+          </View>
+        </Modal>
+
+
+        <Modal
+          animationType="fade"
+          transparent
+          visible={showDeleteAccountModal}
+          onRequestClose={handleDeleteAccountCancel}
+        >
+          <View style={styles.deleteAccountBackdrop}>
+            <Pressable
+              onPress={handleDeleteAccountCancel}
+              style={StyleSheet.absoluteFill}
+              disabled={deleteAccountPending}
+            />
+            <SafeAreaView style={styles.deleteAccountSafeArea}>
+              <View style={styles.deleteAccountCard} testID={testIds.deleteAccountModal}>
+                <Text style={styles.deleteAccountTitle}>Delete Account?</Text>
+                <Text style={styles.deleteAccountBody}>
+                  This permanently deletes your account and associated Quiet Room data. This
+                  action cannot be undone.
+                </Text>
+                {deleteAccountError ? (
+                  <Text style={styles.deleteAccountError} testID={testIds.deleteAccountError}>
+                    {deleteAccountError}
+                  </Text>
+                ) : null}
+                <View style={styles.deleteAccountActions}>
+                  <Pressable
+                    onPress={handleDeleteAccountCancel}
+                    style={({ pressed }) => [
+                      styles.deleteAccountSecondaryButton,
+                      pressed && !deleteAccountPending && styles.deleteAccountSecondaryButtonPressed,
+                    ]}
+                    disabled={deleteAccountPending}
+                    testID={testIds.deleteAccountCancelButton}
+                  >
+                    <Text style={styles.deleteAccountSecondaryButtonLabel}>Cancel</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={handleDeleteAccountConfirm}
+                    style={({ pressed }) => [
+                      styles.deleteAccountPrimaryButton,
+                      deleteAccountPending && styles.deleteAccountPrimaryButtonDisabled,
+                      pressed &&
+                        !deleteAccountPending &&
+                        styles.deleteAccountPrimaryButtonPressed,
+                    ]}
+                    disabled={deleteAccountPending}
+                    testID={testIds.deleteAccountConfirmButton}
+                  >
+                    <Text style={styles.deleteAccountPrimaryButtonLabel}>
+                      {deleteAccountPending ? "Deleting..." : "Delete Account"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </View>
+            </SafeAreaView>
+          </View>
+        </Modal>
 
         <Modal
           animationType="fade"
@@ -1238,6 +1621,15 @@ export default function QuietRoomScreen() {
             </View>
           </SafeAreaView>
         </Modal>
+
+        <ReportResponseModal
+          error={reportResponseError}
+          onClose={closeReportResponse}
+          onSubmit={submitReportResponse}
+          pending={reportResponsePending}
+          submitted={reportResponseSubmitted}
+          visible={Boolean(reportResponseTarget)}
+        />
 
         <LoginModal onClose={() => setShowLogin(false)} visible={showLogin} />
 
@@ -1456,6 +1848,7 @@ const styles = StyleSheet.create({
     backgroundColor: mobileWeb.colors.surface,
     borderBottomColor: mobileWeb.colors.gray200,
     borderBottomWidth: 1,
+    overflow: "visible",
     paddingBottom: 16,
     paddingHorizontal: 16,
     paddingTop: headerTopPadding(),
@@ -1520,6 +1913,7 @@ const styles = StyleSheet.create({
   headerRight: {
     flexDirection: "row",
     gap: 8,
+    overflow: "visible",
     position: "absolute",
     right: 16,
     top: headerControlsTop(),
@@ -1788,10 +2182,180 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
+  profileMenuDeleteButton: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
+  },
+  profileMenuDeleteButtonLabel: {
+    color: "#B91C1C",
+  },
+  profileMenuDivider: {
+    backgroundColor: mobileWeb.colors.gray200,
+    height: 1,
+    marginTop: 12,
+  },
   profileMenuButtonLabel: {
     color: mobileWeb.colors.blue600,
     fontSize: 13,
     fontWeight: "600",
+  },
+  aiConsentActions: {
+    columnGap: 10,
+    flexDirection: "row",
+    marginTop: 20,
+  },
+  aiConsentBackdrop: {
+    backgroundColor: "rgba(15, 23, 42, 0.35)",
+    flex: 1,
+  },
+  aiConsentBody: {
+    color: mobileWeb.colors.gray600,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 10,
+  },
+  aiConsentCard: {
+    backgroundColor: mobileWeb.colors.white,
+    borderColor: mobileWeb.colors.gray200,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginHorizontal: 20,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+  },
+  aiConsentPrimaryButton: {
+    alignItems: "center",
+    backgroundColor: mobileWeb.colors.blue600,
+    borderRadius: 12,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  aiConsentPrimaryButtonDisabled: {
+    opacity: 0.65,
+  },
+  aiConsentPrimaryButtonLabel: {
+    color: mobileWeb.colors.white,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  aiConsentPrimaryButtonPressed: {
+    opacity: 0.88,
+  },
+  aiConsentSafeArea: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+  },
+  aiConsentSecondaryButton: {
+    alignItems: "center",
+    backgroundColor: mobileWeb.colors.white,
+    borderColor: mobileWeb.colors.gray200,
+    borderRadius: 12,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  aiConsentSecondaryButtonLabel: {
+    color: mobileWeb.colors.gray700,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  aiConsentSecondaryButtonPressed: {
+    backgroundColor: mobileWeb.colors.yellow50,
+  },
+  aiConsentTitle: {
+    color: mobileWeb.colors.gray700,
+    fontSize: 20,
+    fontWeight: "700",
+  },
+  deleteAccountActions: {
+    columnGap: 10,
+    flexDirection: "row",
+    marginTop: 20,
+  },
+  deleteAccountBackdrop: {
+    backgroundColor: "rgba(15, 23, 42, 0.35)",
+    flex: 1,
+  },
+  deleteAccountBody: {
+    color: mobileWeb.colors.gray600,
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 10,
+  },
+  deleteAccountCard: {
+    backgroundColor: mobileWeb.colors.white,
+    borderColor: mobileWeb.colors.gray200,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginHorizontal: 20,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+  },
+  deleteAccountError: {
+    color: "#B91C1C",
+    fontSize: 13,
+    fontWeight: "500",
+    marginTop: 12,
+  },
+  deleteAccountPrimaryButton: {
+    alignItems: "center",
+    backgroundColor: "#DC2626",
+    borderRadius: 12,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  deleteAccountPrimaryButtonDisabled: {
+    opacity: 0.65,
+  },
+  deleteAccountPrimaryButtonLabel: {
+    color: mobileWeb.colors.white,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  deleteAccountPrimaryButtonPressed: {
+    opacity: 0.88,
+  },
+  deleteAccountSafeArea: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+  },
+  deleteAccountSecondaryButton: {
+    alignItems: "center",
+    backgroundColor: mobileWeb.colors.white,
+    borderColor: mobileWeb.colors.gray200,
+    borderRadius: 12,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 46,
+    paddingHorizontal: 12,
+  },
+  deleteAccountSecondaryButtonLabel: {
+    color: mobileWeb.colors.gray700,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  deleteAccountSecondaryButtonPressed: {
+    backgroundColor: mobileWeb.colors.yellow50,
+  },
+  deleteAccountTitle: {
+    color: mobileWeb.colors.gray700,
+    fontSize: 20,
+    fontWeight: "700",
   },
   profileMenuHint: {
     color: mobileWeb.colors.gray500,

@@ -10,17 +10,17 @@ Current target:
 
 ## Current Proven State
 
-Observed by April 12, 2026:
+Observed by April 21, 2026:
 
 - QA bundle uploads now work through the Android Publisher API
 - PROD bundle uploads now work through the Android Publisher API
 - the privacy-policy URL gate is cleared for both app records
-- `Quiet Room QA` now has QA build records in the `internal` track through `versionCode 3`, with the latest rebuild tied to the corrected QA Firebase SHA
+- `Quiet Room QA` now has QA build records in the `internal` track through `versionCode 5`, with the latest upload paired to iOS QA build `12`
 - `Quiet Room` now has prod build records in the `internal` track through `versionCode 2`, with the latest rebuild tied to the refreshed prod Firebase config
 - both Play app records still behave like draft apps, so API attempts to create a `completed` internal release can fail with `Only releases with status draft may be created on draft app.`
 - tester emails make users eligible, but the practical install path is still the Play shareable opt-in link
 
-## Current Observed Gate
+## Previously Observed Privacy-Policy Gate
 
 Observed on April 11, 2026:
 
@@ -147,6 +147,188 @@ Why use `with-mobile-env.sh` here:
 - it sets `EXPO_PUBLIC_APP_VARIANT=qa` and `EXPO_PUBLIC_RELEASE_ENV=qa`
 - it auto-loads `.env.android.signing` so Gradle sees the upload-key values
 
+## Proven QA Build And Upload Path
+
+This is the exact path that produced the successful QA Android `versionCode 5` upload from the main `quiet-room-mobile` `develop` tree on April 21, 2026.
+
+Start with the QA checks:
+
+```bash
+git checkout develop
+git pull --ff-only
+npm run android:play:preflight:qa
+```
+
+Regenerate the QA native project if needed:
+
+```bash
+npm run native:sync:qa
+```
+
+Prepare the exact Android version and versionCode after native sync:
+
+```bash
+bash ./scripts/prepare-android-play.sh --version 1.0.0 --version-code 5
+```
+
+Run preflight again. The expected QA evidence for `versionCode 5` was:
+
+```text
+Package id: com.quietroom.mobile.qa
+Release env: qa
+android.versionCode: 5
+Upload key SHA1: D2:6F:2C:F6:85:1D:FC:8C:11:CA:91:A9:C0:23:C9:61:ED:D9:AA:53
+Upload key SHA256: 39:70:61:3B:B5:4B:DC:FD:D4:6A:2A:F3:43:F4:E5:BE:6E:C3:AF:71:E1:35:01:43:D7:24:2F:4D:3C:88:F7:97
+```
+
+Build the signed QA AAB:
+
+```bash
+bash ./scripts/with-mobile-env.sh qa qa bash -lc 'cd android && ./gradlew bundleRelease'
+```
+
+Expected output:
+
+```text
+android/app/build/outputs/bundle/release/app-release.aab
+BUILD SUCCESSFUL
+```
+
+Upload to Play through the Android Publisher API as a draft internal release. The service-account JSON is local-only and must not be committed. The April 21 upload used the local service-account file from the store-distribution worktree and the package id `com.quietroom.mobile.qa`.
+
+Use this Ruby script pattern from the repo root, replacing only the local service-account path if yours differs:
+
+```bash
+ruby <<'RUBY'
+require 'base64'
+require 'json'
+require 'net/http'
+require 'openssl'
+require 'uri'
+
+service_account_path = '/absolute/path/to/service-account.json'
+package_name = 'com.quietroom.mobile.qa'
+aab_path = 'android/app/build/outputs/bundle/release/app-release.aab'
+track = 'internal'
+release_name = 'QA internal 5'
+release_notes = 'qa/qa internal testing build versionCode 5; paired with iOS QA build 12.'
+
+service_account = JSON.parse(File.read(service_account_path))
+
+def base64url(value)
+  Base64.urlsafe_encode64(value).delete('=')
+end
+
+now = Time.now.to_i
+header = { alg: 'RS256', typ: 'JWT' }
+claim = {
+  iss: service_account.fetch('client_email'),
+  scope: 'https://www.googleapis.com/auth/androidpublisher',
+  aud: 'https://oauth2.googleapis.com/token',
+  exp: now + 3600,
+  iat: now
+}
+
+unsigned_jwt = [
+  base64url(header.to_json),
+  base64url(claim.to_json)
+].join('.')
+
+private_key = OpenSSL::PKey::RSA.new(service_account.fetch('private_key'))
+signature = private_key.sign(OpenSSL::Digest::SHA256.new, unsigned_jwt)
+jwt = [unsigned_jwt, base64url(signature)].join('.')
+
+token_uri = URI('https://oauth2.googleapis.com/token')
+token_response = Net::HTTP.post_form(token_uri, {
+  'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+  'assertion' => jwt
+})
+abort token_response.body unless token_response.is_a?(Net::HTTPSuccess)
+access_token = JSON.parse(token_response.body).fetch('access_token')
+
+def request_json(method, url, access_token, body = nil)
+  uri = URI(url)
+  request = method.new(uri)
+  request['Authorization'] = "Bearer #{access_token}"
+  request['Content-Type'] = 'application/json' if body
+  request.body = JSON.generate(body) if body
+  response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(request) }
+  abort response.body unless response.is_a?(Net::HTTPSuccess)
+  JSON.parse(response.body.empty? ? '{}' : response.body)
+end
+
+edit = request_json(
+  Net::HTTP::Post,
+  "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/#{package_name}/edits",
+  access_token
+)
+edit_id = edit.fetch('id')
+puts "Created Play edit #{edit_id}"
+
+upload_uri = URI("https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/#{package_name}/edits/#{edit_id}/bundles?uploadType=media")
+upload_request = Net::HTTP::Post.new(upload_uri)
+upload_request['Authorization'] = "Bearer #{access_token}"
+upload_request['Content-Type'] = 'application/octet-stream'
+upload_request.body = File.binread(aab_path)
+upload_response = Net::HTTP.start(upload_uri.hostname, upload_uri.port, use_ssl: true) { |http| http.request(upload_request) }
+abort upload_response.body unless upload_response.is_a?(Net::HTTPSuccess)
+version_code = JSON.parse(upload_response.body).fetch('versionCode').to_s
+puts "Uploaded AAB versionCode #{version_code}"
+
+request_json(
+  Net::HTTP::Put,
+  "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/#{package_name}/edits/#{edit_id}/tracks/#{track}",
+  access_token,
+  {
+    track: track,
+    releases: [
+      {
+        name: release_name,
+        versionCodes: [version_code],
+        status: 'draft',
+        releaseNotes: [
+          {
+            language: 'en-US',
+            text: release_notes
+          }
+        ]
+      }
+    ]
+  }
+)
+puts 'Updated internal track as draft release'
+
+request_json(
+  Net::HTTP::Post,
+  "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/#{package_name}/edits/#{edit_id}:commit",
+  access_token
+)
+puts "Committed Play edit #{edit_id}"
+RUBY
+```
+
+Expected output for the April 21 upload:
+
+```text
+Created Play edit 06857986117556258785
+Uploaded AAB versionCode 5
+Updated internal track as draft release
+Committed Play edit 06857986117556258785
+```
+
+Why the release uses `status: draft`:
+
+- These app records can still behave like draft apps in Play Console.
+- Draft app records reject API-created `completed` internal releases.
+- Uploading the AAB and attaching it to the internal track as `draft` creates the build record safely.
+- The remaining review/rollout action may still need to be completed in Play Console.
+
+After upload, verify local state:
+
+```bash
+npm run android:play:status:qa
+```
+
 ## Play Console Setup
 
 Outside the repo:
@@ -180,6 +362,7 @@ What the API path proved in practice:
 
 - bundle upload works for QA and prod
 - track updates work for QA and prod
+- QA `versionCode 5` uploaded successfully from the main `develop` tree as a draft internal release on April 21, 2026
 - if Play still treats the app record as draft-only, the API rejects `completed` with `Only releases with status draft may be created on draft app.`
 - in that case, use Play Console to promote the draft release if needed
 
@@ -241,11 +424,11 @@ What we learned in practice:
 - bump Android `versionCode`
 - rebuild and re-upload the affected variant
 
-Current local state in this worktree:
+Current local release-file state:
 
 - `google-services.qa.json` has been refreshed with the corrected Android OAuth client for `com.quietroom.mobile.qa`
 - `google-services.prod.json` has been refreshed with the Android OAuth client for `com.quietroom.mobile`
-- QA was rebuilt and re-uploaded as `versionCode 3` after the corrected QA Firebase SHA update
+- QA was rebuilt and re-uploaded as `versionCode 5` after the corrected QA Firebase SHA update and the later main-tree QA release pass
 - PROD was rebuilt and re-uploaded as `versionCode 2` after the prod Firebase refresh
 
 ## First QA Acceptance

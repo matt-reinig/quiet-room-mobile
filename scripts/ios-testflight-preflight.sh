@@ -3,9 +3,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="$ROOT_DIR/.env"
 APP_JSON="$ROOT_DIR/app.json"
 APP_CONFIG_JS="$ROOT_DIR/app.config.js"
+EXPECTED_APP_VARIANT="${1:-${EXPO_PUBLIC_APP_VARIANT:-}}"
+EXPECTED_RELEASE_ENV="${2:-${EXPO_PUBLIC_RELEASE_ENV:-}}"
 selected_ios_google_services_file="$(node -p "require(process.argv[1]).expo.ios?.googleServicesFile ?? ''" "$APP_CONFIG_JS")"
 
 pass_count=0
@@ -27,34 +28,29 @@ fail() {
   fail_count=$((fail_count + 1))
 }
 
-env_has_nonempty_value() {
+runtime_has_nonempty_value() {
   local key="$1"
-
-  if [[ ! -f "$ENV_FILE" ]]; then
-    return 1
-  fi
-
-  local line
-  line="$(grep -E "^${key}=" "$ENV_FILE" | tail -n 1 || true)"
-
-  if [[ -z "$line" ]]; then
-    return 1
-  fi
-
-  local value="${line#*=}"
-  value="${value%\"}"
-  value="${value#\"}"
-
+  local value="${!key:-}"
   [[ -n "$value" ]]
 }
 
 echo "Internal TestFlight preflight"
 echo
 
-if [[ -f "$ENV_FILE" ]]; then
+if [[ -n "${MOBILE_ENV_BASE_FILE:-}" ]]; then
+  pass "Loaded base env file: $MOBILE_ENV_BASE_FILE"
+elif [[ -f "$ROOT_DIR/.env" ]]; then
   pass "Found local .env"
 else
   fail "Missing .env. The beta build should point at the backend Emily should use."
+fi
+
+if [[ -n "${MOBILE_ENV_OVERLAY_FILE:-}" && -f "${MOBILE_ENV_OVERLAY_FILE}" ]]; then
+  pass "Loaded overlay env file: $MOBILE_ENV_OVERLAY_FILE"
+elif [[ -n "${MOBILE_ENV_OVERLAY_FILE:-}" ]]; then
+  fail "Expected overlay env file is missing: $MOBILE_ENV_OVERLAY_FILE"
+else
+  warn "Overlay env file is unknown; consider running via scripts/with-mobile-env.sh"
 fi
 
 if [[ -n "$selected_ios_google_services_file" && -f "$ROOT_DIR/$selected_ios_google_services_file" ]]; then
@@ -63,55 +59,55 @@ else
   fail "Missing the iOS Google services file selected by app.config.js"
 fi
 
-if env_has_nonempty_value "EXPO_PUBLIC_APP_VARIANT"; then
+if runtime_has_nonempty_value "EXPO_PUBLIC_APP_VARIANT"; then
   pass "EXPO_PUBLIC_APP_VARIANT is set"
 else
-  warn "EXPO_PUBLIC_APP_VARIANT is missing in .env; app.config.js will default to prod"
+  warn "EXPO_PUBLIC_APP_VARIANT is missing from the current environment; app.config.js will default to prod"
 fi
 
-if env_has_nonempty_value "EXPO_PUBLIC_RELEASE_ENV"; then
+if runtime_has_nonempty_value "EXPO_PUBLIC_RELEASE_ENV"; then
   pass "EXPO_PUBLIC_RELEASE_ENV is set"
 else
-  warn "EXPO_PUBLIC_RELEASE_ENV is missing in .env; runtime config will default to qa"
+  warn "EXPO_PUBLIC_RELEASE_ENV is missing from the current environment; runtime config will default to qa"
 fi
 
-if env_has_nonempty_value "EXPO_PUBLIC_API_BASE"; then
+if runtime_has_nonempty_value "EXPO_PUBLIC_API_BASE"; then
   pass "EXPO_PUBLIC_API_BASE is set"
 else
-  fail "EXPO_PUBLIC_API_BASE is missing in .env"
+  fail "EXPO_PUBLIC_API_BASE is missing in the current environment"
 fi
 
-if env_has_nonempty_value "EXPO_PUBLIC_FB_API_KEY"; then
+if runtime_has_nonempty_value "EXPO_PUBLIC_FB_API_KEY"; then
   pass "EXPO_PUBLIC_FB_API_KEY is set"
 else
-  fail "EXPO_PUBLIC_FB_API_KEY is missing in .env"
+  fail "EXPO_PUBLIC_FB_API_KEY is missing in the current environment"
 fi
 
-if env_has_nonempty_value "EXPO_PUBLIC_FB_AUTH_DOMAIN"; then
+if runtime_has_nonempty_value "EXPO_PUBLIC_FB_AUTH_DOMAIN"; then
   pass "EXPO_PUBLIC_FB_AUTH_DOMAIN is set"
 else
-  fail "EXPO_PUBLIC_FB_AUTH_DOMAIN is missing in .env"
+  fail "EXPO_PUBLIC_FB_AUTH_DOMAIN is missing in the current environment"
 fi
 
-if env_has_nonempty_value "EXPO_PUBLIC_FB_PROJECT_ID"; then
+if runtime_has_nonempty_value "EXPO_PUBLIC_FB_PROJECT_ID"; then
   pass "EXPO_PUBLIC_FB_PROJECT_ID is set"
 else
-  fail "EXPO_PUBLIC_FB_PROJECT_ID is missing in .env"
+  fail "EXPO_PUBLIC_FB_PROJECT_ID is missing in the current environment"
 fi
 
-if env_has_nonempty_value "EXPO_PUBLIC_CONTACT_EMAIL"; then
+if runtime_has_nonempty_value "EXPO_PUBLIC_CONTACT_EMAIL"; then
   pass "EXPO_PUBLIC_CONTACT_EMAIL is set"
 else
-  warn "EXPO_PUBLIC_CONTACT_EMAIL is missing in .env"
+  warn "EXPO_PUBLIC_CONTACT_EMAIL is missing in the current environment"
 fi
 
-if env_has_nonempty_value "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID"; then
+if runtime_has_nonempty_value "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID"; then
   pass "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID is set"
 else
-  warn "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID is missing in .env"
+  warn "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID is missing in the current environment"
 fi
 
-if env_has_nonempty_value "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID" || env_has_nonempty_value "EXPO_PUBLIC_GOOGLE_CLIENT_ID"; then
+if runtime_has_nonempty_value "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID" || runtime_has_nonempty_value "EXPO_PUBLIC_GOOGLE_CLIENT_ID"; then
   pass "A Google web/client id is present for auth token exchange"
 else
   warn "Neither EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID nor EXPO_PUBLIC_GOOGLE_CLIENT_ID is set"
@@ -135,9 +131,21 @@ if [[ -n "$release_env" ]]; then
   pass "Resolved release env: $release_env"
 fi
 
+if [[ -n "$EXPECTED_APP_VARIANT" && -n "$EXPECTED_RELEASE_ENV" ]]; then
+  echo
+  echo "Resolved mobile config"
+  if node "$ROOT_DIR/scripts/verify-mobile-config.js" "$EXPECTED_APP_VARIANT" "$EXPECTED_RELEASE_ENV"; then
+    pass "Resolved config matches expected $EXPECTED_APP_VARIANT/$EXPECTED_RELEASE_ENV"
+  else
+    fail "Resolved config does not match expected $EXPECTED_APP_VARIANT/$EXPECTED_RELEASE_ENV"
+  fi
+else
+  warn "Expected app variant/release env were not provided; config mismatch checks were skipped"
+fi
+
 echo
 echo "iOS metadata"
-bash "$ROOT_DIR/scripts/ios-testflight-status.sh"
+bash "$ROOT_DIR/scripts/ios-testflight-status.sh" "$EXPECTED_APP_VARIANT" "$EXPECTED_RELEASE_ENV"
 
 echo
 echo "Summary"

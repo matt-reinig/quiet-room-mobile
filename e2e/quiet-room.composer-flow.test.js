@@ -1,5 +1,5 @@
 const { expect: jestExpect } = require('@jest/globals');
-const { launchQuietRoom } = require('./helpers');
+const { acceptAiConsentIfVisible, launchQuietRoom } = require('./helpers');
 const ids = require('./testIds');
 
 jest.setTimeout(180000);
@@ -58,6 +58,7 @@ describe('Quiet Room composer flow', () => {
     jestExpect(focusedComposerFrame.y).toBeLessThan(initialComposerFrame.y - 80);
 
     await sendButton.tap();
+    await acceptAiConsentIfVisible();
     const firstUserMessage = element(by.id(ids.message.user(0)));
     const firstAssistantMessage = element(by.id(ids.message.assistant(1)));
     await waitFor(firstUserMessage).toBeVisible().withTimeout(30000);
@@ -68,6 +69,7 @@ describe('Quiet Room composer flow', () => {
     await composer.replaceText('second mobile followup');
     await new Promise((resolve) => setTimeout(resolve, 1000));
     await sendButton.tap();
+    await acceptAiConsentIfVisible();
 
     const secondUserMessage = element(by.id(ids.message.user(2)));
     const secondExists = await waitForExistsMaybe(secondUserMessage, 10000);

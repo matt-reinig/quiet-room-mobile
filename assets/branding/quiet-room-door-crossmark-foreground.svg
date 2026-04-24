@@ -29,7 +29,7 @@
     stroke="#7A533A"
     stroke-width="8"
   />
-  <rect x="502" y="346" width="20" height="194" rx="8" fill="#000000" />
-  <rect x="431" y="433" width="162" height="20" rx="8" fill="#000000" />
+  <rect x="502" y="334" width="20" height="194" rx="8" fill="#000000" />
+  <rect x="431" y="400" width="162" height="20" rx="8" fill="#000000" />
   <rect x="598" y="542" width="12" height="50" rx="6" fill="#000000" />
 </svg>

@@ -6,6 +6,7 @@ import type { ChatMessage } from "../types/chat";
 import { mobileWeb } from "../theme/mobileWeb";
 import {
   messageCopyButtonTestId,
+  messageReportButtonTestId,
   messageVoiceButtonTestId,
 } from "../testIds";
 import MessageVoiceButton from "./MessageVoiceButton";
@@ -25,6 +26,11 @@ type MessageBubbleProps = {
   conversationId?: string | null;
   messageIndex?: number;
   message: ChatMessage;
+  onReportResponse?: (target: {
+    conversationId: string;
+    message: ChatMessage;
+    messageIndex: number;
+  }) => void;
   testID?: string;
   testIndex?: number;
 };
@@ -69,6 +75,7 @@ export default function MessageBubble({
   conversationId,
   messageIndex,
   message,
+  onReportResponse,
   testID,
   testIndex,
 }: MessageBubbleProps) {
@@ -88,6 +95,16 @@ export default function MessageBubble({
     !message.disableVoice &&
     !message.isStreaming &&
     (Boolean(message.audioSrc) || Boolean(content.trim()));
+
+  const showReportButton =
+    !isUser &&
+    !message.isStreaming &&
+    content.trim().length > 0 &&
+    typeof conversationId === "string" &&
+    conversationId.trim().length > 0 &&
+    typeof messageIndex === "number" &&
+    messageIndex >= 0 &&
+    typeof onReportResponse === "function";
 
   useEffect(() => {
     return () => {
@@ -123,6 +140,8 @@ export default function MessageBubble({
     typeof testIndex === "number" ? messageVoiceButtonTestId(message.role, testIndex) : undefined;
   const copyButtonTestID =
     !isUser && typeof testIndex === "number" ? messageCopyButtonTestId(testIndex) : undefined;
+  const reportButtonTestID =
+    !isUser && typeof testIndex === "number" ? messageReportButtonTestId(testIndex) : undefined;
 
   return (
     <View testID={testID} style={[styles.row, isUser ? styles.rowUser : styles.rowAssistant]}>
@@ -141,7 +160,7 @@ export default function MessageBubble({
           ))}
         </Text>
 
-        {showCopyButton || showVoiceButton ? (
+        {showCopyButton || showVoiceButton || showReportButton ? (
           <View style={styles.actionsRow}>
             {showCopyButton ? (
               <Pressable
@@ -191,6 +210,26 @@ export default function MessageBubble({
                 testID={voiceButtonTestID}
                 text={content}
               />
+            ) : null}
+
+            {showReportButton ? (
+              <Pressable
+                accessibilityLabel="Report response"
+                onPress={() => {
+                  onReportResponse?.({
+                    conversationId: conversationId.trim(),
+                    message,
+                    messageIndex,
+                  });
+                }}
+                testID={reportButtonTestID}
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  pressed && styles.actionButtonPressed,
+                ]}
+              >
+                <Ionicons color={mobileWeb.colors.gray700} name="flag-outline" size={16} />
+              </Pressable>
             ) : null}
           </View>
         ) : null}

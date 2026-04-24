@@ -45,7 +45,7 @@
     stroke="#7A533A"
     stroke-width="10"
   />
-  <rect x="502" y="408" width="20" height="214" rx="8" fill="#000000" />
-  <rect x="423" y="503" width="178" height="20" rx="8" fill="#000000" />
+  <rect x="502" y="396" width="20" height="214" rx="8" fill="#000000" />
+  <rect x="423" y="469" width="178" height="20" rx="8" fill="#000000" />
   <rect x="626" y="620" width="14" height="54" rx="7" fill="#000000" />
 </svg>

@@ -3,9 +3,28 @@ module.exports = {
   header: 'quiet-room.header',
   profileButton: 'quiet-room.profile.open',
   profileMenu: 'quiet-room.profile.menu',
+  profileLogoutButton: 'quiet-room.profile.logout',
+  profileDeleteButton: 'quiet-room.profile.delete',
   profileSignInButton: 'quiet-room.profile.signin',
+  aiConsentModal: 'quiet-room.ai-consent.modal',
+  aiConsentCancelButton: 'quiet-room.ai-consent.cancel',
+  aiConsentAcceptButton: 'quiet-room.ai-consent.accept',
+  deleteAccountModal: 'quiet-room.delete-account.modal',
+  deleteAccountCancelButton: 'quiet-room.delete-account.cancel',
+  deleteAccountConfirmButton: 'quiet-room.delete-account.confirm',
+  deleteAccountError: 'quiet-room.delete-account.error',
+  reportResponseModal: 'quiet-room.report-response.modal',
+  reportResponseCancel: 'quiet-room.report-response.cancel',
+  reportResponseDone: 'quiet-room.report-response.done',
+  reportResponseError: 'quiet-room.report-response.error',
+  reportResponseNote: 'quiet-room.report-response.note',
+  reportResponseSubmit: 'quiet-room.report-response.submit',
+  reportResponseReason: 'quiet-room.report-response.reason',
   messageList: 'quiet-room.messages.list',
   openingMessage: 'quiet-room.message.opening',
+  modelPickerContainer: 'quiet-room.model.picker',
+  modelSelectedLabel: 'quiet-room.model.selected',
+  composerWrapper: 'quiet-room.composer.wrapper',
   composerInput: 'quiet-room.composer.input',
   composerExpand: 'quiet-room.composer.expand',
   composerFullscreenInput: 'quiet-room.composer.fullscreen.input',
@@ -24,13 +43,17 @@ module.exports = {
   conversationsList: 'quiet-room.conversations.list',
   conversationsNew: 'quiet-room.conversations.new',
   conversationsLoadingMore: 'quiet-room.conversations.loading-more',
+  crucifixWrapper: 'quiet-room.crucifix.wrapper',
   crucifixButton: 'quiet-room.crucifix.open',
   crucifixModal: 'quiet-room.crucifix.modal',
   crucifixClose: 'quiet-room.crucifix.close',
   crucifixImage: 'quiet-room.crucifix.image',
   loginModal: 'quiet-room.login.modal',
+  loginAppleButton: 'quiet-room.login.apple',
+  loginGoogleButton: 'quiet-room.login.google',
   loginEmailInput: 'quiet-room.login.email',
   loginPasswordInput: 'quiet-room.login.password',
+  loginError: 'quiet-room.login.error',
   loginSigninButton: 'quiet-room.login.signin',
   thinkingRow: 'quiet-room.messages.thinking',
   message: {
@@ -43,5 +66,16 @@ module.exports = {
     voice(role, index) {
       return `quiet-room.message.${role}.${index}.voice`;
     },
+    report(index) {
+      return `quiet-room.message.assistant.${index}.report`;
+    },
+  },
+  conversation: {
+    row(id) {
+      return `quiet-room.conversation.${id}.row`;
+    },
+  },
+  modelOption(model) {
+    return `quiet-room.model.option.${model}`;
   },
 };

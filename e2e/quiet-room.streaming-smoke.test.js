@@ -1,5 +1,5 @@
 ﻿const { expect: jestExpect } = require('@jest/globals');
-const { launchQuietRoom } = require('./helpers');
+const { acceptAiConsentIfVisible, launchQuietRoom } = require('./helpers');
 const ids = require('./testIds');
 
 jest.setTimeout(240000);
@@ -123,6 +123,7 @@ describe('Quiet Room streaming smoke', () => {
     await composer.tap();
     await composer.replaceText('Give me a longer response in several short paragraphs about silence in prayer, practical steps, and one brief concluding prayer.');
     await sendButton.tap();
+    await acceptAiConsentIfVisible();
 
     const assistantMessage = await waitForStreamingAssistant(0, 1, sendButton, 90000);
     if (device.getPlatform() === 'ios') {

@@ -22,6 +22,16 @@ function trimTrailingSlashes(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
+function normalizeAndroidHostAliasForPlatform(value: string): string {
+  if (Platform.OS === "android") {
+    return value;
+  }
+
+  return value
+    .replace("://10.0.2.2", "://localhost")
+    .replace(/^10\.0\.2\.2(?=:|$)/, "localhost");
+}
+
 function resolveAppVariant(value: string | undefined): AppVariant {
   return value?.toLowerCase() === "qa" ? "qa" : "prod";
 }
@@ -60,7 +70,7 @@ const webAppUrlRaw =
 export const APP_VARIANT = resolveAppVariant(appVariantRaw);
 export const RELEASE_ENV = resolveReleaseEnv(releaseEnvRaw);
 export const APP_SCHEME = resolveAppScheme(APP_VARIANT);
-export const API_BASE = trimTrailingSlashes(apiBaseRaw);
+export const API_BASE = trimTrailingSlashes(normalizeAndroidHostAliasForPlatform(apiBaseRaw));
 
 export const STREAMING_BASE = trimTrailingSlashes(
   process.env.EXPO_PUBLIC_STREAMING_BASE || ""
@@ -68,6 +78,18 @@ export const STREAMING_BASE = trimTrailingSlashes(
 
 export const CONTACT_EMAIL =
   process.env.EXPO_PUBLIC_CONTACT_EMAIL || "your-email@example.com";
+
+export const PRIVACY_POLICY_URL =
+  process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL ||
+  "https://quiet-room-privacy-policy.vercel.app/privacy";
+
+export const SUPPORT_URL =
+  process.env.EXPO_PUBLIC_SUPPORT_URL ||
+  "https://quiet-room-privacy-policy.vercel.app/support";
+
+export const ACCOUNT_DELETION_URL =
+  process.env.EXPO_PUBLIC_ACCOUNT_DELETION_URL ||
+  "https://quiet-room-privacy-policy.vercel.app/account-deletion";
 
 export const DEFAULT_MODEL =
   process.env.EXPO_PUBLIC_DEFAULT_MODEL || "gpt-5.1-chat-latest";
@@ -88,6 +110,10 @@ export const FIREBASE_CONFIG: FirebaseConfig = {
   authDomain: process.env.EXPO_PUBLIC_FB_AUTH_DOMAIN || "",
   projectId: process.env.EXPO_PUBLIC_FB_PROJECT_ID || "",
 };
+
+export const FIREBASE_AUTH_EMULATOR_HOST = (
+  normalizeAndroidHostAliasForPlatform(process.env.EXPO_PUBLIC_FB_AUTH_EMULATOR_HOST || "")
+).trim();
 
 export const GOOGLE_AUTH_CONFIG: GoogleAuthConfig = {
   androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || "",
@@ -113,4 +139,3 @@ export function resolveVoiceUrl(): string {
 
   return `${API_BASE}/api/voice_stream`;
 }
-
