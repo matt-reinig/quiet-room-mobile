@@ -30,6 +30,21 @@ Track the execution status of the privacy workstreams defined in `docs/privacy-v
 
 ## Production Release Notes
 
+### 2026-04-24 Prod app release rollout
+
+- Promoted mobile `origin/master` to `06d649bc9bfa309757d788cff109a43812a63c59` and backend `origin/main` to `e39ef04b79a987830be68852dd51ddb4a9403e32`.
+- Deployed prod backend image `054769575180.dkr.ecr.us-east-1.amazonaws.com/gabriel-backend-prod:e39ef04` to `gabriel_lambda_prod`, `gabriel-profile-builder_prod`, and `gabriel_streaming_lambda_prod`; all three Lambda updates reported `Successful`.
+- Verified prod health endpoint returned `200 OK` with `{"status":"ok"}`.
+- Android prod AAB built for `com.quietroom.mobile`, version `1.0.0`, `versionCode 6`.
+  - Output: `android/app/build/outputs/bundle/release/app-release.aab`.
+  - SHA256: `514818e8d18b729ac834dfea06393cf81a9597925f9a106e16ddc21aedaf2e0c`.
+  - Uploaded to Play internal testing as draft release `PROD internal 6` through Play edit `00409671943079567863`.
+- iOS prod unsigned archive built for `com.quietroom.mobile`, version `1.0.0`, build `13`.
+  - Output: `build/QuietRoom-b13-unsigned.xcarchive`.
+  - Uploaded to App Store Connect/TestFlight with `testFlightInternalTestingOnly: true`; upload logs reported `UPLOAD SUCCEEDED with no errors`.
+- Release mapping for this internal prod candidate: Android `versionCode 6` / iOS build `13` / mobile commit `06d649bc9bfa309757d788cff109a43812a63c59` / backend commit `e39ef04b79a987830be68852dd51ddb4a9403e32`.
+- Remaining console-side follow-up: attach the processed iOS build to the intended internal TestFlight group and promote or roll out the Play draft internal release if Play Console requires it.
+
 ### 2026-04-21 Privacy site prod-only branding release
 
 - Deployed `site/quiet-room-privacy-policy` to production Vercel with `npx vercel --prod --yes`.
