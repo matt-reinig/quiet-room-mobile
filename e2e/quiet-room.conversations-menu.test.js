@@ -111,5 +111,8 @@ describe('Quiet Room conversations drawer menu', () => {
 
     await waitFor(element(by.text('Rename'))).toBeVisible().withTimeout(10000);
     await waitFor(element(by.text('Delete'))).toBeVisible().withTimeout(10000);
+
+    await element(by.text('Rename')).tap();
+    await waitFor(element(by.id(ids.conversationsRenameInput))).toBeVisible().withTimeout(10000);
   });
 });

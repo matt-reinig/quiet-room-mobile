@@ -43,6 +43,9 @@ module.exports = {
   conversationsList: 'quiet-room.conversations.list',
   conversationsNew: 'quiet-room.conversations.new',
   conversationsLoadingMore: 'quiet-room.conversations.loading-more',
+  conversationsRenameInput: 'quiet-room.conversations.rename.input',
+  conversationsRenameCancel: 'quiet-room.conversations.rename.cancel',
+  conversationsRenameSave: 'quiet-room.conversations.rename.save',
   crucifixWrapper: 'quiet-room.crucifix.wrapper',
   crucifixButton: 'quiet-room.crucifix.open',
   crucifixModal: 'quiet-room.crucifix.modal',
@@ -73,6 +76,9 @@ module.exports = {
   conversation: {
     row(id) {
       return `quiet-room.conversation.${id}.row`;
+    },
+    rename(id) {
+      return `quiet-room.conversation.${id}.rename`;
     },
   },
   modelOption(model) {

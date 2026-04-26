@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { makeRedirectUri } from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
@@ -14,7 +14,6 @@ import * as WebBrowser from "expo-web-browser";
 import {
   Alert,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
   NativeModules,
   Platform,
@@ -66,6 +65,7 @@ function mapAuthError(code: string | undefined, kind: "login" | "signup") {
 }
 
 const ANDROID_KEYBOARD_CLEARANCE = 36;
+const IOS_KEYBOARD_CLEARANCE = 12;
 
 function mapGoogleNativeError(rawError: unknown) {
   if (isErrorWithCode(rawError)) {
@@ -89,6 +89,7 @@ function mapAppleError(rawError: unknown) {
     typeof rawError === "object" && rawError !== null && "code" in rawError
       ? String(rawError.code || "")
       : "";
+  const message = rawError instanceof Error ? rawError.message : "";
 
   if (code === "ERR_REQUEST_CANCELED") {
     return null;
@@ -98,7 +99,15 @@ function mapAppleError(rawError: unknown) {
     return "Apple sign-in is already in progress.";
   }
 
-  return rawError instanceof Error ? rawError.message : "Apple sign-in failed.";
+  if (
+    code === "ERR_REQUEST_FAILED" ||
+    /authorization attempt failed/i.test(message) ||
+    /unknown reason/i.test(message)
+  ) {
+    return "Apple sign-in could not be started on this device. Please try again, or use email and password.";
+  }
+
+  return message || "Apple sign-in failed.";
 }
 
 function createAppleNonce() {
@@ -128,6 +137,7 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
   const [googleBusy, setGoogleBusy] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
   const [keyboardInset, setKeyboardInset] = useState(0);
+  const keyboardInsetRef = useRef(0);
   const isDetox =
     Boolean(NativeModules.SettingsManager?.settings?.detoxServer) ||
     Boolean(NativeModules.SettingsManager?.settings?.detoxSessionId) ||
@@ -172,9 +182,17 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
     const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
     const showSubscription = Keyboard.addListener(showEvent, (event) => {
-      setKeyboardInset(event.endCoordinates.height);
+      const nextInset = event.endCoordinates.height;
+
+      if (Platform.OS === "ios" && keyboardInsetRef.current > 0) {
+        return;
+      }
+
+      keyboardInsetRef.current = nextInset;
+      setKeyboardInset(nextInset);
     });
     const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      keyboardInsetRef.current = 0;
       setKeyboardInset(0);
     });
 
@@ -398,6 +416,7 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
       const message = mapAppleError(rawError);
 
       if (message) {
+        console.warn("Apple sign-in failed", rawError);
         setAppleError(message);
       }
     } finally {
@@ -414,15 +433,17 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
       <View style={styles.backdrop}>
         <Pressable onPress={closeModal} style={StyleSheet.absoluteFill} />
 
-        <KeyboardAvoidingView
-          enabled={Platform.OS === "ios"}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}
+        <View
           pointerEvents="box-none"
           style={[
             styles.keyboardFrame,
-            Platform.OS === "android" && keyboardInset > 0
-              ? { justifyContent: "flex-end", paddingBottom: keyboardInset + ANDROID_KEYBOARD_CLEARANCE }
+            keyboardInset > 0
+              ? {
+                  justifyContent: "flex-end",
+                  paddingBottom:
+                    keyboardInset +
+                    (Platform.OS === "ios" ? IOS_KEYBOARD_CLEARANCE : ANDROID_KEYBOARD_CLEARANCE),
+                }
               : null,
           ]}
         >
@@ -605,7 +626,7 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
               </>
             ) : null}
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </View>
     </Modal>
   );
