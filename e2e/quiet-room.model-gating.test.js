@@ -100,6 +100,7 @@ describe('Quiet Room model gating', () => {
     await launchQuietRoomWithFlags({
       chat_model_gpt_5_1: true,
       chat_model_gpt_5_3: true,
+      chat_model_gpt_5_5_reasoning_none: true,
       voice_mode: false,
     });
 
@@ -116,12 +117,13 @@ describe('Quiet Room model gating', () => {
 
     await expect(element(by.id(ids.modelOption('gpt-5.1-chat-latest')))).toBeVisible();
     await expect(element(by.id(ids.modelOption('gpt-5.3-chat-latest')))).toBeVisible();
+    await expect(element(by.id(ids.modelOption('gpt-5.5')))).toBeVisible();
 
-    await element(by.id(ids.modelOption('gpt-5.3-chat-latest'))).tap();
+    await element(by.id(ids.modelOption('gpt-5.5'))).tap();
     await waitFor(element(by.id(ids.modelMenu))).not.toExist().withTimeout(5000);
 
     const selectedLabel = await readText(element(by.id(ids.modelSelectedLabel)));
-    jestExpect(selectedLabel).toBe('GPT-5.3');
+    jestExpect(selectedLabel).toBe('GPT-5.5');
   });
 
   it('falls back and refreshes chrome when the selected model is disabled during the session', async () => {
