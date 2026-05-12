@@ -11,20 +11,23 @@ Current target:
 
 ## Current Proven State
 
-Observed by April 21, 2026:
+Observed through May 12, 2026:
 
 - both App Store Connect app records exist
 - branded QA and prod uploads both succeeded
 - QA build `12` was uploaded successfully from the main `develop` tree
 - PROD build `13` was uploaded successfully from the prod rollout worktree on April 24, 2026 with `testFlightInternalTestingOnly: true`
+- PROD build `14` was uploaded successfully from the prod rollout worktree on May 12, 2026 with manual App Store signing and Sign in with Apple entitlement verification
+- QA build `16` was uploaded successfully from the prod rollout worktree on May 12, 2026 with manual App Store signing and Sign in with Apple entitlement verification
 - current working app split is:
   - QA: `Quiet Room QA` / `com.quietroom.mobile.qa`
   - PROD: `Quiet Room` / `com.quietroom.mobile`
 - internal TestFlight is the active QA distribution lane
 - the Hermes dSYM archive issue was fixed in the repo for future uploads
-- the proven CLI path for QA is an unsigned archive followed by automatic-signing `xcodebuild -exportArchive`
+- QA now uses the refreshed App Store profile `matt profile qa`, UUID `a4879aba-247b-4795-8f04-23049307cbeb`, for `com.quietroom.mobile.qa`; the old automatic export path remains available with `--automatic-signing`
+- the proven CLI path for PROD now uses the refreshed App Store profile `matt profile`, UUID `94fb0f32-2364-4562-a9cc-2cd898a99018`, which includes Sign in with Apple
 - direct automatic archive can fail by trying to create a development provisioning profile when no registered devices exist
-- manual archive against the stale retained QA App Store profile can fail because the profile is Xcode-managed and may not include the current Sign in with Apple entitlement
+- manual archive against stale retained App Store profiles can fail when the profile does not include the current Sign in with Apple entitlement
 
 ## What This Repo Now Supports
 
@@ -62,6 +65,24 @@ Dry run:
 
 ```bash
 bash ./scripts/prepare-ios-testflight.sh --dry-run --version 1.0.1 --build-number 7
+```
+
+PROD profile validation:
+
+```bash
+npm run ios:testflight:profile:prod
+```
+
+PROD local App Store export:
+
+```bash
+npm run ios:testflight:export:prod
+```
+
+PROD App Store Connect upload:
+
+```bash
+npm run ios:testflight:deploy:prod
 ```
 
 ## Build Number Policy
@@ -167,14 +188,18 @@ Pick the lane before you archive:
 
 Known-good signing from prior App Store Connect exports:
 
-- QA used Xcode automatic signing against Apple team `SV7SPMY2Q8`.
-- QA export profile: `iOS Team Store Provisioning Profile: com.quietroom.mobile.qa`
-- QA export profile UUID: `0aa92c3d-7853-48e2-8064-6b3f4191a6b7`
+- QA App Store signing uses local profile `matt profile qa`, UUID `a4879aba-247b-4795-8f04-23049307cbeb`, for `SV7SPMY2Q8.com.quietroom.mobile.qa`. This profile includes `com.apple.developer.applesignin = Default`.
+- Previous QA export profile: `iOS Team Store Provisioning Profile: com.quietroom.mobile.qa`
+- Previous QA export profile UUID: `0aa92c3d-7853-48e2-8064-6b3f4191a6b7`
 - QA certificate: `Apple Distribution`, SHA1 `ADDA1EC5846049A5B4DD0FEA4D81E4EB6D5E5A9E`
 - QA app identifier entitlement: `SV7SPMY2Q8.com.quietroom.mobile.qa`
-- PROD has also been uploaded manually with local profile `matt profile`, UUID `813aa861-2624-427f-a3bf-2818af5f10c4`, for `SV7SPMY2Q8.com.quietroom.mobile`.
+- PROD App Store signing uses local profile `matt profile`, UUID `94fb0f32-2364-4562-a9cc-2cd898a99018`, for `SV7SPMY2Q8.com.quietroom.mobile`. This profile includes `com.apple.developer.applesignin = Default`.
 
-The QA profile above was observed in `build-records/ios/QuietRoomQA-export/DistributionSummary.plist` from the store-distribution worktree. It is not currently installed as a named local profile under `~/Library/MobileDevice/Provisioning Profiles`; the retained local profile there is the prod `matt profile`.
+The refreshed QA profile was also observed in Downloads as `matt_profile_qa.mobileprovision`, then installed/detected under:
+
+```text
+~/Library/MobileDevice/Provisioning Profiles/a4879aba-247b-4795-8f04-23049307cbeb.mobileprovision
+```
 
 On April 21, 2026, the old QA export profile was also recovered from the prior QA `.ipa` and installed locally at:
 
@@ -182,7 +207,7 @@ On April 21, 2026, the old QA export profile was also recovered from the prior Q
 ~/Library/MobileDevice/Provisioning Profiles/0aa92c3d-7853-48e2-8064-6b3f4191a6b7.mobileprovision
 ```
 
-That profile was useful as evidence that the App Store profile existed, but it was not the reliable archive path. A manual archive using that profile failed because the profile was Xcode-managed and did not include the current Apple Sign In entitlement. The successful path was to create the archive with signing disabled, then let `xcodebuild -exportArchive -allowProvisioningUpdates` perform automatic App Store distribution signing during upload.
+That old QA profile was useful as evidence that the App Store profile existed, but it is not the current reliable manual archive path because it did not include the Apple Sign In entitlement. Use the refreshed `matt profile qa` profile for QA deploys.
 
 ## Proven CLI Upload Path For QA
 
@@ -231,75 +256,56 @@ MARKETING_VERSION: 1.0.0
 CURRENT_PROJECT_VERSION: 12
 ```
 
-Create an unsigned Release archive:
+Validate the QA signing mode before archiving:
 
 ```bash
-rm -rf build/QuietRoomQA-b12-unsigned.xcarchive build/QuietRoomQA-b12.xcarchive
-
-bash ./scripts/with-mobile-env.sh qa qa xcodebuild \
-  -workspace ios/QuietRoomQA.xcworkspace \
-  -scheme QuietRoomQA \
-  -configuration Release \
-  -destination 'generic/platform=iOS' \
-  -archivePath build/QuietRoomQA-b12-unsigned.xcarchive \
-  CODE_SIGNING_ALLOWED=NO \
-  archive
+npm run ios:testflight:profile:qa
 ```
 
-Why this works when direct archive did not:
+Expected signing evidence after the refreshed QA profile is downloaded:
+
+```text
+Using qa App Store provisioning profile
+name: matt profile qa
+uuid: a4879aba-247b-4795-8f04-23049307cbeb
+application-identifier: SV7SPMY2Q8.com.quietroom.mobile.qa
+com.apple.developer.applesignin: Default
+```
+
+Archive, sign with the refreshed QA profile, export, and upload as internal-only TestFlight:
+
+```bash
+npm run ios:testflight:deploy:qa
+```
+
+For a local App Store export without upload, use:
+
+```bash
+npm run ios:testflight:export:qa
+```
+
+If the refreshed QA profile is not ready yet, the old automatic export fallback is still available:
+
+```bash
+bash ./scripts/deploy-ios-testflight.sh qa --automatic-signing --upload
+```
+
+Why the old fallback worked when direct archive did not:
 
 - Direct automatic archive tried to create an iOS development profile and failed because there were no registered devices available for that profile.
-- Manual archive against the retained QA App Store profile failed on entitlement/profile-management mismatch.
+- Manual archive against the retained stale QA App Store profile failed on entitlement/profile-management mismatch.
 - An unsigned archive avoids both archive-time signing traps.
 - The later export step has enough context to sign for App Store Connect distribution.
 
-Confirm the archive identity before upload:
+The deploy script:
 
-```bash
-plutil -p build/QuietRoomQA-b12-unsigned.xcarchive/Products/Applications/QuietRoomQA.app/Info.plist | rg 'CFBundleIdentifier|CFBundleShortVersionString|CFBundleVersion'
-```
-
-Expected values:
-
-```text
-CFBundleIdentifier = com.quietroom.mobile.qa
-CFBundleShortVersionString = 1.0.0
-CFBundleVersion = 12
-```
-
-Create an App Store Connect upload export options plist:
-
-```bash
-rm -rf build/testflight-export-qa-b12
-mkdir -p build/testflight-export-qa-b12
-cp scripts/ios-export-options-app-store.plist build/exportOptions-upload-qa-b12.plist
-plutil -replace destination -string upload build/exportOptions-upload-qa-b12.plist
-plutil -insert testFlightInternalTestingOnly -bool false build/exportOptions-upload-qa-b12.plist 2>/dev/null || \
-  plutil -replace testFlightInternalTestingOnly -bool false build/exportOptions-upload-qa-b12.plist
-```
-
-The important export plist settings are:
-
-```text
-destination = upload
-method = app-store-connect
-signingStyle = automatic
-teamID = SV7SPMY2Q8
-manageAppVersionAndBuildNumber = false
-stripSwiftSymbols = true
-uploadSymbols = true
-testFlightInternalTestingOnly = false
-```
-
-Export and upload:
-
-```bash
-xcodebuild -exportArchive \
-  -archivePath build/QuietRoomQA-b12-unsigned.xcarchive \
-  -exportPath build/testflight-export-qa-b12 \
-  -exportOptionsPlist build/exportOptions-upload-qa-b12.plist \
-  -allowProvisioningUpdates
-```
+- runs the QA preflight via `scripts/with-mobile-env.sh qa qa`
+- confirms the native iOS project is synced for `com.quietroom.mobile.qa`
+- selects an installed or downloaded QA App Store profile for `SV7SPMY2Q8.com.quietroom.mobile.qa` that includes `com.apple.developer.applesignin = Default`
+- archives with manual App Store signing using the selected profile UUID
+- generates a build-local export options plist with `signingStyle = manual`
+- verifies the signed archive entitlements before export
+- uses `destination = upload` and `testFlightInternalTestingOnly = true` for `npm run ios:testflight:deploy:qa`
 
 Successful output includes:
 
@@ -307,6 +313,19 @@ Successful output includes:
 Uploaded QuietRoomQA
 ** EXPORT SUCCEEDED **
 ```
+
+For the May 12 QA build `16` upload, the log evidence included:
+
+```text
+Archive app entitlements verified:
+  application-identifier: SV7SPMY2Q8.com.quietroom.mobile.qa
+  com.apple.developer.applesignin: Default
+Upload succeeded.
+Uploaded QuietRoomQA
+** EXPORT SUCCEEDED **
+```
+
+The first May 12 QA attempt used build `14` and archived successfully, but App Store Connect rejected it because QA bundle version `15` had already been uploaded previously. Build `16` is the accepted upload.
 
 The upload logs live in a temporary `*.xcdistributionlogs` directory. For the April 21 upload, the log evidence included:
 
@@ -374,74 +393,56 @@ MARKETING_VERSION: 1.0.0
 CURRENT_PROJECT_VERSION: 13
 ```
 
-Create an unsigned Release archive:
+Validate the refreshed PROD App Store profile before archiving:
 
 ```bash
-rm -rf build/QuietRoom-b13-unsigned.xcarchive
-
-bash ./scripts/with-mobile-env.sh prod prod xcodebuild \
-  -workspace ios/QuietRoom.xcworkspace \
-  -scheme QuietRoom \
-  -configuration Release \
-  -destination 'generic/platform=iOS' \
-  -archivePath build/QuietRoom-b13-unsigned.xcarchive \
-  CODE_SIGNING_ALLOWED=NO \
-  archive
+npm run ios:testflight:profile:prod
 ```
 
-Confirm the archive identity before upload:
-
-```bash
-plutil -p build/QuietRoom-b13-unsigned.xcarchive/Products/Applications/QuietRoom.app/Info.plist | rg 'CFBundleIdentifier|CFBundleShortVersionString|CFBundleVersion'
-```
-
-Expected values:
+Expected profile evidence:
 
 ```text
-CFBundleIdentifier = com.quietroom.mobile
-CFBundleShortVersionString = 1.0.0
-CFBundleVersion = 13
+name: matt profile
+uuid: 94fb0f32-2364-4562-a9cc-2cd898a99018
+application-identifier: SV7SPMY2Q8.com.quietroom.mobile
+com.apple.developer.applesignin: Default
 ```
 
-Create an App Store Connect upload export options plist for internal-only TestFlight:
+Archive, sign with the refreshed profile, export, and upload as internal-only TestFlight:
 
 ```bash
-rm -rf build/testflight-export-prod-b13
-mkdir -p build/testflight-export-prod-b13
-cp scripts/ios-export-options-app-store.plist build/exportOptions-upload-prod-b13.plist
-plutil -replace destination -string upload build/exportOptions-upload-prod-b13.plist
-plutil -insert testFlightInternalTestingOnly -bool true build/exportOptions-upload-prod-b13.plist 2>/dev/null || \
-  plutil -replace testFlightInternalTestingOnly -bool true build/exportOptions-upload-prod-b13.plist
+npm run ios:testflight:deploy:prod
 ```
 
-The important export plist settings are:
-
-```text
-destination = upload
-method = app-store-connect
-signingStyle = automatic
-teamID = SV7SPMY2Q8
-manageAppVersionAndBuildNumber = false
-stripSwiftSymbols = true
-uploadSymbols = true
-testFlightInternalTestingOnly = true
-```
-
-Export and upload:
+For a local App Store export without upload, use:
 
 ```bash
-xcodebuild -exportArchive \
-  -archivePath build/QuietRoom-b13-unsigned.xcarchive \
-  -exportPath build/testflight-export-prod-b13 \
-  -exportOptionsPlist build/exportOptions-upload-prod-b13.plist \
-  -allowProvisioningUpdates
+npm run ios:testflight:export:prod
 ```
+
+The deploy script:
+
+- selects an installed `matt profile` for `SV7SPMY2Q8.com.quietroom.mobile` that includes `com.apple.developer.applesignin = Default`
+- runs the PROD preflight via `scripts/with-mobile-env.sh prod prod`
+- archives with manual App Store signing using the selected profile UUID
+- generates a build-local export options plist with `signingStyle = manual` and `provisioningProfiles.com.quietroom.mobile = <selected profile UUID>`
+- verifies the signed archive entitlements before export
+- uses `destination = upload` and `testFlightInternalTestingOnly = true` for `npm run ios:testflight:deploy:prod`
 
 Successful output includes:
 
 ```text
+Archive app entitlements verified:
+  application-identifier: SV7SPMY2Q8.com.quietroom.mobile
+  com.apple.developer.applesignin: Default
 Uploaded QuietRoom
 ** EXPORT SUCCEEDED **
+```
+
+If a newer PROD profile is downloaded later, either install it in `~/Library/MobileDevice/Provisioning Profiles` and let the script choose the newest matching profile, or pin it explicitly:
+
+```bash
+QUIET_ROOM_IOS_PROD_PROFILE_UUID=<new-uuid> npm run ios:testflight:deploy:prod
 ```
 
 The April 24 upload logs also included:
@@ -467,10 +468,9 @@ Current proven repo-side order:
 1. Sync the target variant with `npm run native:sync:qa` or `npm run native:sync:prod`.
 2. Bump or set the build number after native sync with `npm run ios:testflight:prepare` or `bash ./scripts/prepare-ios-testflight.sh --version <version> --build-number <build>`.
 3. Run the matching `npm run ios:testflight:preflight:qa` or `npm run ios:testflight:preflight:prod`.
-4. For QA CLI uploads, prefer the proven unsigned archive plus automatic export/upload path above.
-5. For normal Xcode uploads, open the generated iOS workspace under `ios/`.
-6. Archive a Release build.
-7. Upload it to App Store Connect with your logged-in Apple account session.
+4. For a local App Store export, run `npm run ios:testflight:export:qa` or `npm run ios:testflight:export:prod`.
+5. For an App Store Connect upload, run `npm run ios:testflight:deploy:qa` or `npm run ios:testflight:deploy:prod`.
+6. For normal Xcode uploads, open the generated iOS workspace under `ios/`.
 
 From repo root:
 
@@ -500,8 +500,9 @@ If Xcode blocks on signing before archive:
 If QA signing is stubborn:
 
 - keep the repo-side variant sync intact
-- let Xcode refresh automatic signing for the QA bundle id
-- then retry the archive/upload flow rather than changing the app identity by hand
+- refresh and download the QA App Store profile for `com.quietroom.mobile.qa`
+- verify it with `npm run ios:testflight:profile:qa`
+- use `bash ./scripts/deploy-ios-testflight.sh qa --automatic-signing --upload` only as a temporary fallback
 
 ## Assign The Build To Testers
 

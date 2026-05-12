@@ -20,11 +20,16 @@ Status snapshot for the side-by-side QA/prod app effort in this worktree.
 - `npm run smoke:android:prod` now passes on `Pixel34AVD_2`, proving the prod Android release-smoke path end to end.
 - `npm run smoke:ios:qa` now passes on the iOS simulator, proving the QA iOS release-smoke path end to end.
 - `npm run smoke:ios:prod` now passes on the iOS simulator, proving the prod iOS release-smoke path end to end.
+- iOS TestFlight deploy helpers are now wired for both lanes: `npm run ios:testflight:deploy:qa` and `npm run ios:testflight:deploy:prod`.
+- PROD iOS manual App Store signing is verified locally with profile `matt profile`, UUID `94fb0f32-2364-4562-a9cc-2cd898a99018`, for `SV7SPMY2Q8.com.quietroom.mobile`, including `com.apple.developer.applesignin = Default`.
+- QA iOS manual App Store signing is verified locally with profile `matt profile qa`, UUID `a4879aba-247b-4795-8f04-23049307cbeb`, for `SV7SPMY2Q8.com.quietroom.mobile.qa`, including `com.apple.developer.applesignin = Default`.
+- QA iOS TestFlight build `16` has been uploaded to App Store Connect with `npm run ios:testflight:deploy:qa`.
 
 ## Optional Follow-up Proof
 
 - Google sign-in should still be checked in a real QA or prod flow if it is part of release scope.
 - The baseline smoke proof is done, but a side-by-side manual install check on physical devices is still worth doing before store submission.
+- Attach the processed QA build `16` to the intended internal TestFlight group once App Store Connect processing completes.
 
 ## Exact Commands
 
@@ -41,6 +46,11 @@ Use these as the current proof commands in this branch:
   - `npm run mobile:verify:prod`
   - `npm run smoke:ios:prod`
   - `npm run smoke:android:prod`
+- iOS TestFlight signing/deploy
+  - `npm run ios:testflight:profile:qa`
+  - `npm run ios:testflight:profile:prod`
+  - `npm run ios:testflight:deploy:qa`
+  - `npm run ios:testflight:deploy:prod`
 
 The smoke evidence should capture:
 
@@ -52,9 +62,10 @@ The smoke evidence should capture:
 ## External Setup Still Needed
 
 - The Apple and Google Play QA / prod app records now exist.
-- The next external work is validating first uploads, tester groups / tracks, signing, metadata, and submission readiness on those records.
+- The next external work is tester groups / tracks, metadata, and submission readiness on those records.
 - Prod store records should stay on `com.quietroom.mobile`.
-- Any store-side signing, capabilities, tester groups, or release tracks still have to be created or verified outside the repo.
+- Prod and QA App Store signing are both verified repo-side against refreshed manual profiles that include Sign in with Apple.
+- Any remaining store-side tester groups, release tracks, or metadata still have to be created or verified outside the repo.
 - If Google sign-in or other Firebase-backed features are in scope, the matching console-side app settings still need to be kept aligned with the two app records.
 
 ## Current Status
@@ -67,5 +78,9 @@ The smoke evidence should capture:
 - `npm run smoke:android:prod` passes on `Pixel34AVD_2`.
 - `npm run smoke:ios:qa` passes on the iOS simulator.
 - `npm run smoke:ios:prod` passes on the iOS simulator.
+- `npm run ios:testflight:profile:prod` passes with the refreshed Sign in with Apple-enabled App Store profile.
+- `npm run ios:testflight:deploy:prod` uploaded `Quiet Room` build `14` to App Store Connect/TestFlight with manual profile `94fb0f32-2364-4562-a9cc-2cd898a99018`.
+- `npm run ios:testflight:profile:qa` passes with refreshed manual profile `matt profile qa`, UUID `a4879aba-247b-4795-8f04-23049307cbeb`, for `SV7SPMY2Q8.com.quietroom.mobile.qa`.
+- `npm run ios:testflight:deploy:qa` uploaded `Quiet Room QA` build `16` to App Store Connect/TestFlight with manual profile `a4879aba-247b-4795-8f04-23049307cbeb`.
 - The scripted smoke definition is now a basic prompt/response flow rather than only a shell-render check.
-- Repo-side variant/env plumbing and baseline smoke proof are complete; the next effort is distribution / store-readiness work plus any optional Google sign-in release validation.
+- Repo-side variant/env plumbing, baseline smoke proof, shared iOS TestFlight deploy commands, and QA/prod iOS upload validation are complete.

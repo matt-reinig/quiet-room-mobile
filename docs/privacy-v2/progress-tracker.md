@@ -30,6 +30,44 @@ Track the execution status of the privacy workstreams defined in `docs/privacy-v
 
 ## Production Release Notes
 
+### 2026-05-12 QA iOS TestFlight build 16 upload
+
+- Downloaded and verified the refreshed QA App Store provisioning profile `matt profile qa`, UUID `a4879aba-247b-4795-8f04-23049307cbeb`, for `SV7SPMY2Q8.com.quietroom.mobile.qa`; the profile includes `com.apple.developer.applesignin = Default` and expires on April 8, 2027.
+- Restored the local QA env/Firebase files into this rollout worktree from the store-distribution worktree, then regenerated the QA native iOS project with `npm run native:sync:qa -- ios`.
+- Prepared QA iOS build `16` for version `1.0.0` after App Store Connect rejected build `14` because QA build `15` had already been uploaded previously.
+- Uploaded `Quiet Room QA` / `com.quietroom.mobile.qa` build `16` to App Store Connect/TestFlight with `npm run ios:testflight:deploy:qa`.
+- Archive entitlement verification passed for `SV7SPMY2Q8.com.quietroom.mobile.qa` plus `com.apple.developer.applesignin = Default`.
+- App Store Connect upload output reported `Upload succeeded`, `Uploaded QuietRoomQA`, and `** EXPORT SUCCEEDED **`.
+- Post-upload `npm run ios:testflight:status:qa` confirmed build `16`, QA Firebase project `gabriel-qa-89f20`, QA backend URLs, and `https://quiet-room-qa.vercel.app`.
+- Local artifacts:
+  - archive: `build/ios-qa-b16.xcarchive`
+  - export options: `build/exportOptions-qa-b16.plist`
+  - no local IPA export directory was retained because the export destination was `upload`
+
+### 2026-05-12 Prod iOS TestFlight build 14 upload
+
+- Bumped prod iOS build metadata from build `13` to build `14` for version `1.0.0`.
+- Uploaded `Quiet Room` / `com.quietroom.mobile` build `14` to App Store Connect/TestFlight with `npm run ios:testflight:deploy:prod`.
+- The deploy used manual App Store signing with profile `matt profile`, UUID `94fb0f32-2364-4562-a9cc-2cd898a99018`, and archive entitlement verification passed for `SV7SPMY2Q8.com.quietroom.mobile` plus `com.apple.developer.applesignin = Default`.
+- App Store Connect upload output reported `Upload succeeded`, `Uploaded QuietRoom`, and `** EXPORT SUCCEEDED **`.
+- Local artifacts:
+  - archive: `build/ios-prod-b14.xcarchive`
+  - export options: `build/exportOptions-prod-b14.plist`
+  - no local IPA export directory was retained because the export destination was `upload`
+
+### 2026-05-12 iOS TestFlight signing refresh
+
+- Added shared iOS TestFlight deploy commands for both lanes:
+  - `npm run ios:testflight:profile:qa`
+  - `npm run ios:testflight:profile:prod`
+  - `npm run ios:testflight:export:qa`
+  - `npm run ios:testflight:export:prod`
+  - `npm run ios:testflight:deploy:qa`
+  - `npm run ios:testflight:deploy:prod`
+- PROD manual App Store signing is verified with profile `matt profile`, UUID `94fb0f32-2364-4562-a9cc-2cd898a99018`, for `SV7SPMY2Q8.com.quietroom.mobile`; the profile includes `com.apple.developer.applesignin = Default` and expires on April 8, 2027.
+- QA manual App Store signing is verified with profile `matt profile qa`, UUID `a4879aba-247b-4795-8f04-23049307cbeb`, for `SV7SPMY2Q8.com.quietroom.mobile.qa`; the profile includes `com.apple.developer.applesignin = Default` and expires on April 8, 2027.
+- The prior QA automatic export-signing path remains available as a temporary fallback via `bash ./scripts/deploy-ios-testflight.sh qa --automatic-signing --upload`, but the proven path is now manual QA signing with the refreshed QA profile.
+
 ### 2026-04-24 Prod app release rollout
 
 - Promoted mobile `origin/master` to `06d649bc9bfa309757d788cff109a43812a63c59` and backend `origin/main` to `e39ef04b79a987830be68852dd51ddb4a9403e32`.
