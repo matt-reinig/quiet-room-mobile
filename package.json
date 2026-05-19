@@ -40,7 +40,7 @@
     "ios:testflight:export:qa": "bash ./scripts/deploy-ios-testflight.sh qa",
     "ios:testflight:export:prod": "bash ./scripts/deploy-ios-testflight.sh prod",
     "ios:testflight:deploy:qa": "bash ./scripts/deploy-ios-testflight.sh qa --upload",
-    "ios:testflight:deploy:prod": "bash ./scripts/deploy-ios-testflight.sh prod --upload",
+    "ios:testflight:deploy:prod": "bash ./scripts/deploy-ios-testflight.sh prod --upload --external-testflight",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "mobile:configure:5556": "powershell -ExecutionPolicy Bypass -File .\\scripts\\configure-emulator-5556.ps1",

@@ -40,8 +40,10 @@ Track the execution status of the privacy workstreams defined in `docs/privacy-v
   - Prod iOS TestFlight: `Quiet Room` / `com.quietroom.mobile` build `19` uploaded.
 - Deployment blocker encountered: the first prod iOS retry on build `18` was correctly rejected because App Store Connect already had build `18`; after bumping iOS to build `19`, the archive/export path was blocked by Xcode command-line account access with `Failed to Use Accounts` for team `SV7SPMY2Q8`.
 - Resolution: signing into iCloud/Xcode restored App Store Connect account access for the CLI; re-exporting the existing `build/ios-prod-b19.xcarchive` with `xcodebuild -exportArchive ... -allowProvisioningUpdates` completed the upload.
+- Follow-up finding: prod iOS build `19` was uploaded with the legacy internal-only TestFlight marker because `ios:testflight:deploy:prod` did not pass `--external-testflight` and the deploy script still defaulted all lanes to `testFlightInternalTestingOnly = true`.
 - Verification: the final prod iOS distribution logs reported `UPLOAD SUCCEEDED with no errors`, `Uploaded QuietRoom`, and `** EXPORT SUCCEEDED **`; `npm run ios:testflight:status:prod` confirmed version `1.0.0`, build `19`, bundle `com.quietroom.mobile`, Firebase project `gabriel-e6156`, and prod backend URLs.
-- Remaining console-side follow-up: wait for Apple processing, attach the processed builds to the intended internal TestFlight groups if needed, and promote or roll out the Play draft internal releases when ready.
+- Fix queued on `develop`: QA deploys remain internal-only by default, while prod deploys now generate `testFlightInternalTestingOnly = false` by default and the prod npm deploy command passes `--external-testflight` explicitly.
+- Remaining console-side follow-up: wait for Apple processing, attach the processed QA build to the intended internal TestFlight group if needed, upload a new prod iOS build for an external-eligible TestFlight candidate, and promote or roll out the Play draft internal releases when ready.
 
 ### 2026-05-12 QA iOS TestFlight build 16 upload
 

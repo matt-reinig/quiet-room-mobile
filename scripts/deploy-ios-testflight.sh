@@ -18,7 +18,7 @@ fi
 
 TEAM_ID="${QUIET_ROOM_IOS_TEAM_ID:-SV7SPMY2Q8}"
 DESTINATION="export"
-INTERNAL_ONLY=true
+INTERNAL_ONLY=""
 VERIFY_PROFILE_ONLY=false
 CLEAN_OUTPUTS=true
 SKIP_PREFLIGHT=false
@@ -81,6 +81,7 @@ Options:
   --manual-signing            Use a local manual App Store profile for this lane.
   --automatic-signing         Use unsigned archive plus automatic App Store export signing.
   --external-testflight       Do not mark an upload as internal-TestFlight-only.
+  --internal-testflight       Mark an upload as internal-TestFlight-only.
   --no-clean                  Do not remove existing archive/export outputs first.
   --skip-preflight            Skip the lane env/config preflight.
   --help, -h                  Show this help.
@@ -343,6 +344,10 @@ while [[ $# -gt 0 ]]; do
       INTERNAL_ONLY=false
       shift
       ;;
+    --internal-testflight)
+      INTERNAL_ONLY=true
+      shift
+      ;;
     --no-clean)
       CLEAN_OUTPUTS=false
       shift
@@ -437,8 +442,18 @@ else
   plutil -remove provisioningProfiles "$EXPORT_OPTIONS_PATH" 2>/dev/null || true
 fi
 
+if [[ -z "$INTERNAL_ONLY" ]]; then
+  if [[ "$LANE" == "qa" ]]; then
+    INTERNAL_ONLY=true
+  else
+    INTERNAL_ONLY=false
+  fi
+fi
+
 if [[ "$DESTINATION" == "upload" ]]; then
   replace_bool testFlightInternalTestingOnly "$INTERNAL_ONLY" "$EXPORT_OPTIONS_PATH"
+  echo "TestFlight internal-only upload: $INTERNAL_ONLY"
+  echo
 fi
 
 echo "Archiving $LANE Release build"
