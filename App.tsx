@@ -1,4 +1,5 @@
 import { LogBox, NativeModules } from "react-native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "./src/contexts/AuthContext";
 import FeatureFlagsGate from "./src/components/FeatureFlagsGate";
 import { FeatureFlagsProvider } from "./src/contexts/FeatureFlagsContext";
@@ -23,12 +24,14 @@ export default function App() {
   }
 
   return (
-    <AuthProvider>
-      <FeatureFlagsProvider>
-        <FeatureFlagsGate>
-          <QuietRoomScreen />
-        </FeatureFlagsGate>
-      </FeatureFlagsProvider>
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <FeatureFlagsProvider>
+          <FeatureFlagsGate>
+            <QuietRoomScreen />
+          </FeatureFlagsGate>
+        </FeatureFlagsProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

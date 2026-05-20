@@ -20,6 +20,7 @@ import {
   type NativeSyntheticEvent,
   type TextInputContentSizeChangeEventData,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AboutModal from "../components/AboutModal";
 import ConversationsModal from "../components/ConversationsModal";
 import LoginModal from "../components/LoginModal";
@@ -94,6 +95,7 @@ function crucifixTopMargin(): number {
 export default function QuietRoomScreen() {
   const { deleteAccount, isAnon, logout, user } = useAuth();
   const voiceModeAvailable = useFeatureFlag("voice_mode", false);
+  const insets = useSafeAreaInsets();
 
   const {
     chatLoading,
@@ -954,6 +956,21 @@ export default function QuietRoomScreen() {
     !showComposerFullscreen;
 
   const scrollButtonsBottom = 16;
+  const composerBottomPadding = useMemo(() => {
+    if (Platform.OS === "ios" && keyboardInset > 0) {
+      return COMPOSER_ROW_PADDING_BOTTOM + keyboardInset;
+    }
+
+    if (Platform.OS === "android" && keyboardInset > 0) {
+      return COMPOSER_ROW_PADDING_BOTTOM + keyboardInset + ANDROID_KEYBOARD_CLEARANCE;
+    }
+
+    if (Platform.OS === "android") {
+      return COMPOSER_ROW_PADDING_BOTTOM + insets.bottom;
+    }
+
+    return COMPOSER_ROW_PADDING_BOTTOM;
+  }, [insets.bottom, keyboardInset]);
 
   if (shouldBlockForConversations) {
     return (
@@ -1245,12 +1262,7 @@ export default function QuietRoomScreen() {
         <View
           style={[
             styles.inputRow,
-            Platform.OS === "ios" && keyboardInset > 0
-              ? { paddingBottom: COMPOSER_ROW_PADDING_BOTTOM + keyboardInset }
-              : null,
-            Platform.OS === "android" && keyboardInset > 0
-              ? { paddingBottom: COMPOSER_ROW_PADDING_BOTTOM + keyboardInset + ANDROID_KEYBOARD_CLEARANCE }
-              : null,
+            { paddingBottom: composerBottomPadding },
           ]}
         >
             {showChatOptionsButton ? (
