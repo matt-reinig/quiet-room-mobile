@@ -103,6 +103,8 @@ Use the existing repo guide for worktree setup and local-only files:
 
 **2026-05-22 implementation note:** Android keyboard-open layout is patched and verified locally. The Galaxy-style AVD initially appeared blocked because Metro on port `8081` was serving a stale bundle from the issue-48 worktree and the local backend returns `401 Missing ID token` for feature flags without an app user token. After restarting Metro from the QR-MOB-002 worktree and making feature-flag load failure warning-only, keyboard-open layout was testable. Final Galaxy evidence is `docs/qr-mob-002-android-keyboard-spacing/evidence/emulator-galaxy-s22/manual-clean-keyboard-short-final.png`; full Detox still needs the separate local backend/assistant response path fixed to complete the second-send portion.
 
+**2026-05-22 QA Android deploy note:** Merged to `develop` and deployed to the QA Play internal track. The deployed commits are `e5b872a` (`Fix Android keyboard composer spacing`) and `1551fc0` (`Bump Android QA version code`). QA Android `versionCode` is `11`; `mobile:verify:qa`, `native:sync:qa`, and `android:play:preflight:qa` passed with no failures. The signed AAB SHA256 was `63d797bc007f7754615996736555d8b0b60ea849325693d5b1cda3994e7588ef`. Android Publisher API edit `14118647014952593565` uploaded `versionCode 11` to `internal` as draft release `QA internal 11`; readback confirmed `versionCodes=["11"]` and `status=draft`.
+
 **Initial questions:**
 
 - Which Android device and OS version produced Tyler's screenshot?
