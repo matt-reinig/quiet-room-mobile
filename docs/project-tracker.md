@@ -25,6 +25,7 @@ This document is a living tracker for mobile app follow-up work, investigations,
 | QR-MOB-008 | Backlog | High | Profile builder / model evals | Evaluate `gpt-5.5` for the profile-building prompt and memory/profile generation pipeline. | Run targeted profile-builder evals comparing current model output vs `gpt-5.5`, focusing on spiritual discernment quality, memory extraction quality, verbosity, hallucination risk, emotional overreach, temporal accuracy, structure adherence, and long-term profile usefulness. Investigate whether `gpt-5.5` should be behind a feature flag first, QA-only first, or directly replace the current profile-builder model. |
 | QR-MOB-009 | Backlog | High | Profile system / split-profile evaluation | Evaluate how the split-profile system is performing after several months of real usage. | Review long-term profile quality, section usefulness, drift, duplication, emotional over-certainty, temporal inaccuracies, token growth, retrieval usefulness, and whether the split architecture is improving downstream responses compared to earlier approaches. Compare real profile outputs over time and identify which sections should remain persistent, become ephemeral, be merged, or be removed entirely. Consider side-by-side evaluation with newer models like `gpt-5.5`. |
 | QR-MOB-010 | Backlog | High | Feedback / privacy consent | Investigate improving the feedback/report flow so users can explicitly consent to sharing their message and conversation context for debugging and quality review. | Explore adding a consent checkbox or similar UX that clearly tells users whether submitted feedback includes only metadata, the selected message, partial conversation context, or the full conversation. Clarify backend storage behavior, reviewer visibility, privacy-policy implications, and whether users should be able to opt into different levels of sharing. |
+| QR-MOB-011 | Backlog | Medium | Accounts / anonymous users | Evaluate anonymous-user lifecycle, mobile session persistence, cleanup needs, and intended upgrade or retention flow. | Review how anonymous Firebase users are created, persisted, restored, counted, and linked to app data on mobile. Specifically compare mobile behavior against web/browser anonymous auth, including whether the same anonymous session survives app restart, device reboot, cache clearing, logout, app reinstall, and auth-provider upgrade. Determine whether stale anonymous users should be cleaned up and what data policy should apply. |
 
 ## Item details
 
@@ -116,6 +117,39 @@ This document is a living tracker for mobile app follow-up work, investigations,
 - Privacy-policy implications are identified.
 - A recommendation is made for the safest and most useful consent model.
 - QA can verify exactly what data becomes visible after submission.
+
+### QR-MOB-011 - Anonymous-user lifecycle and mobile session persistence evaluation
+
+**Goal:** Understand how anonymous users are created, persisted, restored, upgraded, and cleaned up on mobile, then decide whether lifecycle changes are needed.
+
+**Initial questions:**
+
+- When and where does the mobile app create anonymous Firebase users?
+- Does the mobile app always restore the same anonymous user after app restart?
+- Does the same anonymous session survive device reboot?
+- What happens after app cache clearing on Android?
+- What happens after offloading/deleting/reinstalling the app on iOS?
+- What happens after uninstalling/reinstalling the app on Android?
+- How does this differ from the browser/web flow where anonymous auth depends on browser cache/local persistence?
+- Can the user accidentally create multiple anonymous users on the same device?
+- What happens if an anonymous user later signs in with Apple or Google?
+- Does provider sign-in link to the existing anonymous UID or create a new signed-in UID?
+- How many anonymous users exist in QA and prod, and how many appear stale or abandoned?
+- What Firestore documents, conversations, profiles, reports, or consent records are tied to anonymous user IDs?
+- Should inactive anonymous users be deleted after a retention window?
+- Should their app data be deleted, retained, anonymized, or detached from Auth cleanup?
+- Do account deletion, privacy policy, and support docs already explain this clearly enough?
+
+**Acceptance criteria:**
+
+- Current mobile anonymous-user creation and persistence flow is documented.
+- Differences between mobile and web anonymous-auth persistence are documented.
+- Restart, reboot, cache-clear, logout, reinstall, and provider-upgrade scenarios are tested or traced.
+- QA/prod anonymous-user counts and stale-user patterns are reviewed.
+- Data dependencies tied to anonymous UID are mapped.
+- Cleanup options are compared, including no cleanup, Auth-only cleanup, full data cleanup, and retention-window cleanup.
+- Risks are documented for accidental user-data loss, duplicate anonymous users, and orphaned Firestore data.
+- A recommended lifecycle policy and implementation plan are written before any deletion automation is built.
 
 ## Backlog intake
 
