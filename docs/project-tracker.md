@@ -28,6 +28,7 @@ This document is a living tracker for mobile app follow-up work, investigations,
 | QR-MOB-004 | In Progress | High | QA feedback / chat reliability | Review QA feedback about timestamp bleed-through, strange context appearing, and missing responses. | 2026-05-21 QA reports traced and split into explicit sub-tasks below. Backend branch `codex/qr-mob-004-timestamp-sanitizer` is deployed to QA at `1addee1`; post-deploy QA observation is still needed before marking the overall item done. |
 | QR-MOB-005 | Backlog | Medium | Profile / user control | Consider putting the profile feature behind a feature flag so users can turn it off and on. | Define whether this is an app-level feature flag, remote config, per-user setting, or both. Clarify expected behavior when disabled: no profile building, no profile injection into prompts, existing profile ignored, and/or profile deletion option. |
 | QR-MOB-006 | Backlog | Medium | Models / long-term AI strategy | Investigate longer-term model strategy beyond current OpenAI models, including possible local or non-OpenAI options. | Review risk around GPT-5.1 and GPT-5.3 deprecations, plus the current voice/TTS model. Identify safer long-term model IDs or alternatives. Consider quality, cost, latency, privacy, mobile feasibility, backend feasibility, and fallback strategy. |
+| QR-MOB-007 | Backlog | Medium | Chat UX / message selection | Investigate making chat message text selectable in addition to the copy icon. | Users can currently copy messages only through the copy icon. Review React Native text selection behavior for message bubbles on iOS and Android, preserve the existing copy action, and verify long-press/drag selection does not conflict with message controls. |
 
 ## Item details
 
@@ -235,6 +236,24 @@ Remaining work: observe QA for repeat timestamp, fallback, or context-dump repor
 - Deprecation risk is assessed for chat, profile, eval, and voice models.
 - Recommended stable model path is proposed for the next 3-6 months.
 - Longer-term alternatives are listed with practical tradeoffs: quality, privacy, cost, latency, and implementation complexity.
+
+### QR-MOB-007 - Selectable chat message text
+
+**Goal:** Users should be able to select text inside chat messages directly, without relying only on the copy icon.
+
+**Initial questions:**
+
+- Which message components render assistant and user bubble text today?
+- Does React Native `Text` selection work consistently in the current Expo/React Native version on iOS and Android?
+- Does enabling selection conflict with the existing copy icon, report action, scrolling, or any long-press behavior?
+- Should selection apply to assistant messages only, user messages only, or both?
+
+**Acceptance criteria:**
+
+- Message text can be selected directly on iOS and Android.
+- The existing copy icon remains available and still copies the full message.
+- Selection does not break scrolling, message controls, markdown rendering, links, or reporting.
+- Manual QA covers at least one assistant message and one user message on both platforms.
 
 ## Backlog intake
 
