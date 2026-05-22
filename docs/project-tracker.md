@@ -28,6 +28,7 @@ This document is a living tracker for mobile app follow-up work, investigations,
 | QR-MOB-011 | Backlog | Medium | Accounts / anonymous users | Evaluate anonymous-user lifecycle, mobile session persistence, cleanup needs, and intended upgrade or retention flow. | Review how anonymous Firebase users are created, persisted, restored, counted, and linked to app data on mobile. Specifically compare mobile behavior against web/browser anonymous auth, including whether the same anonymous session survives app restart, device reboot, cache clearing, logout, app reinstall, and auth-provider upgrade. Determine whether stale anonymous users should be cleaned up and what data policy should apply. |
 | QR-MOB-012 | Backlog | High | iOS sign-in / Firebase QA parity | Align QA Firebase/Firestore iOS sign-in configuration with prod so Apple sign-in behavior matches across environments. | Review prod vs QA Firebase Auth, Firestore, bundle ID, Apple provider, redirect/callback/domain, and any Firestore config or allowlist data used by iOS sign-in. Identify the exact missing QA modifications and apply them carefully without disturbing prod. Verify QA iOS sign-in end to end after changes. |
 | QR-MOB-013 | Backlog | Medium | Architecture / data storage | Evaluate whether Quiet Room should continue using Firestore or move more storage into an AWS-native solution. | Inventory current Firestore usage across auth-linked user data, conversations, profiles, reports, consent, config, and QA/prod separation. Compare staying on Firestore vs AWS options such as DynamoDB, Aurora/Postgres, S3-backed archival, or a hybrid approach, considering complexity, cost, security, backups, migrations, local development, operational ownership, and how much the backend already lives in AWS. |
+| QR-MOB-014 | Backlog | Medium | Observability / CloudWatch reporting | Investigate automating CloudWatch Logs Insights reports for prod usage, prod errors, and QA errors, with scheduled email delivery. | Define the recurring questions currently checked manually, translate them into saved Logs Insights queries or scripts, decide cadence and recipients, and compare options such as EventBridge + Lambda + SES/SNS, CloudWatch dashboards/alarms, or a lightweight scheduled report job. Include privacy-safe summaries and links back to raw logs when needed. |
 
 ## Item details
 
@@ -199,6 +200,32 @@ This document is a living tracker for mobile app follow-up work, investigations,
 - Migration risks are documented, including auth identity mapping, account deletion, data export/import, QA/prod parity, and rollback.
 - A recommended architecture is proposed: stay on Firestore, migrate fully to AWS, or use a deliberate hybrid approach.
 - If migration is recommended, a phased implementation plan is written before any data movement begins.
+
+### QR-MOB-014 - CloudWatch usage and error report automation
+
+**Goal:** Automate the manual CloudWatch Logs Insights checks for prod usage, prod errors, and QA errors, then send a periodic email summary.
+
+**Initial questions:**
+
+- Which CloudWatch log groups should be included for prod usage, prod errors, and QA errors?
+- What manual Logs Insights queries are currently useful enough to automate?
+- What time window should the report cover: daily, weekly, last 24 hours, last 7 days, or configurable?
+- What counts as usage: chat starts, stream starts, profile builder runs, reports, sign-ins, or unique users?
+- What counts as an error: Lambda errors, sanitizer fallbacks, failed model calls, auth failures, 4xx/5xx responses, profile failures, or deploy issues?
+- Should QA and prod be separated into different report sections?
+- Should the report include raw examples, only counts, or links back to CloudWatch queries?
+- Should email delivery use SES, SNS, EventBridge Scheduler, Lambda, or another lightweight path?
+- What privacy limits should apply so sensitive conversation content is not emailed unnecessarily?
+
+**Acceptance criteria:**
+
+- Current manual CloudWatch checks are documented as named report sections.
+- Candidate Logs Insights queries are written and tested for prod usage, prod errors, and QA errors.
+- A recommended automation architecture is proposed.
+- Email recipient, cadence, and report format are defined.
+- Report content avoids unnecessary sensitive text and favors counts, event types, trends, and CloudWatch links.
+- IAM permissions and environment separation are documented.
+- A phased implementation plan is written before scheduling recurring emails.
 
 ## Backlog intake
 
