@@ -23,6 +23,7 @@ This document is a living tracker for mobile app follow-up work, investigations,
 | QR-MOB-006 | Backlog | Medium | Models / long-term AI strategy | Investigate longer-term model strategy beyond current OpenAI models, including possible local or non-OpenAI options. | Review deprecation risk, stable model IDs, quality, latency, privacy, and fallback strategy. |
 | QR-MOB-007 | Backlog | Medium | Chat UX / message selection | Investigate making chat message text selectable in addition to the copy icon. | Preserve existing copy icon behavior while enabling direct text selection on iOS and Android message bubbles. |
 | QR-MOB-008 | Backlog | High | Profile builder / model evals | Evaluate `gpt-5.5` for the profile-building prompt and memory/profile generation pipeline. | Run targeted profile-builder evals comparing current model output vs `gpt-5.5`, focusing on spiritual discernment quality, memory extraction quality, verbosity, hallucination risk, emotional overreach, temporal accuracy, structure adherence, and long-term profile usefulness. Investigate whether `gpt-5.5` should be behind a feature flag first, QA-only first, or directly replace the current profile-builder model. |
+| QR-MOB-009 | Backlog | High | Profile system / split-profile evaluation | Evaluate how the split-profile system is performing after several months of real usage. | Review long-term profile quality, section usefulness, drift, duplication, emotional over-certainty, temporal inaccuracies, token growth, retrieval usefulness, and whether the split architecture is improving downstream responses compared to earlier approaches. Compare real profile outputs over time and identify which sections should remain persistent, become ephemeral, be merged, or be removed entirely. Consider side-by-side evaluation with newer models like `gpt-5.5`. |
 
 ## Item details
 
@@ -64,6 +65,32 @@ This document is a living tracker for mobile app follow-up work, investigations,
 - Strengths and regressions are documented.
 - Recommendation is made for QA-only rollout, feature-flag rollout, or full replacement.
 - Any prompt changes needed specifically for `gpt-5.5` are documented.
+
+### QR-MOB-009 - Split-profile system evaluation
+
+**Goal:** Determine whether the split-profile architecture is improving long-term personalization quality, retrieval usefulness, and response grounding after months of accumulated real-world usage.
+
+**Initial questions:**
+
+- Are profile sections remaining coherent over time or fragmenting?
+- Are some sections becoming stale, repetitive, or low-value?
+- Is the system over-preserving old emotional states or outdated context?
+- Are temporal references remaining accurate?
+- Is profile injection improving responses or adding noise?
+- Which profile sections are actually used meaningfully by the assistant?
+- Should some profile sections become ephemeral or decay over time?
+- Is token growth sustainable as profiles accumulate?
+- Does `gpt-5.5` improve profile synthesis quality compared to the current model?
+- Are there recurring hallucination or over-certainty patterns in profile summaries?
+
+**Acceptance criteria:**
+
+- Several long-term real-user profile histories are reviewed manually.
+- Profile drift, duplication, stale-state retention, and retrieval usefulness are documented.
+- High-value vs low-value profile sections are identified.
+- Recommendations are made for section restructuring, decay rules, summarization changes, or retrieval adjustments.
+- Comparative eval notes are captured for current model vs `gpt-5.5`.
+- A recommendation is made for the future direction of the split-profile architecture.
 
 ## Backlog intake
 
