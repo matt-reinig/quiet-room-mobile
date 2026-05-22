@@ -24,6 +24,7 @@ This document is a living tracker for mobile app follow-up work, investigations,
 | QR-MOB-007 | Backlog | Medium | Chat UX / message selection | Investigate making chat message text selectable in addition to the copy icon. | Preserve existing copy icon behavior while enabling direct text selection on iOS and Android message bubbles. |
 | QR-MOB-008 | Backlog | High | Profile builder / model evals | Evaluate `gpt-5.5` for the profile-building prompt and memory/profile generation pipeline. | Run targeted profile-builder evals comparing current model output vs `gpt-5.5`, focusing on spiritual discernment quality, memory extraction quality, verbosity, hallucination risk, emotional overreach, temporal accuracy, structure adherence, and long-term profile usefulness. Investigate whether `gpt-5.5` should be behind a feature flag first, QA-only first, or directly replace the current profile-builder model. |
 | QR-MOB-009 | Backlog | High | Profile system / split-profile evaluation | Evaluate how the split-profile system is performing after several months of real usage. | Review long-term profile quality, section usefulness, drift, duplication, emotional over-certainty, temporal inaccuracies, token growth, retrieval usefulness, and whether the split architecture is improving downstream responses compared to earlier approaches. Compare real profile outputs over time and identify which sections should remain persistent, become ephemeral, be merged, or be removed entirely. Consider side-by-side evaluation with newer models like `gpt-5.5`. |
+| QR-MOB-010 | Backlog | High | Feedback / privacy consent | Investigate improving the feedback/report flow so users can explicitly consent to sharing their message and conversation context for debugging and quality review. | Explore adding a consent checkbox or similar UX that clearly tells users whether submitted feedback includes only metadata, the selected message, partial conversation context, or the full conversation. Clarify backend storage behavior, reviewer visibility, privacy-policy implications, and whether users should be able to opt into different levels of sharing. |
 
 ## Item details
 
@@ -91,6 +92,30 @@ This document is a living tracker for mobile app follow-up work, investigations,
 - Recommendations are made for section restructuring, decay rules, summarization changes, or retrieval adjustments.
 - Comparative eval notes are captured for current model vs `gpt-5.5`.
 - A recommendation is made for the future direction of the split-profile architecture.
+
+### QR-MOB-010 - Feedback consent and conversation visibility
+
+**Goal:** Make the feedback/report flow clearer and more privacy-aware while still giving enough debugging context to investigate real issues.
+
+**Initial questions:**
+
+- What data is currently included with a feedback/report submission?
+- Can reviewers currently see the full conversation, only a message, or only metadata?
+- Should users explicitly opt into sharing conversation context?
+- Should there be separate consent levels, such as selected message only vs full conversation?
+- How should the UI explain what will be visible to reviewers?
+- Does the privacy policy need to be updated if additional conversation context is shared?
+- Should the backend store a consent snapshot alongside the report?
+- Should anonymous users be treated differently from signed-in users?
+
+**Acceptance criteria:**
+
+- Current report payload and reviewer visibility are documented.
+- Proposed UX for consent and conversation sharing is defined.
+- Backend and frontend changes are clearly separated.
+- Privacy-policy implications are identified.
+- A recommendation is made for the safest and most useful consent model.
+- QA can verify exactly what data becomes visible after submission.
 
 ## Backlog intake
 
