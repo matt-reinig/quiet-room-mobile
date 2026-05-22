@@ -22,10 +22,10 @@ This document is a living tracker for mobile app follow-up work, investigations,
 
 | ID | Status | Priority | Area | Item | Notes / next step |
 | --- | --- | --- | --- | --- | --- |
-| QR-MOB-001 | Backlog | High | Production logs / retention | Confirm whether production logs have a 90-day TTL and update retention if they do not. | Check the production logging setup, likely CloudWatch/log group retention if backend logs are involved. Confirm current retention first, then change to 90 days if needed. Document the exact log groups or services touched. |
+| QR-MOB-001 | Done | High | Production logs / retention | Confirm whether production logs have a 90-day TTL and update retention if they do not. | Verified on 2026-05-21. QA Lambda log groups already had 90-day retention; prod Lambda log groups were `Never expire` and were updated to 90 days. See item details for exact groups. |
 | QR-MOB-002 | Backlog | High | Android UI | Fix UI spacing when the keyboard is open on Android. | Tyler has a screenshot showing the bottom UI somewhat overhanging. Reproduce on Android, especially smaller/taller phone layouts. Add enough bottom padding or keyboard-aware spacing so the input/nav area does not overlap or overhang. |
 | QR-MOB-003 | Backlog | Medium | Store listing / age rating | Investigate whether the app age range/rating needs to change. | The app may currently be listed as `E for Everyone` or equivalent. Review Google Play and Apple App Store age-rating questionnaires against the actual app behavior, AI companion content, user-generated text, and reporting/safety features. |
-| QR-MOB-004 | Backlog | High | QA feedback / chat reliability | Review QA feedback about timestamp bleed-through, strange context appearing, and missing responses. | Gather recent QA examples. Known concerns: timestamp bleed-through, weird context showing up when it should not, and the most recent case where a response did not generate. Check client logs, backend logs, request/response payloads, conversation state, and model/error handling. |
+| QR-MOB-004 | In Progress | High | QA feedback / chat reliability | Review QA feedback about timestamp bleed-through, strange context appearing, and missing responses. | 2026-05-21 QA reports traced and split into explicit sub-tasks below. Backend branch `codex/qr-mob-004-timestamp-sanitizer` is deployed to QA at `1addee1`; post-deploy QA observation is still needed before marking the overall item done. |
 | QR-MOB-005 | Backlog | Medium | Profile / user control | Consider putting the profile feature behind a feature flag so users can turn it off and on. | Define whether this is an app-level feature flag, remote config, per-user setting, or both. Clarify expected behavior when disabled: no profile building, no profile injection into prompts, existing profile ignored, and/or profile deletion option. |
 | QR-MOB-006 | Backlog | Medium | Models / long-term AI strategy | Investigate longer-term model strategy beyond current OpenAI models, including possible local or non-OpenAI options. | Review risk around GPT-5.1 and GPT-5.3 deprecations, plus the current voice/TTS model. Identify safer long-term model IDs or alternatives. Consider quality, cost, latency, privacy, mobile feasibility, backend feasibility, and fallback strategy. |
 
@@ -47,6 +47,33 @@ This document is a living tracker for mobile app follow-up work, investigations,
 - Current production log retention is documented.
 - Any log group or service without the intended retention is updated to 90 days.
 - The final changed resources are listed in this tracker or a linked doc.
+
+**2026-05-21 investigation result:** Done.
+
+AWS account `054769575180`, region `us-east-1`, CloudWatch Logs was checked with the AWS CLI. The prod mobile env points at the Lambda URLs for `gabriel_lambda_prod` and `gabriel_streaming_lambda_prod`; the prod profile builder also has a Lambda URL and log group.
+
+Initial CloudWatch readback showed the QA log groups already configured for `90` days, while these prod log groups had no `retentionInDays` value, meaning `Never expire`:
+
+- `/aws/lambda/gabriel_lambda_prod`
+- `/aws/lambda/gabriel_streaming_lambda_prod`
+- `/aws/lambda/gabriel-profile-builder_prod`
+
+I applied the existing backend helper from `privacy-task-11/Gabriel`:
+
+```bash
+GABRIEL_INCLUDE_PROD_LOG_GROUPS=1 bash scripts/configure-cloudwatch-log-retention.sh
+```
+
+Final AWS CLI readback confirmed all relevant Gabriel Lambda log groups are now set to `90` days:
+
+- `/aws/lambda/gabriel_lambda`
+- `/aws/lambda/gabriel_streaming_lambda`
+- `/aws/lambda/gabriel-profile-builder`
+- `/aws/lambda/gabriel_lambda_prod`
+- `/aws/lambda/gabriel_streaming_lambda_prod`
+- `/aws/lambda/gabriel-profile-builder_prod`
+
+No separate app analytics, crash-reporting, Sentry, Datadog, New Relic, Bugsnag, Amplitude, Mixpanel, or PostHog SDK was found in the mobile repo. Store/deploy command logs and local Detox/logcat logs remain local or platform workflow artifacts rather than the deployed production operational log sink covered by this item.
 
 ### QR-MOB-002 - Android keyboard spacing issue
 
@@ -105,6 +132,72 @@ This document is a living tracker for mobile app follow-up work, investigations,
 - Root cause is identified or narrowed to a specific layer: mobile client, backend prompt assembly, profile/memory injection, model response parsing, or network/error handling.
 - Silent response failure gets a clear user-facing fallback and useful logging.
 - Any timestamp/context bleed-through is removed or constrained.
+
+**Sub-task breakdown:**
+
+| Sub-task | Status | Scope | Notes / next step |
+| --- | --- | --- | --- |
+| QR-MOB-004A | Deployed to QA | Timestamp metadata leak | Bare `timestamp_local=...` prefix copied into visible `gpt-5.5` response. Backend branch `codex/qr-mob-004-timestamp-sanitizer` fixes this leak and is deployed to QA at `1addee1`; watch for any repeat timestamp reports before marking done. |
+| QR-MOB-004B | Deployed to QA | Internal-output fallback / "no response" report | Report `906f36aca7f848cfa576a7fa4709d229` was the intentional fallback after two `internal_control_prefix` sanitizer hits. Backend branch `codex/qr-mob-004-timestamp-sanitizer` now expands the always-on timestamp/metadata guard and keeps a retry-only repair instruction before falling back. Deployed to QA at `1addee1`; watch for repeat fallback reports before marking done. |
+| QR-MOB-004C | Deployed to QA, needs observation | Strange context dump / internal control text | Prior report `387439901d7141bf8caf4558cd2e5143` showed internal context/control text in the assistant response. The deployed `1addee1` sanitizer/retry guard covers this class; keep open for post-deploy QA verification and any remaining examples. |
+| QR-MOB-004D | Done | Broader QA report triage | Recent QA `reports` were reviewed read-only on 2026-05-22. Concrete noted reports map to QR-MOB-004A/004B/004C or the older temporal-overclaim issue; note-less harmful/unsafe reports were benign recollection/scripture prompts and appear to be safety-feedback/test submissions rather than new reliability bugs. |
+
+**2026-05-21 investigation result:** One sub-issue fixed; broader task remains open.
+
+QA Firestore `reports` and CloudWatch logs were checked for conversation `1779367707012-2aptqgzr` under UID `b71cO4Azg8Sx2YofK5UFblMLCMk2`.
+
+- Report `551361d7a69647d1b1d38c957642c0fe` flagged a visible `timestamp_local=2026-05-21T07:56:23.200-05:00` prefix in assistant message index `3`.
+- That timestamp matched backend prompt metadata prepended to the immediately prior user message. This is different from the older `yesterday` temporal-overclaim bug; the model copied metadata into the answer.
+- Existing backend sanitizer covered bracketed metadata like `[timestamp_local=...]` and malformed bracket endings, but not the bare `timestamp_local=...` form that appeared in this report.
+- Report `906f36aca7f848cfa576a7fa4709d229` flagged the fallback text `I’m sorry, something went wrong while forming that response. Could you try again?`
+- CloudWatch confirmed that fallback was intentional: `chat_stream.output_sanitized` fired for `internal_control_prefix`, retried once, then used the fallback after the second sanitized internal-output attempt.
+- Backend branch `codex/qr-mob-004-timestamp-sanitizer` in `/Users/mjreinig/projects/Gabriel_App/Gabriel` fixes only the timestamp metadata leak by expanding the scrubber to remove bare metadata prefixes and adding a regression test for the reported `gpt-5.5` form. It was pushed to `origin` at commit `f79e1ac` (`Scrub bare timestamp metadata from chat output`).
+- Focused verification: `python -m pytest tests/test_chat_stream_prompt.py -q` passed with `12 passed, 1 skipped`.
+
+**2026-05-22 QR-MOB-004B implementation note:** The same backend branch now improves the internal-output retry path at commit `af881be` (`Improve internal output retry recovery`). When the first streamed attempt is sanitized for `internal_control_prefix`, the retry call adds a recovery instruction to the system prompt telling the model to discard internal control/analysis text and answer only as Gabriel. The fallback remains in place if the repaired retry is also unsafe. Focused verification from `/Users/mjreinig/projects/Gabriel_App/Gabriel` used the sibling task virtualenv because this worktree's `.venv` is incomplete:
+
+```bash
+/Users/mjreinig/projects/Gabriel_App/privacy-task-03/Gabriel/.venv/bin/python -m pytest tests/test_chat_stream_prompt.py -q
+```
+
+Result: `12 passed, 1 skipped`.
+
+Live retry probe also passed. I forced the first stream attempt to return internal control text, then let the retry call real `gpt-5.5` with the recovery instruction. The endpoint made two calls, included `RETRY RECOVERY` only on the retry, emitted `chat_stream.output_sanitized` with `action=retry`, and returned a normal user-facing answer with no `commentary`, `analysis`, `agext_aisum`, `Respond as Gabriel`, or `timestamp_local=` markers. The streamed assistant text matched the saved assistant message:
+
+```text
+Let God find you exactly as you are, and stay with Him for one quiet breath.
+```
+
+Follow-up commit `1addee1` (`Add always-on internal metadata output guard`) expands the base timestamp/metadata prompt section so internal control markers are discouraged before the first attempt, not only after sanitizer failure. The retry-only repair instruction remains as a fallback recovery path. Focused verification still passes with `12 passed, 1 skipped`.
+
+Live happy-path `gpt-5.5` probe also passed with the always-on guard. The endpoint made one model call, needed no sanitizer retry, returned no internal markers, and saved the same text it streamed:
+
+```text
+Begin simply, and let God love you before you try to say anything.
+```
+
+**2026-05-22 QR-MOB-004D report triage:** Recent QA `reports` were scanned read-only from Firestore and compared against the reported conversation messages.
+
+- Latest noted report `906f36aca7f848cfa576a7fa4709d229` is QR-MOB-004B: the saved assistant message is the intentional fallback after internal-output sanitization.
+- Latest noted report `551361d7a69647d1b1d38c957642c0fe` is QR-MOB-004A: the saved assistant message contains a bare `timestamp_local=...` prefix.
+- Prior noted report `387439901d7141bf8caf4558cd2e5143` is QR-MOB-004C: the saved assistant message begins with `(commentary agext_aisum )` and dumped internal control/context text.
+- Prior noted report `ab0abd54a81b46078d1447d2c36b019d` is another timestamp leak covered by QR-MOB-004A.
+- Prior noted report `c1d9a6e4d6224bcaa7dfc34a3bdfbb68` is the older temporal-overclaim class already handled by the profile/timestamp guardrail work.
+- The note-less `harmful_or_unsafe` reports from 2026-04-23, 2026-05-08, 2026-05-18, and 2026-05-19 are all short benign recollection/scripture-help conversations on `gpt-5.1-chat-latest`. No timestamp metadata, internal marker, fallback text, or obvious reliability defect was present in the reported assistant messages. Treat these as safety-feedback/test-submission noise unless a user adds notes or a repeatable bad output pattern appears.
+
+**2026-05-22 QA deploy:** Fast-forwarded `origin/develop-from-main` from `f7c3511` to `1addee1`, then deployed commit `1addee1` from branch `codex/qr-mob-004-timestamp-sanitizer` with `./deploy.sh`.
+
+Deploy proof:
+
+- Focused pre-deploy tests: `/Users/mjreinig/projects/Gabriel_App/privacy-task-03/Gabriel/.venv/bin/python -m pytest tests/test_chat_stream_prompt.py -q` -> `12 passed, 1 skipped`.
+- AWS account: `054769575180`, region `us-east-1`.
+- Docker image: `054769575180.dkr.ecr.us-east-1.amazonaws.com/gabriel-backend:1addee1`.
+- `gabriel_lambda`: `LastUpdateStatus=Successful`, `State=Active`, image `gabriel-backend:1addee1`.
+- `gabriel-profile-builder`: `LastUpdateStatus=Successful`, `State=Active`, image `gabriel-backend:1addee1`.
+- `gabriel_streaming_lambda`: `LastUpdateStatus=Successful`, `State=Active`, image `gabriel-backend:1addee1`.
+- QA `/health`: `https://6rc3hj3tvyjheia4ilr5svat5i0vdkzm.lambda-url.us-east-1.on.aws/health` returned `200 OK` with `{"status":"ok"}`.
+
+Remaining work: observe QA for repeat timestamp, fallback, or context-dump reports before marking QR-MOB-004A through QR-MOB-004C done. QR-MOB-004D is complete.
 
 ### QR-MOB-005 - Profile feature flag / user control
 
