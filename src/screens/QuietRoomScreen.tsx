@@ -4,6 +4,7 @@ import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Dimensions,
   ScrollView,
   Keyboard,
   Image,
@@ -48,7 +49,9 @@ const MESSAGE_LIST_PADDING_BOTTOM = 12;
 const COMPOSER_ROW_PADDING_TOP = 12;
 const COMPOSER_ROW_PADDING_BOTTOM = 16;
 const OPENING_MESSAGE_TOP_OFFSET = 16;
-const ANDROID_KEYBOARD_CLEARANCE = 20;
+const ANDROID_KEYBOARD_CLEARANCE = 32;
+const ANDROID_KEYBOARD_OFFSET_CLEARANCE = 96;
+const ANDROID_KEYBOARD_FALLBACK_SCREEN_RATIO = 0.35;
 
 const QUIET_ROOM_OPENING_GREETING = `Welcome to Quiet Room.
 
@@ -177,6 +180,7 @@ export default function QuietRoomScreen() {
   const listContentHeightRef = useRef(0);
   const anchorContentMinHeightRef = useRef(0);
   const newestButtonTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const keyboardFocusFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -218,6 +222,10 @@ export default function QuietRoomScreen() {
     return () => {
       if (newestButtonTimeoutRef.current) {
         clearTimeout(newestButtonTimeoutRef.current);
+      }
+
+      if (keyboardFocusFallbackTimeoutRef.current) {
+        clearTimeout(keyboardFocusFallbackTimeoutRef.current);
       }
     };
   }, []);
@@ -471,7 +479,8 @@ export default function QuietRoomScreen() {
     return [opening, ...mapped];
   }, [currentId, messages, voiceAutoPlayTarget, voiceModeAvailable, voiceModeEnabled]);
 
-  const showPromptCues = Boolean(isNewChat) && !chatLoading && messages.length === 0;
+  const showPromptCues =
+    Boolean(isNewChat) && !chatLoading && messages.length === 0 && !isKeyboardVisible;
 
   const hideNewestButton = useCallback(() => {
     if (newestButtonTimeoutRef.current) {
@@ -704,6 +713,15 @@ export default function QuietRoomScreen() {
   const handleInputChange = useCallback((value: string) => {
     inputValueRef.current = value;
     setInput(value);
+    if (Platform.OS === "android") {
+      setIsKeyboardVisible(true);
+      const metrics = Keyboard.metrics();
+      setKeyboardInset(
+        metrics?.height && metrics.height > 0
+          ? metrics.height
+          : Math.round(Dimensions.get("screen").height * ANDROID_KEYBOARD_FALLBACK_SCREEN_RATIO),
+      );
+    }
   }, [setInput]);
 
   const handleMessagesWrapLayout = useCallback((event: LayoutChangeEvent) => {
@@ -808,6 +826,52 @@ export default function QuietRoomScreen() {
   const dismissKeyboard = useCallback(() => {
     composerInputRef.current?.blur();
     Keyboard.dismiss();
+  }, []);
+
+  const syncAndroidKeyboardMetrics = useCallback(() => {
+    if (Platform.OS !== "android") {
+      return;
+    }
+
+    const metrics = Keyboard.metrics();
+
+    if (metrics?.height && metrics.height > 0) {
+      setKeyboardInset(metrics.height);
+      return;
+    }
+
+    setKeyboardInset(Math.round(Dimensions.get("screen").height * ANDROID_KEYBOARD_FALLBACK_SCREEN_RATIO));
+  }, []);
+
+  const handleComposerFocus = useCallback(() => {
+    if (Platform.OS !== "android") {
+      return;
+    }
+
+    setIsKeyboardVisible(true);
+    syncAndroidKeyboardMetrics();
+
+    if (keyboardFocusFallbackTimeoutRef.current) {
+      clearTimeout(keyboardFocusFallbackTimeoutRef.current);
+    }
+
+    keyboardFocusFallbackTimeoutRef.current = setTimeout(() => {
+      syncAndroidKeyboardMetrics();
+    }, 300);
+  }, [syncAndroidKeyboardMetrics]);
+
+  const handleComposerBlur = useCallback(() => {
+    if (Platform.OS !== "android") {
+      return;
+    }
+
+    if (keyboardFocusFallbackTimeoutRef.current) {
+      clearTimeout(keyboardFocusFallbackTimeoutRef.current);
+      keyboardFocusFallbackTimeoutRef.current = null;
+    }
+
+    setIsKeyboardVisible(false);
+    setKeyboardInset(0);
   }, []);
 
   const requestSendWithConsent = useCallback(
@@ -961,8 +1025,8 @@ export default function QuietRoomScreen() {
       return COMPOSER_ROW_PADDING_BOTTOM + keyboardInset;
     }
 
-    if (Platform.OS === "android" && keyboardInset > 0) {
-      return COMPOSER_ROW_PADDING_BOTTOM + keyboardInset + ANDROID_KEYBOARD_CLEARANCE;
+    if (Platform.OS === "android" && isKeyboardVisible) {
+      return COMPOSER_ROW_PADDING_BOTTOM + ANDROID_KEYBOARD_CLEARANCE;
     }
 
     if (Platform.OS === "android") {
@@ -970,7 +1034,14 @@ export default function QuietRoomScreen() {
     }
 
     return COMPOSER_ROW_PADDING_BOTTOM;
-  }, [insets.bottom, keyboardInset]);
+  }, [insets.bottom, isKeyboardVisible, keyboardInset]);
+  const composerKeyboardOffset = useMemo(() => {
+    if (Platform.OS !== "android" || !isKeyboardVisible) {
+      return 0;
+    }
+
+    return Math.max(0, keyboardInset - insets.bottom + ANDROID_KEYBOARD_OFFSET_CLEARANCE);
+  }, [insets.bottom, isKeyboardVisible, keyboardInset]);
 
   if (shouldBlockForConversations) {
     return (
@@ -1262,7 +1333,10 @@ export default function QuietRoomScreen() {
         <View
           style={[
             styles.inputRow,
-            { paddingBottom: composerBottomPadding },
+            {
+              marginBottom: composerKeyboardOffset,
+              paddingBottom: composerBottomPadding,
+            },
           ]}
         >
             {showChatOptionsButton ? (
@@ -1417,6 +1491,9 @@ export default function QuietRoomScreen() {
                 multiline
                 onChangeText={handleInputChange}
                 onContentSizeChange={handleComposerSizeChange}
+                onBlur={handleComposerBlur}
+                onFocus={handleComposerFocus}
+                onPressIn={handleComposerFocus}
                 placeholder="Share what is present..."
                 placeholderTextColor={mobileWeb.colors.gray500}
                 selectionColor={mobileWeb.colors.blue600}

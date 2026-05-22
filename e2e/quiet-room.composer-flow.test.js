@@ -12,6 +12,10 @@ function getFrame(attributes) {
   return attributes.frame;
 }
 
+function frameBottom(frame) {
+  return frame.y + frame.height;
+}
+
 async function waitForSendLabel(elementHandle, label, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
 
@@ -46,16 +50,29 @@ describe('Quiet Room composer flow', () => {
   it('lifts the composer with the keyboard and allows a second send in the same chat', async () => {
     const composer = element(by.id(ids.composerInput));
     const sendButton = element(by.id(ids.sendButton));
+    const screen = element(by.id(ids.screen));
 
     const initialComposerFrame = getFrame(await composer.getAttributes());
+    const initialSendFrame = getFrame(await sendButton.getAttributes());
+    const screenFrame = getFrame(await screen.getAttributes());
 
     await composer.tap();
     await composer.replaceText('first mobile followup');
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
     const focusedComposerFrame = getFrame(await composer.getAttributes());
-    console.log('composer-frames', JSON.stringify({ initialComposerFrame, focusedComposerFrame }));
+    const focusedSendFrame = getFrame(await sendButton.getAttributes());
+    console.log('composer-frames', JSON.stringify({
+      focusedComposerFrame,
+      focusedSendFrame,
+      initialComposerFrame,
+      initialSendFrame,
+      screenFrame,
+    }));
     jestExpect(focusedComposerFrame.y).toBeLessThan(initialComposerFrame.y - 80);
+    jestExpect(frameBottom(focusedComposerFrame)).toBeLessThanOrEqual(screenFrame.height - 24);
+    jestExpect(frameBottom(focusedSendFrame)).toBeLessThanOrEqual(screenFrame.height - 24);
+    jestExpect(Math.abs(frameBottom(focusedSendFrame) - frameBottom(focusedComposerFrame))).toBeLessThanOrEqual(8);
 
     await sendButton.tap();
     await acceptAiConsentIfVisible();

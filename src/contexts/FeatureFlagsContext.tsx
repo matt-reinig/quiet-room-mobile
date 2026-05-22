@@ -249,7 +249,7 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
         values: filterSupportedFlagValues(data.values),
       });
     } catch (error) {
-      console.error("Failed to load feature flags", error);
+      console.warn("Failed to load feature flags", error);
       setState((prev) => ({ ...prev, loading: false, error }));
     }
   }, [user]);

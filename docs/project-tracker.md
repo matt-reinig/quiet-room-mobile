@@ -23,7 +23,7 @@ This document is a living tracker for mobile app follow-up work, investigations,
 | ID | Status | Priority | Area | Item | Notes / next step |
 | --- | --- | --- | --- | --- | --- |
 | QR-MOB-001 | Done | High | Production logs / retention | Confirm whether production logs have a 90-day TTL and update retention if they do not. | Verified on 2026-05-21. QA Lambda log groups already had 90-day retention; prod Lambda log groups were `Never expire` and were updated to 90 days. See item details for exact groups. |
-| QR-MOB-002 | Backlog | High | Android UI | Fix UI spacing when the keyboard is open on Android. | Tyler has a screenshot showing the bottom UI somewhat overhanging. Reproduce on Android, especially smaller/taller phone layouts. Add enough bottom padding or keyboard-aware spacing so the input/nav area does not overlap or overhang. |
+| QR-MOB-002 | In Progress | High | Android UI | Fix UI spacing when the keyboard is open on Android. | App patch applied in `src/screens/QuietRoomScreen.tsx`: Android keyboard-open handling now moves the footer above the IME inset with explicit suggestion-strip clearance, keeps the closed-keyboard safe-area path, and adds focus/press/text-entry fallbacks for Android cases where RN does not emit `keyboardDidShow`. `typecheck`, `mobile:verify:local-qa`, `native:sync:local-qa`, and `detox:build:debug` passed. Pixel frame evidence showed composer and Send bottoms aligned at `1016` on a `1080x1920` screen. Galaxy AVD `Galaxy_S22_Plus_Bottom_Inset_Repro` (`1080x2340`, density `390`, Android 15/API 35) now verifies keyboard-open layout: Detox printed focused composer `y=1400` vs initial `y=2063`, and manual screenshot `docs/qr-mob-002-android-keyboard-spacing/evidence/emulator-galaxy-s22/manual-clean-keyboard-short-final.png` shows the one-line composer and Send button fully above the keyboard suggestion strip. Full Detox still fails later because the local backend/app returns `No assistant content returned`; layout assertions pass before that backend response wait. |
 | QR-MOB-003 | Backlog | Medium | Store listing / age rating | Investigate whether the app age range/rating needs to change. | The app may currently be listed as `E for Everyone` or equivalent. Review Google Play and Apple App Store age-rating questionnaires against the actual app behavior, AI companion content, user-generated text, and reporting/safety features. |
 | QR-MOB-004 | In Progress | High | QA feedback / chat reliability | Review QA feedback about timestamp bleed-through, strange context appearing, and missing responses. | 2026-05-21 QA reports traced and split into explicit sub-tasks below. Backend branch `codex/qr-mob-004-timestamp-sanitizer` is deployed to QA at `1addee1`; post-deploy QA observation is still needed before marking the overall item done. |
 | QR-MOB-005 | Backlog | Medium | Profile / user control | Consider putting the profile feature behind a feature flag so users can turn it off and on. | Define whether this is an app-level feature flag, remote config, per-user setting, or both. Clarify expected behavior when disabled: no profile building, no profile injection into prompts, existing profile ignored, and/or profile deletion option. |
@@ -79,6 +79,29 @@ No separate app analytics, crash-reporting, Sentry, Datadog, New Relic, Bugsnag,
 ### QR-MOB-002 - Android keyboard spacing issue
 
 **Goal:** The Android chat UI should remain visually clean and usable when the keyboard is open.
+
+**Plan docs:**
+
+- `docs/qr-mob-002-android-keyboard-spacing/plan.md`
+- `docs/qr-mob-002-android-keyboard-spacing/progress.md`
+
+Use the existing repo guide for worktree setup and local-only files:
+
+- `docs/quiet-room-mobile-worktree-setup-guide.md`
+
+**Branch/worktree:**
+
+- Branch: `codex/qr-mob-002-android-keyboard-spacing`
+- Worktree: `../worktrees/quiet-room-mobile-qr-mob-002-android-keyboard-spacing`
+
+**Tyler screenshot evidence:**
+
+- `docs/qr-mob-002-android-keyboard-spacing/evidence/tyler-keyboard-short-input.jpg`
+- `docs/qr-mob-002-android-keyboard-spacing/evidence/tyler-keyboard-multiline-input.jpg`
+
+**2026-05-22 evidence note:** Tyler provided two Android keyboard-open screenshots. In both, the keyboard/suggestion strip begins before the composer has fully cleared the keyboard area. The short-input case clips the lower border of the input and the bottom of the Send button. The multi-line case shows the expanded composer cramped against the keyboard, with the bottom text/caret area sitting too low. This looks like keyboard-open under-clearance/clipping, not an oversized footer from too much padding.
+
+**2026-05-22 implementation note:** Android keyboard-open layout is patched and verified locally. The Galaxy-style AVD initially appeared blocked because Metro on port `8081` was serving a stale bundle from the issue-48 worktree and the local backend returns `401 Missing ID token` for feature flags without an app user token. After restarting Metro from the QR-MOB-002 worktree and making feature-flag load failure warning-only, keyboard-open layout was testable. Final Galaxy evidence is `docs/qr-mob-002-android-keyboard-spacing/evidence/emulator-galaxy-s22/manual-clean-keyboard-short-final.png`; full Detox still needs the separate local backend/assistant response path fixed to complete the second-send portion.
 
 **Initial questions:**
 
