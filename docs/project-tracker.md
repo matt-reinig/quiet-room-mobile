@@ -27,6 +27,7 @@ This document is a living tracker for mobile app follow-up work, investigations,
 | QR-MOB-010 | Backlog | High | Feedback / privacy consent | Investigate improving the feedback/report flow so users can explicitly consent to sharing their message and conversation context for debugging and quality review. | Explore adding a consent checkbox or similar UX that clearly tells users whether submitted feedback includes only metadata, the selected message, partial conversation context, or the full conversation. Clarify backend storage behavior, reviewer visibility, privacy-policy implications, and whether users should be able to opt into different levels of sharing. |
 | QR-MOB-011 | Backlog | Medium | Accounts / anonymous users | Evaluate anonymous-user lifecycle, mobile session persistence, cleanup needs, and intended upgrade or retention flow. | Review how anonymous Firebase users are created, persisted, restored, counted, and linked to app data on mobile. Specifically compare mobile behavior against web/browser anonymous auth, including whether the same anonymous session survives app restart, device reboot, cache clearing, logout, app reinstall, and auth-provider upgrade. Determine whether stale anonymous users should be cleaned up and what data policy should apply. |
 | QR-MOB-012 | Backlog | High | iOS sign-in / Firebase QA parity | Align QA Firebase/Firestore iOS sign-in configuration with prod so Apple sign-in behavior matches across environments. | Review prod vs QA Firebase Auth, Firestore, bundle ID, Apple provider, redirect/callback/domain, and any Firestore config or allowlist data used by iOS sign-in. Identify the exact missing QA modifications and apply them carefully without disturbing prod. Verify QA iOS sign-in end to end after changes. |
+| QR-MOB-013 | Backlog | Medium | Architecture / data storage | Evaluate whether Quiet Room should continue using Firestore or move more storage into an AWS-native solution. | Inventory current Firestore usage across auth-linked user data, conversations, profiles, reports, consent, config, and QA/prod separation. Compare staying on Firestore vs AWS options such as DynamoDB, Aurora/Postgres, S3-backed archival, or a hybrid approach, considering complexity, cost, security, backups, migrations, local development, operational ownership, and how much the backend already lives in AWS. |
 
 ## Item details
 
@@ -173,6 +174,31 @@ This document is a living tracker for mobile app follow-up work, investigations,
 - QA iOS Apple sign-in succeeds end to end.
 - Auth UID, provider linking behavior, user document creation, and backend authenticated calls are verified after sign-in.
 - Any manual console steps are documented for future repeatability.
+
+### QR-MOB-013 - Firestore vs AWS storage architecture evaluation
+
+**Goal:** Decide whether Firestore remains the right long-term data store for Quiet Room, or whether the app should consolidate more data storage into AWS.
+
+**Initial questions:**
+
+- What data currently lives in Firestore across QA and prod?
+- Which code paths read or write Firestore directly from mobile, backend Lambdas, profile builder, reporting, or admin/debug scripts?
+- Which parts of the system rely on Firebase Auth UID semantics, Firestore security rules, real-time listeners, offline behavior, or Firebase SDK behavior?
+- What AWS-native options are realistic: DynamoDB, Aurora/Postgres, S3, OpenSearch, Bedrock-adjacent storage, or a hybrid model?
+- Which data would benefit from relational querying vs document/key-value access?
+- What migration path would preserve conversations, profiles, consent state, reports, and account deletion behavior?
+- Would moving storage to AWS simplify backend ownership, IAM, observability, backups, retention, and local development?
+- Would it complicate mobile auth, anonymous users, provider linking, offline behavior, or direct client access?
+- What are the cost and operational tradeoffs at current scale vs future scale?
+
+**Acceptance criteria:**
+
+- Current Firestore usage inventory is documented by collection, environment, owner, and access path.
+- Firebase features being used intentionally vs incidentally are identified.
+- AWS storage alternatives are compared against Quiet Room's actual data shapes and access patterns.
+- Migration risks are documented, including auth identity mapping, account deletion, data export/import, QA/prod parity, and rollback.
+- A recommended architecture is proposed: stay on Firestore, migrate fully to AWS, or use a deliberate hybrid approach.
+- If migration is recommended, a phased implementation plan is written before any data movement begins.
 
 ## Backlog intake
 
