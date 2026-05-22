@@ -26,6 +26,7 @@ This document is a living tracker for mobile app follow-up work, investigations,
 | QR-MOB-009 | Backlog | High | Profile system / split-profile evaluation | Evaluate how the split-profile system is performing after several months of real usage. | Review long-term profile quality, section usefulness, drift, duplication, emotional over-certainty, temporal inaccuracies, token growth, retrieval usefulness, and whether the split architecture is improving downstream responses compared to earlier approaches. Compare real profile outputs over time and identify which sections should remain persistent, become ephemeral, be merged, or be removed entirely. Consider side-by-side evaluation with newer models like `gpt-5.5`. |
 | QR-MOB-010 | Backlog | High | Feedback / privacy consent | Investigate improving the feedback/report flow so users can explicitly consent to sharing their message and conversation context for debugging and quality review. | Explore adding a consent checkbox or similar UX that clearly tells users whether submitted feedback includes only metadata, the selected message, partial conversation context, or the full conversation. Clarify backend storage behavior, reviewer visibility, privacy-policy implications, and whether users should be able to opt into different levels of sharing. |
 | QR-MOB-011 | Backlog | Medium | Accounts / anonymous users | Evaluate anonymous-user lifecycle, mobile session persistence, cleanup needs, and intended upgrade or retention flow. | Review how anonymous Firebase users are created, persisted, restored, counted, and linked to app data on mobile. Specifically compare mobile behavior against web/browser anonymous auth, including whether the same anonymous session survives app restart, device reboot, cache clearing, logout, app reinstall, and auth-provider upgrade. Determine whether stale anonymous users should be cleaned up and what data policy should apply. |
+| QR-MOB-012 | Backlog | High | iOS sign-in / Firebase QA parity | Align QA Firebase/Firestore iOS sign-in configuration with prod so Apple sign-in behavior matches across environments. | Review prod vs QA Firebase Auth, Firestore, bundle ID, Apple provider, redirect/callback/domain, and any Firestore config or allowlist data used by iOS sign-in. Identify the exact missing QA modifications and apply them carefully without disturbing prod. Verify QA iOS sign-in end to end after changes. |
 
 ## Item details
 
@@ -150,6 +151,28 @@ This document is a living tracker for mobile app follow-up work, investigations,
 - Cleanup options are compared, including no cleanup, Auth-only cleanup, full data cleanup, and retention-window cleanup.
 - Risks are documented for accidental user-data loss, duplicate anonymous users, and orphaned Firestore data.
 - A recommended lifecycle policy and implementation plan are written before any deletion automation is built.
+
+### QR-MOB-012 - QA Firebase iOS sign-in parity
+
+**Goal:** Make QA iOS sign-in match the working prod setup so QA can reliably test Apple sign-in before release.
+
+**Initial questions:**
+
+- Which Firebase project is used by QA iOS, and which is used by prod iOS?
+- What exact prod Firebase/Auth/Firestore settings make Apple sign-in work today?
+- Which QA settings differ from prod: Apple provider setup, bundle ID, service ID, authorized domains, callback URLs, Firestore config documents, allowlists, or app metadata?
+- Are the needed changes in Firebase Console/Auth, Firestore documents, Apple Developer Console, app config files, or all of the above?
+- Does QA need a separate Apple key/service ID, or should it use the existing shared Apple sign-in configuration safely?
+- What can be tested from the simulator vs TestFlight?
+
+**Acceptance criteria:**
+
+- Prod and QA iOS sign-in configuration differences are documented.
+- Required QA Firebase/Firestore modifications are identified before changing anything.
+- QA changes are applied without modifying prod configuration unexpectedly.
+- QA iOS Apple sign-in succeeds end to end.
+- Auth UID, provider linking behavior, user document creation, and backend authenticated calls are verified after sign-in.
+- Any manual console steps are documented for future repeatability.
 
 ## Backlog intake
 
