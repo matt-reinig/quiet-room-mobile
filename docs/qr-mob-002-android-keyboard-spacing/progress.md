@@ -192,3 +192,50 @@ Remaining verification gap:
 - The visual keyboard spacing fix is verified locally on the Galaxy-style AVD.
 - Full Detox still does not complete its second-send flow because the local backend/app returns `No assistant content returned.` after send. That is separate from the keyboard layout assertion and likely tied to the local backend/auth/test response environment.
 - A physical Android pass on Tyler's exact device/keyboard app remains the strongest final proof before closing QR-MOB-002.
+
+## 2026-05-23
+
+Status: post-QA Android and iOS spacing revision is staged on current `origin/develop` for QA store deployment.
+
+Why this changed after the first QA deploy:
+
+- The first Android fix was merged/deployed to the QA Android store, but real-device review showed too much yellow/beige space between the composer and the keyboard.
+- User screenshot `/Users/mjreinig/Downloads/Screenshot_20260522-222739.png` showed the extra gap clearly with the keyboard open.
+- The earlier `+96` Android footer lift solved clipping but overshot the visual target on a real phone.
+
+Android revision:
+
+- Removed the separate `ANDROID_KEYBOARD_OFFSET_CLEARANCE = 96` behavior.
+- Kept the composer offset tied to the actual IME inset with `Math.max(0, keyboardInset - insets.bottom)`.
+- The calculation subtracts the bottom system inset once because React Native's Android keyboard height includes the navigation/safe-area portion; without that subtraction, Pixel gesture navigation and the Galaxy 3-button profile produced different yellow/beige bands.
+- Added `keyboardInsetFromScreenY(height, screenY)` so Android prefers the keyboard top coordinate when React Native exposes it, with reported height as the fallback.
+- Reduced Android keyboard-open internal bottom clearance from the earlier `32px` extra clearance to `4px`, for `20px` total footer padding with `COMPOSER_ROW_PADDING_BOTTOM`.
+- Preserved Android keyboard-closed behavior: `COMPOSER_ROW_PADDING_BOTTOM + insets.bottom`.
+- Confirmed the visible app-controlled clearance is now the same between Pixel and Galaxy: no separate yellow/beige band between the composer footer and the Gboard suggestion strip. The keyboard app, suggestion strip, and navigation chrome can still differ by emulator/device.
+
+Android emulator evidence:
+
+- Pixel AVD `Pixel34AVD_2`, Android 14, `1080x1920`, density `420`, gesture navigation, `show_ime_with_hard_keyboard=1`.
+- Pixel final screenshot after equalized calculation: `docs/qr-mob-002-android-keyboard-spacing/evidence/pixel34-keyboard-equalized-final.png`.
+- Pixel result: Gboard suggestion strip is visible, the composer sits directly above it, the text field is not covered, and the yellow/beige gap is gone.
+- Galaxy AVD `Galaxy_S22_Plus_Bottom_Inset_Repro`, Android 15/API 35, `1080x2340`, density `390`, `show_ime_with_hard_keyboard=1`.
+- Galaxy final screenshot after equalized calculation: `docs/qr-mob-002-android-keyboard-spacing/evidence/galaxy-s22-keyboard-equalized-final.png`.
+- Galaxy result: `adb shell dumpsys input_method` confirmed `mInputShown=true` and `mServedView=com.facebook.react.views.textinput.ReactEditText`; Gboard suggestion strip is visible, the composer sits directly above it, and the yellow/beige gap is gone.
+
+iOS revision:
+
+- User clarified that the unwanted beige area on iOS was the resting band below the composer, not the space above the text area.
+- This is now handled structurally instead of by recoloring: the main Quiet Room screen uses `SafeAreaView` from `react-native-safe-area-context` with iOS `edges={["top"]}` so the main screen no longer reserves a separate bottom safe-area band under the composer.
+- iOS keyboard-open behavior still uses the keyboard inset path.
+- iOS keyboard-closed/resting behavior now keeps a smaller proportional bottom clearance: `COMPOSER_ROW_PADDING_BOTTOM + IOS_RESTING_COMPOSER_BOTTOM_CLEARANCE`.
+- `IOS_RESTING_COMPOSER_BOTTOM_CLEARANCE` is `20`, so total resting bottom padding is `36px`.
+- The `36px` resting bottom padding intentionally matches the active voice-mode top spacing from the voice badge row: `composerMetaRow.minHeight 28 + composerWrap.gap 8`.
+- The voice-mode badge space above the text area was preserved; the badge row and input top spacing were not removed.
+
+Validation before QA store deployment:
+
+```bash
+npm run typecheck
+```
+
+Result: passed.

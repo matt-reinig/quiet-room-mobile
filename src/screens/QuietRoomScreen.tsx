@@ -11,7 +11,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
@@ -21,7 +20,7 @@ import {
   type NativeSyntheticEvent,
   type TextInputContentSizeChangeEventData,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AboutModal from "../components/AboutModal";
 import ConversationsModal from "../components/ConversationsModal";
 import LoginModal from "../components/LoginModal";
@@ -49,8 +48,8 @@ const MESSAGE_LIST_PADDING_BOTTOM = 12;
 const COMPOSER_ROW_PADDING_TOP = 12;
 const COMPOSER_ROW_PADDING_BOTTOM = 16;
 const OPENING_MESSAGE_TOP_OFFSET = 16;
-const ANDROID_KEYBOARD_CLEARANCE = 32;
-const ANDROID_KEYBOARD_OFFSET_CLEARANCE = 96;
+const IOS_RESTING_COMPOSER_BOTTOM_CLEARANCE = 20;
+const ANDROID_KEYBOARD_INPUT_CLEARANCE = 4;
 const ANDROID_KEYBOARD_FALLBACK_SCREEN_RATIO = 0.35;
 
 const QUIET_ROOM_OPENING_GREETING = `Welcome to Quiet Room.
@@ -93,6 +92,18 @@ function headerTitleTop(): number {
 
 function crucifixTopMargin(): number {
   return Platform.OS === "ios" ? 0 : 12;
+}
+
+function keyboardInsetFromScreenY(height: number | undefined, screenY: number | undefined): number {
+  const measuredScreenY = screenY && screenY > 0
+    ? Math.max(0, Dimensions.get("screen").height - screenY)
+    : 0;
+
+  if (measuredScreenY > 0) {
+    return measuredScreenY;
+  }
+
+  return height && height > 0 ? height : 0;
 }
 
 export default function QuietRoomScreen() {
@@ -204,7 +215,10 @@ export default function QuietRoomScreen() {
 
     const showSubscription = Keyboard.addListener(showEvent, (event) => {
       setIsKeyboardVisible(true);
-      setKeyboardInset(event.endCoordinates.height);
+      setKeyboardInset(keyboardInsetFromScreenY(
+        event.endCoordinates.height,
+        event.endCoordinates.screenY,
+      ));
       maybeKeepLatestVisible();
     });
     const hideSubscription = Keyboard.addListener(hideEvent, () => {
@@ -718,7 +732,7 @@ export default function QuietRoomScreen() {
       const metrics = Keyboard.metrics();
       setKeyboardInset(
         metrics?.height && metrics.height > 0
-          ? metrics.height
+          ? keyboardInsetFromScreenY(metrics.height, metrics.screenY)
           : Math.round(Dimensions.get("screen").height * ANDROID_KEYBOARD_FALLBACK_SCREEN_RATIO),
       );
     }
@@ -836,7 +850,7 @@ export default function QuietRoomScreen() {
     const metrics = Keyboard.metrics();
 
     if (metrics?.height && metrics.height > 0) {
-      setKeyboardInset(metrics.height);
+      setKeyboardInset(keyboardInsetFromScreenY(metrics.height, metrics.screenY));
       return;
     }
 
@@ -1025,12 +1039,14 @@ export default function QuietRoomScreen() {
       return COMPOSER_ROW_PADDING_BOTTOM + keyboardInset;
     }
 
-    if (Platform.OS === "android" && isKeyboardVisible) {
-      return COMPOSER_ROW_PADDING_BOTTOM + ANDROID_KEYBOARD_CLEARANCE;
+    if (Platform.OS === "ios") {
+      return COMPOSER_ROW_PADDING_BOTTOM + IOS_RESTING_COMPOSER_BOTTOM_CLEARANCE;
     }
 
     if (Platform.OS === "android") {
-      return COMPOSER_ROW_PADDING_BOTTOM + insets.bottom;
+      return isKeyboardVisible
+        ? COMPOSER_ROW_PADDING_BOTTOM + ANDROID_KEYBOARD_INPUT_CLEARANCE
+        : COMPOSER_ROW_PADDING_BOTTOM + insets.bottom;
     }
 
     return COMPOSER_ROW_PADDING_BOTTOM;
@@ -1040,12 +1056,18 @@ export default function QuietRoomScreen() {
       return 0;
     }
 
-    return Math.max(0, keyboardInset - insets.bottom + ANDROID_KEYBOARD_OFFSET_CLEARANCE);
+    // Android keyboard height includes the bottom system inset on both gesture
+    // and 3-button nav; subtract it once so the beige footer does not drift by device.
+    return Math.max(0, keyboardInset - insets.bottom);
   }, [insets.bottom, isKeyboardVisible, keyboardInset]);
 
   if (shouldBlockForConversations) {
     return (
-      <SafeAreaView style={styles.safeArea} testID={testIds.screen}>
+      <SafeAreaView
+        edges={Platform.OS === "ios" ? ["top"] : undefined}
+        style={styles.safeArea}
+        testID={testIds.screen}
+      >
         <View style={styles.centeredWrap}>
           <Spinner label="Preparing messages..." size="lg" tone="accent" />
         </View>
@@ -1054,7 +1076,11 @@ export default function QuietRoomScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} testID={testIds.screen}>
+    <SafeAreaView
+      edges={Platform.OS === "ios" ? ["top"] : undefined}
+      style={styles.safeArea}
+      testID={testIds.screen}
+    >
       <StatusBar style="dark" />
 
       <View style={styles.root}>
