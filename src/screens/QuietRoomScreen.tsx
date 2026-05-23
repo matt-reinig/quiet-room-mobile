@@ -1094,7 +1094,14 @@ export default function QuietRoomScreen() {
           />
         ) : null}
 
-        <Pressable onPress={dismissKeyboard} style={styles.header} testID={testIds.header}>
+        <Pressable
+          onPress={dismissKeyboard}
+          style={[
+            styles.header,
+            isKeyboardVisible && Platform.OS === "android" ? styles.headerKeyboardActiveAndroid : null,
+          ]}
+          testID={testIds.header}
+        >
           <View pointerEvents="none" style={styles.headerTitleWrap}>
             <Text style={styles.headerTitle}>Quiet Room</Text>
           </View>
@@ -1969,6 +1976,9 @@ const styles = StyleSheet.create({
     paddingTop: headerTopPadding(),
     position: "relative",
     zIndex: 25,
+  },
+  headerKeyboardActiveAndroid: {
+    minHeight: 48,
   },
   headerIconButton: {
     alignItems: "center",

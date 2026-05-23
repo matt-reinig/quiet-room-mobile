@@ -431,3 +431,23 @@ Play upload result:
 - Updated `internal` track as draft release `QA internal 13`.
 - Committed Play edit `17616344764357944275`.
 - Readback edit `11381375475315253650` confirmed `internal` track release `QA internal 13`, `versionCodes: ["13"]`, `status: draft`.
+
+## 2026-05-23 Android Keyboard-Active Header Follow-up
+
+User screenshot: `/tmp/codex-remote-attachments/019e54f2-5632-75a2-8e7f-928c1e9a7e5e/86ff75d4-ba3d-4b38-ba3f-727dbc3fbe24/1-Photo-1.jpg`.
+
+Root cause:
+
+- The crucifix block is hidden while the keyboard is visible, leaving the compact header with only padding-driven in-flow height.
+- The title and controls are absolutely positioned, so the message list could begin under them in the keyboard-visible state.
+
+Change prepared:
+
+- Added an Android-only `minHeight` for the keyboard-active compact header.
+- Resting Android header and iOS header behavior are unchanged.
+
+Verification:
+
+- `npm run typecheck` passed.
+- Pixel AVD keyboard-active visual check: `docs/qr-mob-002-android-keyboard-spacing/evidence/android-header-keyboard-active-pixel.png`.
+- Pixel AVD resting visual check after the change: `docs/qr-mob-002-android-keyboard-spacing/evidence/android-header-resting-after-active-fix-pixel.png`.
