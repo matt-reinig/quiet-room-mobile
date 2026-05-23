@@ -106,7 +106,7 @@
     },
     "android": {
       "package": "com.quietroom.mobile",
-      "versionCode": 12,
+      "versionCode": 13,
       "softwareKeyboardLayoutMode": "resize",
       "blockedPermissions": [
         "android.permission.READ_EXTERNAL_STORAGE",

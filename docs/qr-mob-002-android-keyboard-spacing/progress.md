@@ -405,3 +405,29 @@ Follow-up correction:
 - Adjusted Android header controls from `-4` to `8` and Android title from `4` to `12`, keeping iOS unchanged.
 - `npm run typecheck` passed.
 - Pixel AVD visual check captured at `docs/qr-mob-002-android-keyboard-spacing/evidence/android-header-top-tightened-pixel-v5.png`.
+
+## 2026-05-23 Android QA Deploy Follow-up
+
+Android QA Play deployment:
+
+- Bumped Android `versionCode` from `12` to `13`.
+- `npm run mobile:verify:qa` passed with no warnings or failures.
+- `npm run native:sync:qa` completed for QA.
+- `npm run android:play:status:qa` confirmed package `com.quietroom.mobile.qa`, version `1.0.0`, and versionCode `13`.
+- `npm run android:play:preflight:qa` passed with 19 passes, 0 warnings, and 0 failures.
+- Built the signed QA AAB with `bash ./scripts/with-mobile-env.sh qa qa bash -lc 'cd android && ./gradlew bundleRelease'`; result: `BUILD SUCCESSFUL`.
+
+Android artifact:
+
+- AAB: `android/app/build/outputs/bundle/release/app-release.aab`
+- SHA256: `de9e67d8ed8633afd1a4a262e83aaa888aa48f1e95565af76b912ff5baf6a55d`
+- Package: `com.quietroom.mobile.qa`
+- versionCode: `13`
+
+Play upload result:
+
+- Created Play edit `17616344764357944275`.
+- Uploaded AAB versionCode `13`.
+- Updated `internal` track as draft release `QA internal 13`.
+- Committed Play edit `17616344764357944275`.
+- Readback edit `11381375475315253650` confirmed `internal` track release `QA internal 13`, `versionCodes: ["13"]`, `status: draft`.
