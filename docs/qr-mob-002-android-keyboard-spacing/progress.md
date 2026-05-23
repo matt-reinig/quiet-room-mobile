@@ -330,5 +330,56 @@ Result: `** EXPORT SUCCEEDED **`.
 Remaining blocker:
 
 - Android QA is deployed to Play internal testing as draft release `QA internal 12`.
-- iOS QA build `20` is archived and exported locally, but not uploaded to App Store Connect because local Apple account/API-key authentication is currently invalid.
-- The next recovery step is to restore App Store Connect CLI access in Xcode or replace/refresh the API key, then re-export/upload the existing `build/ios-qa-b20.xcarchive` or upload `build/testflight-export-qa-b20-local/QuietRoomQA.ipa`.
+- iOS QA build `20` was initially archived and exported locally, but App Store Connect upload was blocked until local Xcode account access was restored.
+- Resolved below on the successful 2026-05-23 iOS upload retry.
+
+Additional iOS upload retry:
+
+- Retried the runbook Xcode upload path from the existing archive:
+
+```bash
+xcodebuild -exportArchive \
+  -archivePath build/ios-qa-b20.xcarchive \
+  -exportPath build/testflight-export-qa-b20-upload-retry \
+  -exportOptionsPlist build/exportOptions-qa-b20.plist \
+  -allowProvisioningUpdates
+```
+
+- Result: failed again with `exportArchive Failed to Use Accounts`.
+- Interpretation: the remaining iOS blocker is still local Apple/Xcode App Store Connect account access, not the QR-MOB-002 app build. Do not switch to App Store Connect API upload for Apple; restore the Xcode account session and retry the same archive/export path.
+- A subsequent retry at 2026-05-23 11:25 local time failed the same way: `exportArchive Failed to Use Accounts`.
+- A subsequent retry at 2026-05-23 11:26 local time also failed with `exportArchive Failed to Use Accounts`. The Xcode distribution log says: `Failed to find an account with App Store Connect access for team ... teamID='SV7SPMY2Q8'` and `App Store Connect access for "SV7SPMY2Q8" is required. Ensure that your Apple Account usernames and passwords are correct in Accounts settings.`
+
+Successful iOS upload retry:
+
+- Retried the same Xcode upload path from the existing archive after local App Store Connect/Xcode account access was restored:
+
+```bash
+xcodebuild -exportArchive \
+  -archivePath build/ios-qa-b20.xcarchive \
+  -exportPath build/testflight-export-qa-b20-upload-retry \
+  -exportOptionsPlist build/exportOptions-qa-b20.plist \
+  -allowProvisioningUpdates
+```
+
+- Result: passed.
+- Upload output:
+  - `Starting upload`
+  - `Waiting for App Store Connect analysis response`
+  - `Uploaded package is processing.`
+  - `Upload succeeded.`
+  - `Uploaded QuietRoomQA`
+  - `** EXPORT SUCCEEDED **`
+- Distribution log bundle: `/var/folders/hw/11f0794j5xj1d4v03w96dlb40000gn/T/QuietRoomQA_2026-05-23_11-53-14.977.xcdistributionlogs`
+- Post-upload status check:
+
+```bash
+npm run ios:testflight:status:qa
+```
+
+Result: confirmed `Quiet Room QA`, bundle `com.quietroom.mobile.qa`, iOS build `20`, version `1.0.0`, Firebase project `gabriel-qa-89f20`, and QA backend URLs.
+
+Final QA store status:
+
+- Android QA: uploaded to Play internal testing as draft release `QA internal 12`.
+- iOS QA: uploaded to App Store Connect/TestFlight as `Quiet Room QA` build `20`; Apple processing may still need to finish before the build can be assigned to testers.
