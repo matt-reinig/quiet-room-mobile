@@ -29,6 +29,8 @@ This document is a living tracker for mobile app follow-up work, investigations,
 | QR-MOB-012 | Backlog | High | iOS sign-in / Firebase QA parity | Align QA Firebase/Firestore iOS sign-in configuration with prod so Apple sign-in behavior matches across environments. | Review prod vs QA Firebase Auth, Firestore, bundle ID, Apple provider, redirect/callback/domain, and any Firestore config or allowlist data used by iOS sign-in. Identify the exact missing QA modifications and apply them carefully without disturbing prod. Verify QA iOS sign-in end to end after changes. |
 | QR-MOB-013 | Backlog | Medium | Architecture / data storage | Evaluate whether Quiet Room should continue using Firestore or move more storage into an AWS-native solution. | Inventory current Firestore usage across auth-linked user data, conversations, profiles, reports, consent, config, and QA/prod separation. Compare staying on Firestore vs AWS options such as DynamoDB, Aurora/Postgres, S3-backed archival, or a hybrid approach, considering complexity, cost, security, backups, migrations, local development, operational ownership, and how much the backend already lives in AWS. |
 | QR-MOB-014 | Backlog | Medium | Observability / CloudWatch reporting | Investigate automating CloudWatch Logs Insights reports for prod usage, prod errors, and QA errors, with scheduled email delivery. | Define the recurring questions currently checked manually, translate them into saved Logs Insights queries or scripts, decide cadence and recipients, and compare options such as EventBridge + Lambda + SES/SNS, CloudWatch dashboards/alarms, or a lightweight scheduled report job. Include privacy-safe summaries and links back to raw logs when needed. |
+| QR-MOB-015 | Backlog | High | Android deploy / Play Store automation | Investigate fully automating Play Store release publishing so uploaded releases do not need to be manually flipped from draft to published in Play Console. | Review the current Android deploy scripts, Play Developer API edit flow, track status handling, service-account permissions, QA vs prod lane safety, staged rollout options, and review/submission behavior. Determine whether the script can publish internal releases automatically, whether prod should require an explicit confirmation flag, and how to verify the final track status after deploy. |
+| QR-MOB-016 | Backlog | High | Voice / audio reliability | Investigate audio playback cutting off mid-message and add visibility into the actual text sent to voice/TTS. | Users sometimes hear audio stop partway through a response while the backend does not show an obvious error. Trace the mobile voice playback path, TTS request/response handling, audio file/stream lifecycle, and app interruption/background behavior. Add privacy-safe logging or debug tooling to compare the assistant message text, the text sent to TTS, generated audio metadata, playback progress, and cutoff point. |
 
 ## Item details
 
@@ -226,6 +228,56 @@ This document is a living tracker for mobile app follow-up work, investigations,
 - Report content avoids unnecessary sensitive text and favors counts, event types, trends, and CloudWatch links.
 - IAM permissions and environment separation are documented.
 - A phased implementation plan is written before scheduling recurring emails.
+
+### QR-MOB-015 - Play Store publish automation
+
+**Goal:** Make Android Play Store deployment fully automated where safe, so a release does not require manually opening Play Console to flip it from draft to published.
+
+**Initial questions:**
+
+- Which current script uploads Android QA and prod releases to Play Console?
+- Why are releases currently left as draft: API limitation, intentional safety default, missing status field, incomplete release metadata, review requirement, or Play Console policy behavior?
+- Can the Google Play Developer API set the desired release status for the target track during the same edit transaction?
+- Should QA/internal releases auto-publish by default while prod requires an explicit `--publish`, `--rollout`, or confirmation flag?
+- What should happen for internal, closed, open, and production tracks?
+- Are staged rollout controls needed for prod, such as `userFraction` or halt/resume behavior?
+- What service-account permissions are required to publish rather than only upload drafts?
+- How should the script verify final track status after committing the edit?
+- How should failures be handled if Google Play requires manual review or blocks publish?
+
+**Acceptance criteria:**
+
+- Current Android Play deploy flow is documented from AAB build through Play edit commit.
+- Root cause of draft-only releases is identified.
+- Automation options are compared for QA/internal vs prod tracks.
+- Safe defaults are defined so prod publishing cannot happen accidentally.
+- Script changes or a plan are written to support publish-ready releases and final status readback.
+- Required service-account permissions and Play Console constraints are documented.
+- QA deploy can be verified end to end without manually flipping draft to published.
+
+### QR-MOB-016 - Voice audio cutoff and TTS text observability
+
+**Goal:** Understand why voice audio sometimes cuts off mid-message and add enough observability to see what text was actually sent to voice/TTS.
+
+**Initial questions:**
+
+- Is the cutoff caused by TTS generation, audio download/streaming, local file handling, playback lifecycle, interruption handling, app backgrounding, or UI state changes?
+- Does the backend receive and process the full assistant response even when audio cuts off?
+- Is the exact text sent to the voice/TTS layer different from the saved assistant message text?
+- Are long messages, markdown, punctuation, scripture citations, special characters, or streaming timing correlated with cutoff?
+- Does this happen on iOS, Android, or both?
+- Does the mobile app currently log playback start, progress, completion, interruption, and errors?
+- Can QA capture a failed example with assistant message ID, TTS input text, generated audio duration/size, playback position at cutoff, and device/platform metadata?
+- What privacy-safe logging is acceptable for TTS text or excerpts?
+
+**Acceptance criteria:**
+
+- Current voice/TTS flow is documented from assistant text to playback completion.
+- The app can correlate a voice playback event with the assistant message and exact text sent to TTS.
+- Playback progress, completion, cancellation, interruption, and error states are logged or otherwise inspectable in QA.
+- At least one cutoff case is reproduced or narrowed to a likely layer.
+- A privacy-safe strategy is defined for storing or viewing TTS text/debug metadata.
+- Recommended fix or next investigation path is documented before changing the production voice behavior.
 
 ## Backlog intake
 
