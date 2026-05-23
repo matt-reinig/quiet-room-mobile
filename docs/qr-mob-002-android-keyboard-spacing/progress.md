@@ -239,3 +239,96 @@ npm run typecheck
 ```
 
 Result: passed.
+
+## 2026-05-23 QA Store Deployment
+
+Source branch and merge:
+
+- Release worktree: `/private/tmp/quiet-room-mobile-qr-mob-002-develop-merge`
+- Branch: `codex/qr-mob-002-qa-ios-android-spacing`
+- Merged/pushed to `origin/develop` at `b7ed619` (`Equalize QA composer keyboard spacing`).
+- Pushed feature branch `origin/codex/qr-mob-002-qa-ios-android-spacing` at the same commit.
+
+Pre-deploy validation:
+
+```bash
+npm run typecheck
+npm run mobile:verify:qa
+npm run native:sync:qa
+npm run android:play:preflight:qa
+npm run ios:testflight:preflight:qa
+npm run android:play:status:qa
+npm run ios:testflight:status:qa
+```
+
+Results:
+
+- Typecheck passed.
+- QA env verification passed with no warnings/failures.
+- Native sync completed for QA Android/iOS.
+- Android Play preflight passed for `com.quietroom.mobile.qa`, versionCode `12`.
+- iOS TestFlight preflight passed for `com.quietroom.mobile.qa`, build `20`, with `CFBundleVersion: 20`, `MARKETING_VERSION: 1.0.0`, and `CURRENT_PROJECT_VERSION: 20`.
+
+Android QA Play deployment:
+
+```bash
+bash ./scripts/with-mobile-env.sh qa qa bash -lc 'cd android && ./gradlew bundleRelease'
+```
+
+Result: `BUILD SUCCESSFUL`.
+
+Android artifact:
+
+- AAB: `android/app/build/outputs/bundle/release/app-release.aab`
+- SHA256: `905a4ca06a409af75fa79fb4de91c281a103f45e19fc137b3dee3ca3eb8e4a85`
+- Package: `com.quietroom.mobile.qa`
+- versionCode: `12`
+
+Play upload result:
+
+- Created Play edit `15087252310441301604`.
+- Uploaded AAB versionCode `12`.
+- Updated `internal` track as draft release `QA internal 12`.
+- Committed Play edit `15087252310441301604`.
+- Readback edit `07637720695111139590` confirmed `internal` track release `QA internal 12`, `versionCodes: ["12"]`, `status: draft`.
+- The upload script exited non-zero only after successful readback because the cleanup `DELETE` response had an empty body; the Play edit had already been committed and read back.
+
+iOS QA TestFlight deployment attempt:
+
+```bash
+ENTRY_FILE=index.ts npm run ios:testflight:deploy:qa
+```
+
+Results:
+
+- Initial deploy attempt failed in the React Native bundle phase because Xcode resolved the entry file through `/tmp/.../index.ts` while Metro rooted the repo at `/private/tmp/...`. The relative `ENTRY_FILE=index.ts` override fixed that bundling issue.
+- The rerun archived successfully as `build/ios-qa-b20.xcarchive`.
+- Archive entitlements were verified:
+  - `application-identifier: SV7SPMY2Q8.com.quietroom.mobile.qa`
+  - `com.apple.developer.applesignin: Default`
+- Xcode export/upload then failed with `exportArchive Failed to Use Accounts`.
+- Re-exporting the successful archive with App Store Connect API-key auth also failed: `No Accounts with App Store Connect Access`.
+- Direct `xcrun altool --upload-app` with the same API key failed with `NOT_AUTHORIZED` / invalid bearer token for key `6KX54B4HT2`.
+
+iOS signed artifact prepared:
+
+```bash
+xcodebuild -exportArchive \
+  -archivePath build/ios-qa-b20.xcarchive \
+  -exportPath build/testflight-export-qa-b20-local \
+  -exportOptionsPlist build/exportOptions-qa-b20-export.plist \
+  -allowProvisioningUpdates
+```
+
+Result: `** EXPORT SUCCEEDED **`.
+
+- IPA: `build/testflight-export-qa-b20-local/QuietRoomQA.ipa`
+- SHA256: `b10ee7bc2226faa7299f729dd87d02fd3df5eae63f7e947a5b5ec9a410ab1f41`
+- Bundle id: `com.quietroom.mobile.qa`
+- Build number: `20`
+
+Remaining blocker:
+
+- Android QA is deployed to Play internal testing as draft release `QA internal 12`.
+- iOS QA build `20` is archived and exported locally, but not uploaded to App Store Connect because local Apple account/API-key authentication is currently invalid.
+- The next recovery step is to restore App Store Connect CLI access in Xcode or replace/refresh the API key, then re-export/upload the existing `build/ios-qa-b20.xcarchive` or upload `build/testflight-export-qa-b20-local/QuietRoomQA.ipa`.
