@@ -79,19 +79,19 @@ type ReportResponseTarget = {
 };
 
 function headerTopPadding(): number {
-  return Platform.OS === "ios" ? 84 : 100;
+  return Platform.OS === "ios" ? 84 : 12;
 }
 
 function headerControlsTop(): number {
-  return Platform.OS === "ios" ? 16 : 44;
+  return Platform.OS === "ios" ? 16 : -4;
 }
 
 function headerTitleTop(): number {
-  return Platform.OS === "ios" ? 24 : 52;
+  return Platform.OS === "ios" ? 24 : 4;
 }
 
 function crucifixTopMargin(): number {
-  return Platform.OS === "ios" ? 0 : 12;
+  return Platform.OS === "ios" ? 0 : 76;
 }
 
 function keyboardInsetFromScreenY(height: number | undefined, screenY: number | undefined): number {

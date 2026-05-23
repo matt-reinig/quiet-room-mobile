@@ -383,3 +383,18 @@ Final QA store status:
 
 - Android QA: uploaded to Play internal testing as draft release `QA internal 12`.
 - iOS QA: uploaded to App Store Connect/TestFlight as `Quiet Room QA` build `20`; Apple processing may still need to finish before the build can be assigned to testers.
+
+## 2026-05-23 Android Header Spacing Follow-up
+
+User screenshot: `/Users/mjreinig/Downloads/Screenshot_20260523-115634.png`.
+
+Change prepared:
+
+- Tightened Android-only header positioning so the `QUIET ROOM` title and header controls sit at the top of the white header area instead of leaving the large blank band shown in the screenshot.
+- Left iOS header spacing unchanged.
+- Kept the crucifix separated from the raised header row by moving the Android crucifix margin down after reducing the header padding.
+
+Verification:
+
+- `npm run typecheck` passed.
+- Pixel AVD visual check captured at `docs/qr-mob-002-android-keyboard-spacing/evidence/android-header-top-tightened-pixel-v4.png`.
