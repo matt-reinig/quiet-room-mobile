@@ -83,11 +83,11 @@ function headerTopPadding(): number {
 }
 
 function headerControlsTop(): number {
-  return Platform.OS === "ios" ? 16 : -4;
+  return Platform.OS === "ios" ? 16 : 8;
 }
 
 function headerTitleTop(): number {
-  return Platform.OS === "ios" ? 24 : 4;
+  return Platform.OS === "ios" ? 24 : 12;
 }
 
 function crucifixTopMargin(): number {

@@ -398,3 +398,10 @@ Verification:
 
 - `npm run typecheck` passed.
 - Pixel AVD visual check captured at `docs/qr-mob-002-android-keyboard-spacing/evidence/android-header-top-tightened-pixel-v4.png`.
+
+Follow-up correction:
+
+- Raised header pass was slightly too high on Android: the profile icon overhung the top edge of the white header.
+- Adjusted Android header controls from `-4` to `8` and Android title from `4` to `12`, keeping iOS unchanged.
+- `npm run typecheck` passed.
+- Pixel AVD visual check captured at `docs/qr-mob-002-android-keyboard-spacing/evidence/android-header-top-tightened-pixel-v5.png`.
