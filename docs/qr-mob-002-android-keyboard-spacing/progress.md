@@ -451,3 +451,30 @@ Verification:
 - `npm run typecheck` passed.
 - Pixel AVD keyboard-active visual check: `docs/qr-mob-002-android-keyboard-spacing/evidence/android-header-keyboard-active-pixel.png`.
 - Pixel AVD resting visual check after the change: `docs/qr-mob-002-android-keyboard-spacing/evidence/android-header-resting-after-active-fix-pixel.png`.
+
+## 2026-05-23 Android QA Deploy Follow-up 2
+
+Android QA Play deployment:
+
+- Bumped Android `versionCode` from `13` to `14`.
+- `npm run mobile:verify:qa` passed with no warnings or failures.
+- `npm run native:sync:qa` completed for QA after rerunning outside the sandbox for CocoaPods/Hermes network access.
+- `npm run android:play:status:qa` confirmed package `com.quietroom.mobile.qa`, version `1.0.0`, and versionCode `14`.
+- `npm run android:play:preflight:qa` passed with 19 passes, 0 warnings, and 0 failures.
+- Built the signed QA AAB with `bash ./scripts/with-mobile-env.sh qa qa bash -lc 'cd android && ./gradlew bundleRelease'`; result: `BUILD SUCCESSFUL`.
+
+Android artifact:
+
+- AAB: `android/app/build/outputs/bundle/release/app-release.aab`
+- SHA256: `39f1da8df900629322450e3c2484e104907d2c8c55626ebd415d327313551056`
+- Package: `com.quietroom.mobile.qa`
+- versionCode: `14`
+
+Play upload result:
+
+- Created Play edit `08646524330214712162`.
+- Uploaded AAB versionCode `14`.
+- Updated `internal` track as draft release `QA internal 14`.
+- Committed Play edit `08646524330214712162`.
+- Readback edit `05174022045402667943` confirmed `internal` track release `QA internal 14`, `versionCodes: ["14"]`, `status: draft`.
+- The upload script exited non-zero only after successful readback because the cleanup `DELETE` response had an empty body; the Play edit had already been committed and read back.
