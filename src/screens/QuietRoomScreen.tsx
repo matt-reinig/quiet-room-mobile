@@ -1046,18 +1046,18 @@ export default function QuietRoomScreen() {
     if (Platform.OS === "android") {
       return isKeyboardVisible
         ? COMPOSER_ROW_PADDING_BOTTOM + ANDROID_KEYBOARD_INPUT_CLEARANCE
-        : COMPOSER_ROW_PADDING_BOTTOM + insets.bottom;
+        : COMPOSER_ROW_PADDING_BOTTOM;
     }
 
     return COMPOSER_ROW_PADDING_BOTTOM;
-  }, [insets.bottom, isKeyboardVisible, keyboardInset]);
+  }, [isKeyboardVisible, keyboardInset]);
   const composerKeyboardOffset = useMemo(() => {
     if (Platform.OS !== "android" || !isKeyboardVisible) {
       return 0;
     }
 
     // Android keyboard height includes the bottom system inset on both gesture
-    // and 3-button nav; subtract it once so the beige footer does not drift by device.
+    // and 3-button nav; subtract it once so the footer does not drift by device.
     return Math.max(0, keyboardInset - insets.bottom);
   }, [insets.bottom, isKeyboardVisible, keyboardInset]);
 
@@ -2520,7 +2520,7 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   safeArea: {
-    backgroundColor: mobileWeb.colors.bg,
+    backgroundColor: mobileWeb.colors.white,
     flex: 1,
   },
   sendButton: {

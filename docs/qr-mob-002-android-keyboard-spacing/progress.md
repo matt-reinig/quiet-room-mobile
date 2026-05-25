@@ -478,3 +478,17 @@ Play upload result:
 - Committed Play edit `08646524330214712162`.
 - Readback edit `05174022045402667943` confirmed `internal` track release `QA internal 14`, `versionCodes: ["14"]`, `status: draft`.
 - The upload script exited non-zero only after successful readback because the cleanup `DELETE` response had an empty body; the Play edit had already been committed and read back.
+
+## 2026-05-25 Android Safe-Area Band Follow-up
+
+Change prepared:
+
+- Changed the main screen safe-area background from beige to white so the Android top and bottom system bands no longer inherit the beige app background.
+- Removed the extra Android closed-keyboard bottom inset from the composer row padding so the text area sits closer to the bottom safe-area band, visually matching the old layout with the beige band removed.
+- Left Android keyboard-open spacing logic intact: keyboard-visible composer padding still uses `COMPOSER_ROW_PADDING_BOTTOM + ANDROID_KEYBOARD_INPUT_CLEARANCE`, and keyboard offset still subtracts the bottom system inset to avoid device drift.
+
+Verification:
+
+- `npm run typecheck` passed.
+- Pixel AVD resting visual check captured at `docs/qr-mob-002-android-keyboard-spacing/evidence/android-white-bands-resting-pixel.png`.
+- Pixel AVD keyboard-open visual check captured at `docs/qr-mob-002-android-keyboard-spacing/evidence/android-white-bands-keyboard-pixel.png`.
