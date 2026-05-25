@@ -504,3 +504,22 @@ Verification:
 
 - `npm run typecheck` passed.
 - Pixel AVD visual check captured at `docs/qr-mob-002-android-keyboard-spacing/evidence/android-composer-meta-row-reserved-pixel.png`.
+
+## 2026-05-25 Balanced Composer Spacing Follow-up
+
+Change prepared:
+
+- Equalized resting composer spacing by making the bottom padding match the full reserved space above the text input: row top padding + meta row height + meta row gap.
+- Corrected the Android resting calculation so the bottom system inset participates in the visible gap: bottom nav/gesture inset + composer bottom padding now targets the same reserved space above the text input.
+- Kept the Android keyboard-open clearance path unchanged so the Pixel/Galaxy keyboard spacing fix remains isolated from this resting-state adjustment.
+- Added a reusable Detox known-account login script so future visual checks can sign in as `newuser@example.com` without coordinate-tapping auth fields. Use `npm run detox:login:android` or `npm run detox:login:ios`; pass `LOGIN_SKIP_BUILD=1` when Detox binaries are already built.
+
+Verification:
+
+- `npm run typecheck` passed.
+- `ANDROID_SERIAL=emulator-5556 LOGIN_SKIP_BUILD=1 LOGIN_VISUAL_PAUSE_MS=1000 npm run detox:login:android -- --reuse` passed against the real `newuser@example.com` account without feature-flag overrides after the wrapper built the missing Android Detox test APK in an earlier run.
+- `ANDROID_SERIAL=emulator-5554 LOGIN_SKIP_BUILD=1 LOGIN_VISUAL_PAUSE_MS=1000 npm run detox:login:android -- --reuse` passed on the Galaxy AVD using the already-built Detox binaries.
+- `DETOX_IOS_DEVICE='iPhone 17 Pro' LOGIN_VISUAL_PAUSE_MS=1000 npm run detox:login:ios -- --reuse` passed on the iPhone 17 Pro simulator against the same `newuser@example.com` account.
+- Galaxy S22 Plus AVD visual check captured at `docs/qr-mob-002-android-keyboard-spacing/evidence/android-galaxy-nav-balanced-composer.png`.
+- Pixel AVD visual check captured at `docs/qr-mob-002-android-keyboard-spacing/evidence/android-pixel-nav-balanced-composer.png`.
+- iPhone 17 Pro simulator visual check captured at `docs/qr-mob-002-android-keyboard-spacing/evidence/ios-balanced-composer.png`.

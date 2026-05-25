@@ -47,10 +47,16 @@ const MESSAGE_LIST_PADDING_TOP = 0;
 const MESSAGE_LIST_PADDING_BOTTOM = 12;
 const COMPOSER_ROW_PADDING_TOP = 12;
 const COMPOSER_ROW_PADDING_BOTTOM = 16;
+const COMPOSER_META_ROW_HEIGHT = 32;
+const COMPOSER_META_ROW_GAP = 8;
+const COMPOSER_RESTING_BOTTOM_PADDING = COMPOSER_ROW_PADDING_TOP + COMPOSER_META_ROW_HEIGHT + COMPOSER_META_ROW_GAP;
 const OPENING_MESSAGE_TOP_OFFSET = 16;
-const IOS_RESTING_COMPOSER_BOTTOM_CLEARANCE = 20;
 const ANDROID_KEYBOARD_INPUT_CLEARANCE = 4;
 const ANDROID_KEYBOARD_FALLBACK_SCREEN_RATIO = 0.35;
+
+function androidRestingComposerBottomPadding(bottomInset: number): number {
+  return Math.max(0, COMPOSER_RESTING_BOTTOM_PADDING - bottomInset);
+}
 
 const QUIET_ROOM_OPENING_GREETING = `Welcome to Quiet Room.
 
@@ -1040,17 +1046,17 @@ export default function QuietRoomScreen() {
     }
 
     if (Platform.OS === "ios") {
-      return COMPOSER_ROW_PADDING_BOTTOM + IOS_RESTING_COMPOSER_BOTTOM_CLEARANCE;
+      return COMPOSER_RESTING_BOTTOM_PADDING;
     }
 
     if (Platform.OS === "android") {
       return isKeyboardVisible
         ? COMPOSER_ROW_PADDING_BOTTOM + ANDROID_KEYBOARD_INPUT_CLEARANCE
-        : COMPOSER_ROW_PADDING_BOTTOM;
+        : androidRestingComposerBottomPadding(insets.bottom);
     }
 
     return COMPOSER_ROW_PADDING_BOTTOM;
-  }, [isKeyboardVisible, keyboardInset]);
+  }, [insets.bottom, isKeyboardVisible, keyboardInset]);
   const composerKeyboardOffset = useMemo(() => {
     if (Platform.OS !== "android" || !isKeyboardVisible) {
       return 0;
@@ -1803,18 +1809,18 @@ const styles = StyleSheet.create({
   },
   composerWrap: {
     flex: 1,
-    gap: 8,
+    gap: COMPOSER_META_ROW_GAP,
     position: "relative",
   },
   composerMetaRow: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    minHeight: 28,
+    minHeight: COMPOSER_META_ROW_HEIGHT,
   },
   composerMetaSpacer: {
     flex: 1,
-    minHeight: 28,
+    minHeight: COMPOSER_META_ROW_HEIGHT,
   },
   composerFullscreenTrigger: {
     alignItems: "center",
@@ -2154,7 +2160,7 @@ const styles = StyleSheet.create({
   },
   voiceModeBadgeSlot: {
     justifyContent: "center",
-    minHeight: 28,
+    minHeight: COMPOSER_META_ROW_HEIGHT,
   },
   voiceModeBadgeClose: {
     alignItems: "center",
