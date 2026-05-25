@@ -523,3 +523,35 @@ Verification:
 - Galaxy S22 Plus AVD visual check captured at `docs/qr-mob-002-android-keyboard-spacing/evidence/android-galaxy-nav-balanced-composer.png`.
 - Pixel AVD visual check captured at `docs/qr-mob-002-android-keyboard-spacing/evidence/android-pixel-nav-balanced-composer.png`.
 - iPhone 17 Pro simulator visual check captured at `docs/qr-mob-002-android-keyboard-spacing/evidence/ios-balanced-composer.png`.
+
+## 2026-05-25 QA Store Deployment Follow-up
+
+Branch and commits:
+
+- Pushed `codex/qr-mob-002-qa-ios-android-spacing` to origin.
+- Layout/test/docs commit: `296730a` (`Balance mobile composer spacing`).
+- QA store build bump commit: `0e0dd73` (`Bump QA store builds`).
+
+Preflight:
+
+- `npm run typecheck` passed.
+- `npm run mobile:verify:qa` passed with no warnings or failures.
+- `npm run android:play:preflight:qa` passed with 19 passes, 0 warnings, and 0 failures for Android `versionCode` `15`.
+- `npm run ios:testflight:preflight:qa` passed with 16 passes, 0 warnings, and 0 failures for iOS build `21`.
+
+Android QA Play deployment:
+
+- Built the signed QA AAB with `bash ./scripts/with-mobile-env.sh qa qa bash -lc 'cd android && ./gradlew bundleRelease'`; result: `BUILD SUCCESSFUL`.
+- AAB: `android/app/build/outputs/bundle/release/app-release.aab`.
+- SHA256: `255e3cd3542f5ca533cf5012ecd47c6ea724dc53fed99eede8c54079e4f0908a`.
+- First Play edit `02273958155481640453` timed out during upload and was not committed.
+- Retry created Play edit `00717765729017901889`, uploaded AAB versionCode `15`, updated the `internal` track as draft release `QA internal 15`, and committed the edit.
+- Readback confirmed `internal` track release `QA internal 15`, `versionCodes: ["15"]`, `status: draft`.
+
+iOS QA TestFlight deployment:
+
+- First `npm run ios:testflight:deploy:qa` attempt failed during the Xcode React Native bundle phase because Metro received a symlinked absolute entry path under `/tmp` while resolving from `/private/tmp`.
+- Retried with `ENTRY_FILE=index.ts npm run ios:testflight:deploy:qa`; archive succeeded, entitlements were verified for `SV7SPMY2Q8.com.quietroom.mobile.qa`, and App Store Connect upload succeeded.
+- Uploaded `QuietRoomQA` build `21` as an internal-only TestFlight upload; App Store Connect reported `Uploaded package is processing` and `Upload succeeded`.
+- Archive: `build/ios-qa-b21.xcarchive`.
+- Export options: `build/exportOptions-qa-b21.plist`.
