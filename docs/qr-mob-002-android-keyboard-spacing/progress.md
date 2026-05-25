@@ -492,3 +492,15 @@ Verification:
 - `npm run typecheck` passed.
 - Pixel AVD resting visual check captured at `docs/qr-mob-002-android-keyboard-spacing/evidence/android-white-bands-resting-pixel.png`.
 - Pixel AVD keyboard-open visual check captured at `docs/qr-mob-002-android-keyboard-spacing/evidence/android-white-bands-keyboard-pixel.png`.
+
+## 2026-05-25 Composer Meta Row Follow-up
+
+Change prepared:
+
+- Made the composer meta row always render above the text input so the space reserved for the voice badge is present even when voice mode is unavailable or inactive.
+- Kept the voice badge and fullscreen expand button conditional; inactive states now use invisible placeholders with the same row height.
+
+Verification:
+
+- `npm run typecheck` passed.
+- Pixel AVD visual check captured at `docs/qr-mob-002-android-keyboard-spacing/evidence/android-composer-meta-row-reserved-pixel.png`.

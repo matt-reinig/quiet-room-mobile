@@ -1473,51 +1473,49 @@ export default function QuietRoomScreen() {
             ) : null}
 
             <View style={styles.composerWrap} testID={testIds.composerWrapper}>
-              {(voiceModeAvailable || (!showComposerFullscreen && composerVisibleLines > 3)) ? (
-                <View style={styles.composerMetaRow}>
-                  {voiceModeAvailable ? (
-                    <View style={styles.voiceModeBadgeSlot}>
-                      {voiceModeEnabled ? (
-                        <Pressable
-                          accessibilityLabel="Turn off voice mode"
-                          hitSlop={6}
-                          onPress={() => setVoiceModeEnabled(false)}
-                          style={({ pressed }) => [
-                            styles.voiceModeBadge,
-                            pressed && styles.voiceModeBadgePressed,
-                          ]}
-                          testID={testIds.voiceModeIndicator}
-                        >
-                          <Text style={styles.voiceModeBadgeLabel}>Voice</Text>
-                          <View style={styles.voiceModeBadgeClose}>
-                            <Text aria-hidden style={styles.voiceModeBadgeCloseLabel}>X</Text>
-                          </View>
-                        </Pressable>
-                      ) : null}
-                    </View>
-                  ) : (
-                    <View style={styles.composerMetaSpacer} />
-                  )}
+              <View style={styles.composerMetaRow}>
+                {voiceModeAvailable ? (
+                  <View style={styles.voiceModeBadgeSlot}>
+                    {voiceModeEnabled ? (
+                      <Pressable
+                        accessibilityLabel="Turn off voice mode"
+                        hitSlop={6}
+                        onPress={() => setVoiceModeEnabled(false)}
+                        style={({ pressed }) => [
+                          styles.voiceModeBadge,
+                          pressed && styles.voiceModeBadgePressed,
+                        ]}
+                        testID={testIds.voiceModeIndicator}
+                      >
+                        <Text style={styles.voiceModeBadgeLabel}>Voice</Text>
+                        <View style={styles.voiceModeBadgeClose}>
+                          <Text aria-hidden style={styles.voiceModeBadgeCloseLabel}>X</Text>
+                        </View>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : (
+                  <View style={styles.composerMetaSpacer} />
+                )}
 
-                  {!showComposerFullscreen && composerVisibleLines > 3 ? (
-                    <Pressable
-                      accessibilityLabel="Open fullscreen composer"
-                      disabled={loading}
-                      onPress={() => setShowComposerFullscreen(true)}
-                      style={({ pressed }) => [
-                        styles.composerFullscreenTrigger,
-                        pressed && !loading && styles.composerFullscreenTriggerPressed,
-                        loading && styles.composerFullscreenTriggerDisabled,
-                      ]}
-                      testID={testIds.composerExpand}
-                    >
-                      <Ionicons name="expand-outline" size={18} color={mobileWeb.colors.gray700} />
-                    </Pressable>
-                  ) : (
-                    <View pointerEvents="none" style={styles.composerFullscreenTriggerPlaceholder} />
-                  )}
-                </View>
-              ) : null}
+                {!showComposerFullscreen && composerVisibleLines > 3 ? (
+                  <Pressable
+                    accessibilityLabel="Open fullscreen composer"
+                    disabled={loading}
+                    onPress={() => setShowComposerFullscreen(true)}
+                    style={({ pressed }) => [
+                      styles.composerFullscreenTrigger,
+                      pressed && !loading && styles.composerFullscreenTriggerPressed,
+                      loading && styles.composerFullscreenTriggerDisabled,
+                    ]}
+                    testID={testIds.composerExpand}
+                  >
+                    <Ionicons name="expand-outline" size={18} color={mobileWeb.colors.gray700} />
+                  </Pressable>
+                ) : (
+                  <View pointerEvents="none" style={styles.composerFullscreenTriggerPlaceholder} />
+                )}
+              </View>
 
               <TextInput
                 editable={!loading}
