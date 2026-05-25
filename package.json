@@ -56,7 +56,9 @@
     "detox:test:account-deletion:5556": "npx detox test -c android.att.release e2e/quiet-room.account-deletion.test.js --record-logs all --take-screenshots failing",
     "detox:test:account-deletion:emu": "npx detox test -c android.emu.release e2e/quiet-room.account-deletion.test.js --record-logs all --take-screenshots failing",
     "detox:test:streaming:5556": "detox test -c android.att.debug e2e/quiet-room.streaming-smoke.test.js --record-logs all --take-screenshots failing",
-    "detox:test:composer:5556": "detox test -c android.att.debug e2e/quiet-room.composer-flow.test.js --record-logs all --take-screenshots failing"
+    "detox:test:composer:5556": "detox test -c android.att.debug e2e/quiet-room.composer-flow.test.js --record-logs all --take-screenshots failing",
+    "detox:login:android": "bash ./scripts/detox-login-known-account.sh android.att.debug",
+    "detox:login:ios": "bash ./scripts/detox-login-known-account.sh ios.sim.debug"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
