@@ -146,7 +146,11 @@ export default function MessageBubble({
   return (
     <View testID={testID} style={[styles.row, isUser ? styles.rowUser : styles.rowAssistant]}>
       <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
-        <Text style={styles.content}>
+        <Text
+          selectable={content.trim().length > 0}
+          selectionColor={mobileWeb.colors.blue200}
+          style={styles.content}
+        >
           {contentSegments.map((segment, index) => (
             <Text
               key={`${segment.bold ? "bold" : segment.italic ? "italic" : "plain"}-${index}`}

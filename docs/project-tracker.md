@@ -28,7 +28,7 @@ This document is a living tracker for mobile app follow-up work, investigations,
 | QR-MOB-004 | In Progress | High | QA feedback / chat reliability | Review QA feedback about timestamp bleed-through, strange context appearing, and missing responses. | 2026-05-21 QA reports traced and split into explicit sub-tasks below. Backend branch `codex/qr-mob-004-timestamp-sanitizer` is deployed to QA at `1addee1`; post-deploy QA observation is still needed before marking the overall item done. |
 | QR-MOB-005 | Backlog | Medium | Profile / user control | Consider putting the profile feature behind a feature flag so users can turn it off and on. | Define whether this is an app-level feature flag, remote config, per-user setting, or both. Clarify expected behavior when disabled: no profile building, no profile injection into prompts, existing profile ignored, and/or profile deletion option. |
 | QR-MOB-006 | Backlog | Medium | Models / long-term AI strategy | Investigate longer-term model strategy beyond current OpenAI models, including possible local or non-OpenAI options. | Review risk around GPT-5.1 and GPT-5.3 deprecations, plus the current voice/TTS model. Identify safer long-term model IDs or alternatives. Consider quality, cost, latency, privacy, mobile feasibility, backend feasibility, and fallback strategy. |
-| QR-MOB-007 | Backlog | Medium | Chat UX / message selection | Investigate making chat message text selectable in addition to the copy icon. | Users can currently copy messages only through the copy icon. Review React Native text selection behavior for message bubbles on iOS and Android, preserve the existing copy action, and verify long-press/drag selection does not conflict with message controls. |
+| QR-MOB-007 | In Progress | Medium | Chat UX / message selection | Investigate making chat message text selectable in addition to the copy icon. | Branch `codex/qr-mob-007-selectable-message-text` enables native text selection on the shared message text surface for assistant and user messages while preserving copy, voice, and report controls. Config, typecheck, local-QA native sync, and focused iOS simulator Detox selection coverage pass; final manual cross-platform selection/drag QA is still needed before marking done. |
 
 ## Item details
 
@@ -254,6 +254,8 @@ Remaining work: observe QA for repeat timestamp, fallback, or context-dump repor
 - The existing copy icon remains available and still copies the full message.
 - Selection does not break scrolling, message controls, markdown rendering, links, or reporting.
 - Manual QA covers at least one assistant message and one user message on both platforms.
+
+**2026-05-22 implementation note:** Branch `codex/qr-mob-007-selectable-message-text` updates the shared `MessageBubble` text node to use React Native native text selection for any non-empty assistant or user message. The existing copy icon remains assistant-only and unchanged, and voice/report actions still render outside the selectable text so their press targets stay separate. Verification so far: `npm run mobile:verify:local-qa`, `npm run typecheck`, `npm run native:sync:local-qa`, `git diff --check`, iOS Detox build, and focused iOS simulator Detox message-selection coverage pass. The iOS Detox pass pre-seeded the local anonymous AI-consent AsyncStorage key to avoid testing the consent modal in this message-selection spec.
 
 ## Backlog intake
 
