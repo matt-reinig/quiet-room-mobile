@@ -30,6 +30,15 @@ Track the execution status of the privacy workstreams defined in `docs/privacy-v
 
 ## Production Release Notes
 
+### 2026-05-28 QR-MOB-006 Android QA startup fix
+
+- Investigated the Android QA internal build hanging at `Loading settings...` on device by rebuilding from `origin/develop`, installing `com.quietroom.mobile.qa` on `emulator-5556`, and checking cold-start screenshots plus logcat.
+- Root cause: the QA build was resolving the QA backend URLs, but the release bundle could still inherit `EXPO_PUBLIC_FB_AUTH_EMULATOR_HOST=10.0.2.2:9099` from the local base `.env` because Expo reloaded `.env` during Gradle bundling. That sent Firebase Auth at a local emulator instead of QA Firebase and produced `auth/network-request-failed`.
+- Fix landed on `develop` as `daff56e`: `scripts/with-mobile-env.sh` now clears the Firebase auth emulator host for non-local release envs and sets `EXPO_NO_DOTENV=1`; `scripts/verify-mobile-config.js` now fails QA/prod verification if an auth emulator host is present; feature-flag loading now has an 8-second token/fetch timeout so the settings gate cannot spin forever.
+- Verification passed: `npm run mobile:verify:qa`, `npm run android:play:preflight:qa`, `npm run typecheck`, Android QA `assembleRelease`, and Android QA `bundleRelease`.
+- Emulator proof: after clearing app data and installing the rebuilt release APK, the app reached the Quiet Room home screen without the previous Firebase Auth network error; after accepting AI consent, a prompt sent through the QA release build returned `PONG`.
+- Play QA redeploy: bumped Android `versionCode` to `17`, built `android/app/build/outputs/bundle/release/app-release.aab` with SHA256 `6004a0a0037c54e3baf250fe32a97b4e4a6b23f6606bcf7529b8c845b3fcf1e5`, uploaded it through Play edit `07096484586492673559`, and read back `QA internal 17` on the internal track with `versionCodes=["17"]`, status `draft`.
+
 ### 2026-05-19 GPT-5.5 store redeploy across QA/prod lanes
 
 - Merged the GPT-5.5 mobile model option into `develop` and pushed `origin/develop` to `43bbf6d`, including the follow-up iOS build bump needed for the prod lane.
