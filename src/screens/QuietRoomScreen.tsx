@@ -32,7 +32,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useFeatureFlag } from "../contexts/FeatureFlagsContext";
 import { useChatController } from "../hooks/useChatController";
 import { getAiConsentAccepted, setAiConsentAccepted } from "../lib/aiConsent";
-import { MODEL_LABELS } from "../lib/chatModels";
+import { labelForChatModel } from "../lib/chatModels";
 import {
   submitResponseReport,
   type ReportResponseReason,
@@ -144,7 +144,7 @@ export default function QuietRoomScreen() {
   const showModelSection = modelOptions.length > 1;
   const showChatOptionsButton = voiceModeAvailable || showModelSection;
   const composerModelLabel = showChatOptionsButton
-    ? MODEL_LABELS[currentModel] || currentModel || ""
+    ? labelForChatModel(currentModel, modelOptions)
     : "";
 
   const [showAbout, setShowAbout] = useState(false);
@@ -1444,20 +1444,20 @@ export default function QuietRoomScreen() {
                         <Text style={styles.modelMenuSectionLabel}>MODEL</Text>
 
                         {modelOptions.map((option) => {
-                          const active = option === currentModel;
+                          const active = option.key === currentModel;
 
                           return (
                             <Pressable
-                              key={option}
+                              key={option.key}
                               onPress={() => {
-                                setCurrentModel(option);
+                                setCurrentModel(option.key);
                                 setShowChatOptions(false);
                               }}
                               style={[
                                 styles.modelMenuOption,
                                 active && styles.modelMenuOptionActive,
                               ]}
-                              testID={modelOptionTestId(option)}
+                              testID={modelOptionTestId(option.key)}
                             >
                               <Text
                                 style={[
@@ -1465,7 +1465,7 @@ export default function QuietRoomScreen() {
                                   active && styles.modelMenuOptionLabelActive,
                                 ]}
                               >
-                                {MODEL_LABELS[option] || option}
+                                {option.shortLabel || option.label}
                               </Text>
                               {active ? <Text style={styles.modelMenuOptionBadge}>Active</Text> : null}
                             </Pressable>

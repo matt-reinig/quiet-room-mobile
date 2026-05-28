@@ -8,8 +8,12 @@ import {
 } from "../config/env";
 import { useFeatureFlags } from "../contexts/FeatureFlagsContext";
 import {
-  normalizeChatModel,
-  resolveEnabledChatModels,
+  logicalKeyForChatModel,
+  normalizeChatModelKey,
+  parseChatModelCatalog,
+  requestModelForChatModel,
+  resolveEnabledChatModelOptions,
+  type ChatModelOption,
 } from "../lib/chatModels";
 import type { ChatMessage, Conversation, ConversationsById } from "../types/chat";
 
@@ -45,6 +49,8 @@ function normalizeMessage(raw: unknown): ChatMessage | null {
       typeof raw.disableVoice === "boolean" ? raw.disableVoice : undefined,
     isStreaming:
       typeof raw.isStreaming === "boolean" ? raw.isStreaming : undefined,
+    logicalModelKey:
+      typeof raw.logicalModelKey === "string" ? raw.logicalModelKey : undefined,
     model: typeof raw.model === "string" ? raw.model : undefined,
     role,
   };
@@ -71,7 +77,7 @@ function normalizeConversationListPayload(payload: unknown): ConversationListPag
 function mergeConversationPage(
   previous: ConversationsById,
   items: Record<string, unknown>[],
-  enabledModels: readonly string[],
+  modelOptions: readonly ChatModelOption[],
 ): ConversationsById {
   const next: ConversationsById = { ...previous };
 
@@ -90,13 +96,19 @@ function mergeConversationPage(
         typeof item.createdAt === "number"
           ? item.createdAt
           : existing?.createdAt,
-      currentModel: normalizeChatModel(
-        typeof item.currentModel === "string"
-          ? item.currentModel
-          : existing?.currentModel || DEFAULT_MODEL,
-        enabledModels,
+      currentModel: normalizeChatModelKey(
+        typeof item.logicalModelKey === "string"
+          ? item.logicalModelKey
+          : typeof item.currentModel === "string"
+            ? item.currentModel
+            : existing?.currentModel || DEFAULT_MODEL,
+        modelOptions,
       ),
       id,
+      logicalModelKey:
+        typeof item.logicalModelKey === "string"
+          ? item.logicalModelKey
+          : existing?.logicalModelKey,
       messages: existing?.messages || [],
       messagesLoaded: existing?.messagesLoaded ?? false,
       title: typeof item.title === "string" ? item.title : existing?.title || "New Chat",
@@ -108,6 +120,33 @@ function mergeConversationPage(
   }
 
   return next;
+}
+
+async function fetchChatModelCatalog(user: User): Promise<ChatModelOption[]> {
+  let idToken: string;
+
+  try {
+    idToken = await user.getIdToken();
+  } catch {
+    idToken = await user.getIdToken(true);
+  }
+
+  let response = await fetch(`${API_BASE}/api/model_catalog`, {
+    headers: { Authorization: `Bearer ${idToken}` },
+  });
+
+  if (response.status === 401) {
+    const refreshedToken = await user.getIdToken(true);
+    response = await fetch(`${API_BASE}/api/model_catalog`, {
+      headers: { Authorization: `Bearer ${refreshedToken}` },
+    });
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to load model catalog: ${response.status}`);
+  }
+
+  return parseChatModelCatalog((await response.json()) as unknown);
 }
 
 function decodeSseChunk(data: string): string {
@@ -329,7 +368,7 @@ type UseChatControllerResult = {
   loading: boolean;
   loadingMoreConversations: boolean;
   messages: ChatMessage[];
-  modelOptions: string[];
+  modelOptions: ChatModelOption[];
   renameConversation: (conversationId: string, title: string) => Promise<void>;
   sendMessage: (overrideText?: string) => Promise<void>;
   setCurrentId: (id: string | null) => void;
@@ -357,12 +396,14 @@ export function useChatController({
   const [loadingMoreConversations, setLoadingMoreConversations] = useState(false);
   const [nextConversationCursor, setNextConversationCursor] = useState<string | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
-  const modelOptions = useMemo(
-    () => resolveEnabledChatModels(featureFlagValues),
+  const fallbackModelOptions = useMemo(
+    () => resolveEnabledChatModelOptions(featureFlagValues),
     [featureFlagValues],
   );
+  const [catalogModelOptions, setCatalogModelOptions] = useState<ChatModelOption[] | null>(null);
+  const modelOptions = catalogModelOptions || fallbackModelOptions;
   const [currentModel, setCurrentModelState] = useState(() =>
-    normalizeChatModel(DEFAULT_MODEL, modelOptions),
+    normalizeChatModelKey(DEFAULT_MODEL, modelOptions),
   );
 
   const chatLoadRequestIdRef = useRef(0);
@@ -370,7 +411,38 @@ export function useChatController({
   currentIdRef.current = currentId;
 
   useEffect(() => {
-    setCurrentModelState((previous) => normalizeChatModel(previous, modelOptions));
+    if (!user) {
+      setCatalogModelOptions(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadCatalog = async () => {
+      try {
+        const nextOptions = await fetchChatModelCatalog(user);
+
+        if (!cancelled) {
+          setCatalogModelOptions(nextOptions.length > 0 ? nextOptions : null);
+        }
+      } catch (error) {
+        console.warn("Failed to load model catalog", error);
+
+        if (!cancelled) {
+          setCatalogModelOptions(null);
+        }
+      }
+    };
+
+    void loadCatalog();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, featureFlagValues]);
+
+  useEffect(() => {
+    setCurrentModelState((previous) => normalizeChatModelKey(previous, modelOptions));
   }, [modelOptions]);
 
   useEffect(() => {
@@ -379,13 +451,19 @@ export function useChatController({
       const next: ConversationsById = {};
 
       for (const [conversationId, conversation] of Object.entries(previous)) {
-        const normalizedModel = normalizeChatModel(
-          conversation?.currentModel,
+        const normalizedModel = normalizeChatModelKey(
+          conversation?.logicalModelKey || conversation?.currentModel,
           modelOptions,
         );
 
         if (normalizedModel !== conversation?.currentModel) {
-          next[conversationId] = { ...conversation, currentModel: normalizedModel };
+          next[conversationId] = {
+            ...conversation,
+            currentModel: normalizedModel,
+            logicalModelKey:
+              logicalKeyForChatModel(normalizedModel, modelOptions) ||
+              conversation.logicalModelKey,
+          };
           changed = true;
           continue;
         }
@@ -401,7 +479,7 @@ export function useChatController({
     if (!user) {
       setConversations({});
       setCurrentId(null);
-      setCurrentModelState(normalizeChatModel(DEFAULT_MODEL, modelOptions));
+      setCurrentModelState(normalizeChatModelKey(DEFAULT_MODEL, modelOptions));
       setSidebarLoading(false);
       setLoadingMoreConversations(false);
       setNextConversationCursor(null);
@@ -412,7 +490,7 @@ export function useChatController({
     if (isAnon) {
       setConversations({});
       setCurrentId(null);
-      setCurrentModelState(normalizeChatModel(DEFAULT_MODEL, modelOptions));
+      setCurrentModelState(normalizeChatModelKey(DEFAULT_MODEL, modelOptions));
       setSidebarLoading(false);
       setLoadingMoreConversations(false);
       setNextConversationCursor(null);
@@ -476,7 +554,7 @@ export function useChatController({
 
   const setCurrentModel = useCallback(
     (model: string) => {
-      const nextModel = normalizeChatModel(model, modelOptions);
+      const nextModel = normalizeChatModelKey(model, modelOptions);
 
       setCurrentModelState((previous: string) => {
         if (previous === nextModel) {
@@ -575,10 +653,12 @@ export function useChatController({
           .reverse()
           .find((message) => typeof message.model === "string")?.model;
 
-        const resolvedModel = normalizeChatModel(
-          typeof data.currentModel === "string"
-            ? data.currentModel
-            : latestModelFromMessages || DEFAULT_MODEL,
+        const resolvedModel = normalizeChatModelKey(
+          typeof data.logicalModelKey === "string"
+            ? data.logicalModelKey
+            : typeof data.currentModel === "string"
+              ? data.currentModel
+              : latestModelFromMessages || DEFAULT_MODEL,
           modelOptions,
         );
 
@@ -594,6 +674,10 @@ export function useChatController({
               ...previousConversation,
               currentModel: resolvedModel,
               id: currentId,
+              logicalModelKey:
+                typeof data.logicalModelKey === "string"
+                  ? data.logicalModelKey
+                  : previousConversation.logicalModelKey,
               messages: fetchedMessages,
               messagesLoaded: true,
               title:
@@ -656,8 +740,16 @@ export function useChatController({
       return;
     }
 
-    const latestModel = normalizeChatModel(
-      conversation.currentModel ||
+    const latestModel = normalizeChatModelKey(
+      conversation.logicalModelKey ||
+        conversation.currentModel ||
+        [...(conversation.messages || [])]
+          .reverse()
+          .find(
+            (message) =>
+              typeof message.logicalModelKey === "string" ||
+              typeof message.model === "string",
+          )?.logicalModelKey ||
         [...(conversation.messages || [])]
           .reverse()
           .find((message) => typeof message.model === "string")?.model,
@@ -687,11 +779,14 @@ export function useChatController({
 
       const now = Date.now();
       const conversationId = currentId || generateConversationId();
+      const requestModel = requestModelForChatModel(currentModel, modelOptions);
+      const requestLogicalKey = logicalKeyForChatModel(currentModel, modelOptions);
 
       const previousMessages = conversations[conversationId]?.messages || [];
       const userMessage: ChatMessage = {
         content: text,
-        model: currentModel,
+        logicalModelKey: requestLogicalKey,
+        model: requestModel,
         role: "user",
       };
 
@@ -715,6 +810,7 @@ export function useChatController({
             createdAt: previousConversation?.createdAt || now,
             currentModel,
             id: conversationId,
+            logicalModelKey: requestLogicalKey,
             messages: outgoingMessages,
             messagesLoaded: true,
             title,
@@ -735,12 +831,15 @@ export function useChatController({
       try {
         const idToken = await user.getIdToken();
 
-        const payload = {
+        const payload: Record<string, unknown> = {
           conversation_id: conversationId,
           messages: outgoingMessages,
-          model: currentModel,
+          model: requestModel,
           tz_offset_minutes: new Date().getTimezoneOffset(),
         };
+        if (requestLogicalKey) {
+          payload.logicalModelKey = requestLogicalKey;
+        }
 
         const requestBody = JSON.stringify(payload);
         const requestHeaders = {
@@ -815,7 +914,8 @@ export function useChatController({
 
         const assistantMessage: ChatMessage = {
           content: finalContent,
-          model: currentModel,
+          logicalModelKey: requestLogicalKey,
+          model: requestModel,
           role: "assistant",
         };
 
@@ -838,6 +938,7 @@ export function useChatController({
               createdAt: previousConversation?.createdAt || now,
               currentModel,
               id: conversationId,
+              logicalModelKey: requestLogicalKey,
               messages: [...messagesWithUser, assistantMessage],
               messagesLoaded: true,
               title,
@@ -866,7 +967,7 @@ export function useChatController({
         setLoading(false);
       }
     },
-    [conversations, currentId, currentModel, input, user]
+    [conversations, currentId, currentModel, input, modelOptions, user]
   );
 
   const loadMoreConversations = useCallback(async () => {
