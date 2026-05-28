@@ -74,6 +74,10 @@ elif [[ "$APP_VARIANT" == "prod" ]]; then
   exit 1
 fi
 
+if [[ "$RELEASE_ENV" != "local" ]]; then
+  unset EXPO_PUBLIC_FB_AUTH_EMULATOR_HOST
+fi
+
 if load_env_file "$ANDROID_SIGNING_ENV_FILE"; then
   loaded_android_signing_env=true
 fi
@@ -85,6 +89,7 @@ fi
 
 export EXPO_PUBLIC_APP_VARIANT="$APP_VARIANT"
 export EXPO_PUBLIC_RELEASE_ENV="$RELEASE_ENV"
+export EXPO_NO_DOTENV=1
 export MOBILE_ENV_BASE_FILE="$BASE_ENV_FILE"
 export MOBILE_ENV_OVERLAY_FILE="$OVERLAY_ENV_FILE"
 export MOBILE_ANDROID_SIGNING_ENV_FILE="$ANDROID_SIGNING_ENV_FILE"
