@@ -20,7 +20,7 @@ This document is a living tracker for mobile app follow-up work, investigations,
 | QR-MOB-003 | Backlog | Medium | Store listing / age rating | Investigate whether the app age range/rating needs to change. | Review Google Play and Apple age-rating questionnaires against actual app behavior and AI companion content. |
 | QR-MOB-004 | In Progress | High | QA feedback / chat reliability | Review QA feedback about timestamp bleed-through, strange context appearing, and missing responses. | Timestamp sanitizer and internal-output retry protections deployed to QA. Continue monitoring reports. |
 | QR-MOB-005 | Backlog | Medium | Profile / user control | Consider putting the profile feature behind a feature flag so users can turn it off and on. | Clarify frontend/backend behavior when disabled and whether users can delete/reset profile state. |
-| QR-MOB-006 | Backlog | Medium | Models / long-term AI strategy | Investigate longer-term model strategy beyond current OpenAI models, including possible local or non-OpenAI options. | Review deprecation risk, stable model IDs, quality, latency, privacy, and fallback strategy. |
+| QR-MOB-006 | In Progress | Medium | Models / long-term AI strategy | Investigate longer-term model strategy beyond current OpenAI models, including possible local or non-OpenAI options. | Backend branch `codex/qr-mob-006-model-strategy` has the source-of-truth setup docs under `/Users/mjreinig/projects/Gabriel_App/worktrees/Gabriel-qr-mob-006-model-strategy/docs/qr-mob-006-model-strategy/`: imported deep research report, plan, and progress notes. Backend provider broker/model catalog, Anthropic Sonnet 4.6 canary, and mobile catalog-backed picker have shipped to QA. Backend QA is deployed at `0760a33`; mobile QA store build is on `origin/develop` at `0c15b3a`, with iOS TestFlight build `22` uploaded and Android Play internal draft release `QA internal 16` / versionCode `16` uploaded through Play edit `09338554109145823095`. Web picker migration and store-console promotion/assignment remain follow-ups. |
 | QR-MOB-007 | In Progress | Medium | Chat UX / message selection | Investigate making chat message text selectable in addition to the copy icon. | Branch `codex/qr-mob-007-selectable-message-text` enables native text selection on the shared message text surface for assistant and user messages while preserving copy, voice, and report controls. Config, typecheck, local-QA native sync, and focused iOS simulator Detox selection coverage pass; final manual cross-platform selection/drag QA is still needed before marking done. |
 | QR-MOB-008 | Backlog | High | Profile builder / model evals | Evaluate `gpt-5.5` for the profile-building prompt and memory/profile generation pipeline. | Run targeted profile-builder evals comparing current model output vs `gpt-5.5`, focusing on spiritual discernment quality, memory extraction quality, verbosity, hallucination risk, emotional overreach, temporal accuracy, structure adherence, and long-term profile usefulness. Investigate whether `gpt-5.5` should be behind a feature flag first, QA-only first, or directly replace the current profile-builder model. |
 | QR-MOB-009 | Backlog | High | Profile system / split-profile evaluation | Evaluate how the split-profile system is performing after several months of real usage. | Review long-term profile quality, section usefulness, drift, duplication, emotional over-certainty, temporal inaccuracies, token growth, retrieval usefulness, and whether the split architecture is improving downstream responses compared to earlier approaches. Compare real profile outputs over time and identify which sections should remain persistent, become ephemeral, be merged, or be removed entirely. Consider side-by-side evaluation with newer models like `gpt-5.5`. |
@@ -33,6 +33,36 @@ This document is a living tracker for mobile app follow-up work, investigations,
 | QR-MOB-016 | Backlog | High | Voice / audio reliability | Investigate audio playback cutting off mid-message and add visibility into the actual text sent to voice/TTS. | Users sometimes hear audio stop partway through a response while the backend does not show an obvious error. Trace the mobile voice playback path, TTS request/response handling, audio file/stream lifecycle, and app interruption/background behavior. Add privacy-safe logging or debug tooling to compare the assistant message text, the text sent to TTS, generated audio metadata, playback progress, and cutoff point. |
 
 ## Item details
+
+### QR-MOB-006 - Models and long-term AI strategy
+
+**Goal:** Decide the longer-term Quiet Room model strategy beyond the current OpenAI-centered implementation, including non-OpenAI providers, possible local/open-weight options, deprecation risk, stable model IDs, quality, latency, privacy, and fallback behavior.
+
+**Planning docs:**
+
+- Backend branch: `codex/qr-mob-006-model-strategy`
+- Backend worktree: `/Users/mjreinig/projects/Gabriel_App/worktrees/Gabriel-qr-mob-006-model-strategy`
+- Backend docs folder: `/Users/mjreinig/projects/Gabriel_App/worktrees/Gabriel-qr-mob-006-model-strategy/docs/qr-mob-006-model-strategy/`
+
+**Initial questions:**
+
+- Which model choices should remain product-level choices, and which should become backend routing details?
+- How should Gabriel expose a backend-owned model catalog to mobile and web?
+- How should primary chat, profile building, and TTS be routed independently?
+- Which provider should be the first non-OpenAI text canary?
+- What privacy, consent, App Store, and Play disclosure updates are needed before enabling another provider?
+- What eval gates are needed before changing any default model or provider?
+
+**Acceptance criteria:**
+
+- Current OpenAI behavior can be wrapped behind provider interfaces with no user-visible behavior change.
+- Mobile and web can move away from hard-coded provider model IDs.
+- Stored conversation metadata has a backward-compatible path from old provider IDs to logical model keys.
+- At least one non-OpenAI text provider can be evaluated behind flags.
+- Voice/TTS routing can be evaluated independently from text chat routing.
+- Provider additions have documented quality, latency, privacy, and fallback gates before rollout.
+
+**2026-05-28 QA deploy note:** Source-of-truth deploy progress and issue notes are in `/Users/mjreinig/projects/Gabriel_App/worktrees/Gabriel-qr-mob-006-model-strategy/docs/qr-mob-006-model-strategy/progress.md`. Backend QA was deployed at commit `0760a33` with Anthropic env configured on QA Lambdas and `chat_model_anthropic_fast_chat` enabled only for the existing restricted advanced-model allowlist. The authenticated QA catalog smoke returned GPT-5.1, GPT-5.3, GPT-5.5, and Sonnet 4.6 for an allowlisted user, and a deployed Sonnet stream returned a substantive non-`OK` response. Mobile `develop` includes QR-MOB-006 (`df1c12b`), selectable text (`202385e`), and keyboard/resting layout fixes (`d13826a`), plus QA store bump `0c15b3a`. QA iOS TestFlight build `22` uploaded successfully; QA Android Play internal versionCode `16` uploaded as draft release `QA internal 16` through Play edit `09338554109145823095` with AAB SHA256 `126c458bc9473b66f02a41bc788b93f0b3bd28bc93b43d306f695040b065521f`. Notable deploy issue: the first iOS archive from `/tmp` failed because Metro resolved the existing `index.ts` through the `/tmp` to `/private/tmp` symlink path; the successful deploy used a clean release worktree under `/Users/mjreinig/projects/Gabriel_App/worktrees/quiet-room-mobile-qa-store-deploy`.
 
 ### QR-MOB-007 - Selectable chat message text
 
