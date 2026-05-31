@@ -30,6 +30,15 @@ Track the execution status of the privacy workstreams defined in `docs/privacy-v
 
 ## Production Release Notes
 
+### 2026-05-31 QR-MOB-006 iOS QA startup confirmation and redeploy
+
+- Confirmed the current `develop` source is pointed at QA for iOS: `npm run mobile:verify:qa`, `npm run ios:testflight:status:qa`, and `npm run ios:testflight:preflight:qa` resolved `com.quietroom.mobile.qa`, QA Firebase project `gabriel-qa-89f20`, QA API/streaming Lambda URLs, and an empty `firebaseAuthEmulatorHost`.
+- Built the iOS QA release-simulator app with `npm run detox:build:ios:qa`; the generated `QuietRoomQA.app/main.jsbundle` contained the QA API and streaming hosts and did not contain `10.0.2.2:9099`.
+- Installed the release-simulator app on the booted iPhone 17 Pro simulator; cold start reached the Quiet Room home screen instead of hanging at `Loading settings...`, and simulator logs showed successful QA network responses with HTTP 200.
+- First TestFlight retry archived successfully but App Store Connect rejected build `22` because that bundle version had already been uploaded.
+- Bumped iOS build number to `23`, aligned native metadata (`CFBundleVersion: 23`, `CURRENT_PROJECT_VERSION: 23`), and uploaded `Quiet Room QA` / `com.quietroom.mobile.qa` build `23` to App Store Connect/TestFlight; upload output reported `Uploaded package is processing`, `Upload succeeded`, `Uploaded QuietRoomQA`, and `** EXPORT SUCCEEDED **`.
+- Remaining console-side follow-up: wait for Apple processing and attach build `23` to the intended internal TestFlight group if App Store Connect does not do so automatically.
+
 ### 2026-05-28 QR-MOB-006 Android QA startup fix
 
 - Investigated the Android QA internal build hanging at `Loading settings...` on device by rebuilding from `origin/develop`, installing `com.quietroom.mobile.qa` on `emulator-5556`, and checking cold-start screenshots plus logcat.
