@@ -23,7 +23,7 @@ This document is a living tracker for mobile app follow-up work, investigations,
 | QR-MOB-006 | Done | Medium | Models / long-term AI strategy | Investigate longer-term model strategy beyond current OpenAI models, including possible local or non-OpenAI options. | Completed for the backend/mobile QA scope. Backend provider broker/model catalog, Anthropic Sonnet 4.6 canary, and mobile catalog-backed picker shipped to QA. Backend QA is deployed at `0760a33`; the source-of-truth docs are under `/Users/mjreinig/projects/Gabriel_App/worktrees/Gabriel-qr-mob-006-model-strategy/docs/qr-mob-006-model-strategy/`. Mobile QA store build is on `origin/develop` with iOS build bump `b947e93`; iOS TestFlight build `23` uploaded successfully after verifying the release-simulator app no longer hangs on settings, and Android Play internal draft release `QA internal 17` / versionCode `17` uploaded through Play edit `07096484586492673559`. Remaining work is split into follow-ups, including completed QR-MOB-017 for Sonnet timestamp behavior, QR-MOB-018 for split-profile model evals, and separate web picker / future provider spikes. |
 | QR-MOB-007 | In Progress | Medium | Chat UX / message selection | Investigate making chat message text selectable in addition to the copy icon. | Branch `codex/qr-mob-007-selectable-message-text` enables native text selection on the shared message text surface for assistant and user messages while preserving copy, voice, and report controls. Config, typecheck, local-QA native sync, and focused iOS simulator Detox selection coverage pass; final manual cross-platform selection/drag QA is still needed before marking done. |
 | QR-MOB-008 | Done | High | Profile builder / model evals | Evaluate `gpt-5.5` for the profile-building prompt and memory/profile generation pipeline. | Backend branch `codex/qr-mob-008-profile-builder-evaluation` added the profile-builder eval harness on `origin/develop-from-main` without changing runtime defaults. Sampled live evals on 2026-05-25 used `--pack v1 --max-cases 3 --seed 11 --judge-model gpt-4.1`: current `gpt-5.2-chat-latest` scored `4.9`, yellow gate, avg latency `13,784.33 ms`, avg profile length `615.67` words; `gpt-5.5` default reasoning scored `4.3167`, red gate, avg latency `34,713.67 ms`, avg profile length `999.0` words; `gpt-5.5` with `reasoning_effort=none` scored `4.7667`, red gate, avg latency `26,789.0 ms`, avg profile length `903.33` words. Read-only five-conversation split-profile side-by-side replays for the b7 QA user also ran. In steady-state, candidate `gpt-5.5` reasoning-none had more split `core`/`recent` second-person issues (`[4, 5]` vs baseline `[5]`), more legacy-profile voice issues (`[2, 3, 5]` vs baseline `[2, 5]`), and remained slower/longer than baseline. In fresh-start mode, only step 1 started without prior profile state and steps 2-5 iterated from generated state; split second-person tied (`[5]` for both), but candidate was still slower/longer and had legacy-profile second-person issues in every step (`[1, 2, 3, 4, 5]` vs baseline `[1, 2, 5]`). Recommendation: do not change `PROFILE_BUILDER_MODEL`; revisit `gpt-5.5` only with `reasoning_effort=none` after prompt/schema work for strict third-person voice, concision, and prior-profile continuity. |
-| QR-MOB-009 | Ready | High | Profile system / split-profile evaluation | Evaluate how the split-profile system is performing after several months of real usage. | Keep this split from QR-MOB-008, QR-MOB-017, and QR-MOB-018. Review long-term profile quality, section usefulness, drift, duplication, emotional over-certainty, temporal inaccuracies, token growth, retrieval usefulness, and whether the split architecture is improving downstream responses compared to earlier approaches. Compare real profile outputs over time and identify which sections should remain persistent, become ephemeral, be merged, or be removed entirely. |
+| QR-MOB-009 | Done | High | Profile system / split-profile evaluation | Evaluate how the split-profile system is performing after several months of real usage. | Completed on branch `codex/qr-mob-009-split-profile-evaluation`. Read-only QA review on 2026-06-01 covered all three split-profile users in `gabriel-qa-89f20`, with 63-100 split-history entries each and current read/write flags limited to the same QA allowlist. The split architecture is worth keeping: durable `core` memory stayed compact and stable, `recent` context stayed separate and useful, third-person voice was stable, and downstream responses generally used memory without announcing it. Recommended before broader rollout: add freshness/decay rules for `recent`, compact or prune older full-text history entries, add policy metadata to `spiritual_profile_meta`, and tighten prompt/schema rules for moving material into `core`. Source docs are under `docs/qr-mob-009-split-profile-evaluation/`. |
 | QR-MOB-010 | Backlog | High | Feedback / privacy consent | Investigate improving the feedback/report flow so users can explicitly consent to sharing their message and conversation context for debugging and quality review. | Explore adding a consent checkbox or similar UX that clearly tells users whether submitted feedback includes only metadata, the selected message, partial conversation context, or the full conversation. Clarify backend storage behavior, reviewer visibility, privacy-policy implications, and whether users should be able to opt into different levels of sharing. |
 | QR-MOB-011 | Backlog | Medium | Accounts / anonymous users | Evaluate anonymous-user lifecycle, mobile session persistence, cleanup needs, and intended upgrade or retention flow. | Review how anonymous Firebase users are created, persisted, restored, counted, and linked to app data on mobile. Specifically compare mobile behavior against web/browser anonymous auth, including whether the same anonymous session survives app restart, device reboot, cache clearing, logout, app reinstall, and auth-provider upgrade. Determine whether stale anonymous users should be cleaned up and what data policy should apply. |
 | QR-MOB-012 | Backlog | High | iOS sign-in / Firebase QA parity | Align QA Firebase/Firestore iOS sign-in configuration with prod so Apple sign-in behavior matches across environments. | Review prod vs QA Firebase Auth, Firestore, bundle ID, Apple provider, redirect/callback/domain, and any Firestore config or allowlist data used by iOS sign-in. Identify the exact missing QA modifications and apply them carefully without disturbing prod. Verify QA iOS sign-in end to end after changes. |
@@ -33,6 +33,7 @@ This document is a living tracker for mobile app follow-up work, investigations,
 | QR-MOB-016 | Backlog | High | Voice / audio reliability | Investigate audio playback cutting off mid-message and add visibility into the actual text sent to voice/TTS. | Users sometimes hear audio stop partway through a response while the backend does not show an obvious error. Trace the mobile voice playback path, TTS request/response handling, audio file/stream lifecycle, and app interruption/background behavior. Add privacy-safe logging or debug tooling to compare the assistant message text, the text sent to TTS, generated audio metadata, playback progress, and cutoff point. |
 | QR-MOB-017 | Done | High | QA feedback / Sonnet investigation | Investigate Sonnet timestamp leakage and temporal reasoning failures using real QA reports. | Completed. Backend review confirmed Sonnet 4.6 receives the shared chat-stream timestamp guardrails through the Anthropic adapter. The remaining behavior should be handled as provider/prompt-adherence follow-up only if new QA examples appear. |
 | QR-MOB-018 | Ready | High | Profile system / model evals | Evaluate split-profile generation quality with `gpt-5.5` and Anthropic Sonnet 4.6. | Keep this separate from QR-MOB-009. Use the split-profile replay/eval harness to compare the current profile model against `gpt-5.5` and Sonnet 4.6, including any provider-broker/harness work needed for Anthropic profile-builder routes. Focus on generated profile quality, schema adherence, third-person voice, concision, temporal accuracy, emotional over-certainty, Catholic/spiritual framing, latency, and whether either model is worth a QA-only profile-builder rollout. |
+| QR-MOB-019 | Ready | High | Profile system / QA rollout | Validate the QA split-profile freshness prompt changes before promoting QA backend to prod. | Backend QA is deployed at `a73c432` with split-profile freshness guidance behind the split-profile read path. Test QA with `new_profile_memory_write` and `new_profile_memory_read` enabled for the current QA allowlist, especially recent-context freshness, downstream grounding, timestamp hygiene, and whether responses over-assume old `recent` context. If QA looks good, promote the same backend change to prod and decide whether prod flags should be all-on or held as emergency kill switches. |
 
 ## Item details
 
@@ -149,6 +150,8 @@ This document is a living tracker for mobile app follow-up work, investigations,
 - `docs/qr-mob-009-split-profile-evaluation/plan.md`
 - `docs/qr-mob-009-split-profile-evaluation/profile-history-review.md`
 - `docs/qr-mob-009-split-profile-evaluation/architecture-recommendation.md`
+
+**2026-06-01 completion note:** Completed in the mobile worktree on branch `codex/qr-mob-009-split-profile-evaluation`. The review used read-only QA Firestore access and did not commit raw profile or conversation text. Three long-running split-profile histories were reviewed manually, covering 63, 65, and 100 split-history entries from 2025-11-22 through 2026-05-31. Findings: keep the split architecture; keep `core` persistent; keep `recent` separate but freshness-aware; keep `spiritual_profile_meta` and add policy fields; compact older history; treat legacy profile snapshots as bootstrap/migration data after split memory is healthy. The recommendation is architecture-focused and does not change `PROFILE_BUILDER_MODEL`; QR-MOB-018 remains the separate model-comparison task. Follow-up backend prompt guidance for split-profile freshness was deployed to QA from branch `codex/qr-mob-009-split-profile-freshness-prompt` at commit `a73c432`; `gabriel_lambda`, `gabriel-profile-builder`, and `gabriel_streaming_lambda` all reported `LastUpdateStatus=Successful` on image `gabriel-backend:a73c432`, and `/health` returned `{"status":"ok"}` for all three QA Lambda URLs.
 
 ### QR-MOB-010 - Feedback consent and conversation visibility
 
@@ -380,6 +383,55 @@ This document is a living tracker for mobile app follow-up work, investigations,
 - `docs/qr-mob-018-split-profile-model-eval/model-comparison.md`
 - `docs/qr-mob-018-split-profile-model-eval/provider-harness-notes.md`
 - `docs/qr-mob-018-split-profile-model-eval/recommendation.md`
+
+### QR-MOB-019 - QA validation for split-profile freshness prompt and prod rollout
+
+**Goal:** Verify that the new split-profile freshness guidance deployed to QA improves or preserves response quality before pushing the QA backend change to prod.
+
+**Context:** QR-MOB-009 found that the split-profile architecture is worth keeping, with `core` staying durable and `recent` staying useful but needing freshness-aware interpretation. Follow-up backend branch `codex/qr-mob-009-split-profile-freshness-prompt` added chat prompt guidance behind the split-profile read path and deployed it to QA at commit `a73c432`.
+
+**Initial questions:**
+
+- Does QA chat still use split profile memory naturally without announcing profile internals?
+- Does Gabriel treat `Core Spiritual Profile` as durable background rather than over-determining the reply?
+- Does Gabriel treat `Recent Spiritual Context` as short-horizon context and avoid assuming older recent material is still active?
+- Does the new prompt guidance reduce stale-context risk without making responses vague or memory-avoidant?
+- Do profile timestamps and section labels remain hidden from user-facing output?
+- Do existing timestamp/internal-output safeguards still behave correctly after the prompt change?
+- Are current QA split-profile read/write flags configured the way prod should be configured?
+- Given the early/no-user-base state, should prod rollout be all-on with flags as kill switches, or should write/read still be staged briefly?
+
+**Investigation steps:**
+
+- Confirm QA Lambdas are still on image `gabriel-backend:a73c432` and `/health` is green.
+- Confirm QA `new_profile_memory_write` and `new_profile_memory_read` flags are enabled for the intended test accounts.
+- Run several QA conversations that intentionally exercise:
+  - a current message matching old durable `core` memory,
+  - a current message that contradicts or softens old `core` memory,
+  - a current message where `recent` is useful,
+  - a current message where `recent` should be treated as possibly stale,
+  - a user asking about their profile or continuity explicitly.
+- Review saved assistant responses and `chat_stream.profile_loaded` logs for `profile_source=split_memory`.
+- Check for profile timestamp leakage, profile section leakage, over-personalization, stale recent assumptions, and loss of useful memory grounding.
+- If QA looks good, document the prod rollout path:
+  - deploy backend commit `a73c432` or successor to prod,
+  - create/verify prod `new_profile_memory_write` and `new_profile_memory_read` flags,
+  - decide whether to enable both for all prod users immediately or stage write/read briefly,
+  - document rollback by disabling read, write, or both flags.
+
+**Acceptance criteria:**
+
+- QA split-profile read behavior is manually validated after the freshness prompt change.
+- No profile timestamp, profile section, hidden metadata, or prompt-instruction leakage is observed in QA test replies.
+- QA responses show useful memory grounding without over-assuming stale `recent` context.
+- Any observed regressions are documented with a recommendation to fix before prod or accept as low risk.
+- A prod rollout recommendation is written, including exact flag settings and rollback steps.
+- If approved, the same backend change can be promoted from QA to prod without additional architecture work.
+
+**Suggested deliverables:**
+
+- `docs/qr-mob-019-split-profile-qa-prod-rollout/qa-validation.md`
+- `docs/qr-mob-019-split-profile-qa-prod-rollout/prod-rollout-plan.md`
 
 ## Backlog intake
 
