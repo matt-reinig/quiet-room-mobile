@@ -20,10 +20,10 @@ This document is a living tracker for mobile app follow-up work, investigations,
 | QR-MOB-003 | Backlog | Medium | Store listing / age rating | Investigate whether the app age range/rating needs to change. | Review Google Play and Apple age-rating questionnaires against actual app behavior and AI companion content. |
 | QR-MOB-004 | In Progress | High | QA feedback / chat reliability | Review QA feedback about timestamp bleed-through, strange context appearing, and missing responses. | Timestamp sanitizer and internal-output retry protections deployed to QA. Continue monitoring reports. |
 | QR-MOB-005 | Backlog | Medium | Profile / user control | Consider putting the profile feature behind a feature flag so users can turn it off and on. | Clarify frontend/backend behavior when disabled and whether users can delete/reset profile state. |
-| QR-MOB-006 | Done | Medium | Models / long-term AI strategy | Investigate longer-term model strategy beyond current OpenAI models, including possible local or non-OpenAI options. | Completed for the backend/mobile QA scope. Backend provider broker/model catalog, Anthropic Sonnet 4.6 canary, and mobile catalog-backed picker shipped to QA. Backend QA is deployed at `0760a33`; the source-of-truth docs are under `/Users/mjreinig/projects/Gabriel_App/worktrees/Gabriel-qr-mob-006-model-strategy/docs/qr-mob-006-model-strategy/`. Mobile QA store build is on `origin/develop` with iOS build bump `b947e93`; iOS TestFlight build `23` uploaded successfully after verifying the release-simulator app no longer hangs on settings, and Android Play internal draft release `QA internal 17` / versionCode `17` uploaded through Play edit `07096484586492673559`. Remaining work is split into follow-ups, including QR-MOB-017 for Sonnet timestamp behavior and separate web picker / future provider spikes. |
+| QR-MOB-006 | Done | Medium | Models / long-term AI strategy | Investigate longer-term model strategy beyond current OpenAI models, including possible local or non-OpenAI options. | Completed for the backend/mobile QA scope. Backend provider broker/model catalog, Anthropic Sonnet 4.6 canary, and mobile catalog-backed picker shipped to QA. Backend QA is deployed at `0760a33`; the source-of-truth docs are under `/Users/mjreinig/projects/Gabriel_App/worktrees/Gabriel-qr-mob-006-model-strategy/docs/qr-mob-006-model-strategy/`. Mobile QA store build is on `origin/develop` with iOS build bump `b947e93`; iOS TestFlight build `23` uploaded successfully after verifying the release-simulator app no longer hangs on settings, and Android Play internal draft release `QA internal 17` / versionCode `17` uploaded through Play edit `07096484586492673559`. Remaining work is split into follow-ups, including completed QR-MOB-017 for Sonnet timestamp behavior, QR-MOB-018 for split-profile model evals, and separate web picker / future provider spikes. |
 | QR-MOB-007 | In Progress | Medium | Chat UX / message selection | Investigate making chat message text selectable in addition to the copy icon. | Branch `codex/qr-mob-007-selectable-message-text` enables native text selection on the shared message text surface for assistant and user messages while preserving copy, voice, and report controls. Config, typecheck, local-QA native sync, and focused iOS simulator Detox selection coverage pass; final manual cross-platform selection/drag QA is still needed before marking done. |
 | QR-MOB-008 | Done | High | Profile builder / model evals | Evaluate `gpt-5.5` for the profile-building prompt and memory/profile generation pipeline. | Backend branch `codex/qr-mob-008-profile-builder-evaluation` added the profile-builder eval harness on `origin/develop-from-main` without changing runtime defaults. Sampled live evals on 2026-05-25 used `--pack v1 --max-cases 3 --seed 11 --judge-model gpt-4.1`: current `gpt-5.2-chat-latest` scored `4.9`, yellow gate, avg latency `13,784.33 ms`, avg profile length `615.67` words; `gpt-5.5` default reasoning scored `4.3167`, red gate, avg latency `34,713.67 ms`, avg profile length `999.0` words; `gpt-5.5` with `reasoning_effort=none` scored `4.7667`, red gate, avg latency `26,789.0 ms`, avg profile length `903.33` words. Read-only five-conversation split-profile side-by-side replays for the b7 QA user also ran. In steady-state, candidate `gpt-5.5` reasoning-none had more split `core`/`recent` second-person issues (`[4, 5]` vs baseline `[5]`), more legacy-profile voice issues (`[2, 3, 5]` vs baseline `[2, 5]`), and remained slower/longer than baseline. In fresh-start mode, only step 1 started without prior profile state and steps 2-5 iterated from generated state; split second-person tied (`[5]` for both), but candidate was still slower/longer and had legacy-profile second-person issues in every step (`[1, 2, 3, 4, 5]` vs baseline `[1, 2, 5]`). Recommendation: do not change `PROFILE_BUILDER_MODEL`; revisit `gpt-5.5` only with `reasoning_effort=none` after prompt/schema work for strict third-person voice, concision, and prior-profile continuity. |
-| QR-MOB-009 | Ready | High | Profile system / split-profile evaluation | Evaluate how the split-profile system is performing after several months of real usage. | Keep this split from QR-MOB-008 and QR-MOB-017. Review long-term profile quality, section usefulness, drift, duplication, emotional over-certainty, temporal inaccuracies, token growth, retrieval usefulness, and whether the split architecture is improving downstream responses compared to earlier approaches. Compare real profile outputs over time and identify which sections should remain persistent, become ephemeral, be merged, or be removed entirely. Model-provider comparisons should stay out of this task unless the review exposes a specific model-dependent profile issue that needs a follow-up. |
+| QR-MOB-009 | Ready | High | Profile system / split-profile evaluation | Evaluate how the split-profile system is performing after several months of real usage. | Keep this split from QR-MOB-008, QR-MOB-017, and QR-MOB-018. Review long-term profile quality, section usefulness, drift, duplication, emotional over-certainty, temporal inaccuracies, token growth, retrieval usefulness, and whether the split architecture is improving downstream responses compared to earlier approaches. Compare real profile outputs over time and identify which sections should remain persistent, become ephemeral, be merged, or be removed entirely. |
 | QR-MOB-010 | Backlog | High | Feedback / privacy consent | Investigate improving the feedback/report flow so users can explicitly consent to sharing their message and conversation context for debugging and quality review. | Explore adding a consent checkbox or similar UX that clearly tells users whether submitted feedback includes only metadata, the selected message, partial conversation context, or the full conversation. Clarify backend storage behavior, reviewer visibility, privacy-policy implications, and whether users should be able to opt into different levels of sharing. |
 | QR-MOB-011 | Backlog | Medium | Accounts / anonymous users | Evaluate anonymous-user lifecycle, mobile session persistence, cleanup needs, and intended upgrade or retention flow. | Review how anonymous Firebase users are created, persisted, restored, counted, and linked to app data on mobile. Specifically compare mobile behavior against web/browser anonymous auth, including whether the same anonymous session survives app restart, device reboot, cache clearing, logout, app reinstall, and auth-provider upgrade. Determine whether stale anonymous users should be cleaned up and what data policy should apply. |
 | QR-MOB-012 | Backlog | High | iOS sign-in / Firebase QA parity | Align QA Firebase/Firestore iOS sign-in configuration with prod so Apple sign-in behavior matches across environments. | Review prod vs QA Firebase Auth, Firestore, bundle ID, Apple provider, redirect/callback/domain, and any Firestore config or allowlist data used by iOS sign-in. Identify the exact missing QA modifications and apply them carefully without disturbing prod. Verify QA iOS sign-in end to end after changes. |
@@ -31,7 +31,8 @@ This document is a living tracker for mobile app follow-up work, investigations,
 | QR-MOB-014 | Backlog | Medium | Observability / CloudWatch reporting | Investigate automating CloudWatch Logs Insights reports for prod usage, prod errors, and QA errors, with scheduled email delivery. | Define the recurring questions currently checked manually, translate them into saved Logs Insights queries or scripts, decide cadence and recipients, and compare options such as EventBridge + Lambda + SES/SNS, CloudWatch dashboards/alarms, or a lightweight scheduled report job. Include privacy-safe summaries and links back to raw logs when needed. |
 | QR-MOB-015 | Backlog | High | Android deploy / Play Store automation | Investigate fully automating Play Store release publishing so uploaded releases do not need to be manually flipped from draft to published in Play Console. | Review the current Android deploy scripts, Play Developer API edit flow, track status handling, service-account permissions, QA vs prod lane safety, staged rollout options, and review/submission behavior. Determine whether the script can publish internal releases automatically, whether prod should require an explicit confirmation flag, and how to verify the final track status after deploy. |
 | QR-MOB-016 | Backlog | High | Voice / audio reliability | Investigate audio playback cutting off mid-message and add visibility into the actual text sent to voice/TTS. | Users sometimes hear audio stop partway through a response while the backend does not show an obvious error. Trace the mobile voice playback path, TTS request/response handling, audio file/stream lifecycle, and app interruption/background behavior. Add privacy-safe logging or debug tooling to compare the assistant message text, the text sent to TTS, generated audio metadata, playback progress, and cutoff point. |
-| QR-MOB-017 | Backlog | High | QA feedback / Sonnet investigation | Investigate Sonnet timestamp leakage and temporal reasoning failures using real QA reports. | Pull recent QA report logs for Sonnet failures, reconstruct the exact provider inputs, compare against GPT model behavior, diagnose timestamp leakage plus incorrect time inference, and recommend a fix before changing prompt or metadata behavior. |
+| QR-MOB-017 | Done | High | QA feedback / Sonnet investigation | Investigate Sonnet timestamp leakage and temporal reasoning failures using real QA reports. | Completed. Backend review confirmed Sonnet 4.6 receives the shared chat-stream timestamp guardrails through the Anthropic adapter. The remaining behavior should be handled as provider/prompt-adherence follow-up only if new QA examples appear. |
+| QR-MOB-018 | Ready | High | Profile system / model evals | Evaluate split-profile generation quality with `gpt-5.5` and Anthropic Sonnet 4.6. | Keep this separate from QR-MOB-009. Use the split-profile replay/eval harness to compare the current profile model against `gpt-5.5` and Sonnet 4.6, including any provider-broker/harness work needed for Anthropic profile-builder routes. Focus on generated profile quality, schema adherence, third-person voice, concision, temporal accuracy, emotional over-certainty, Catholic/spiritual framing, latency, and whether either model is worth a QA-only profile-builder rollout. |
 
 ## Item details
 
@@ -63,7 +64,7 @@ This document is a living tracker for mobile app follow-up work, investigations,
 - Voice/TTS routing can be evaluated independently from text chat routing. Broker route definitions now separate chat, profile-builder, and voice/TTS capabilities; future voice/provider experiments remain split out.
 - Provider additions have documented quality, latency, privacy, and fallback gates before rollout. Captured in the backend plan and progress docs.
 
-**Completion note:** Source-of-truth deploy progress and issue notes are in `/Users/mjreinig/projects/Gabriel_App/worktrees/Gabriel-qr-mob-006-model-strategy/docs/qr-mob-006-model-strategy/progress.md`. Backend QA was deployed at commit `0760a33` with Anthropic env configured on QA Lambdas and `chat_model_anthropic_fast_chat` enabled only for the existing restricted advanced-model allowlist. The authenticated QA catalog smoke returned GPT-5.1, GPT-5.3, GPT-5.5, and Sonnet 4.6 for an allowlisted user, and a deployed Sonnet stream returned a substantive non-`OK` response. Mobile `develop` includes QR-MOB-006 (`df1c12b`), selectable text (`202385e`), keyboard/resting layout fixes (`d13826a`), Android QA startup fix (`daff56e`), and iOS QA build bump (`b947e93`). QA Android Play internal versionCode `17` uploaded as draft release `QA internal 17` through Play edit `07096484586492673559` with AAB SHA256 `6004a0a0037c54e3baf250fe32a97b4e4a6b23f6606bcf7529b8c845b3fcf1e5`; QA iOS TestFlight build `23` uploaded successfully after the release-simulator app reached the home screen and QA backend requests returned HTTP 200. Notable deploy issues: the first iOS archive from `/tmp` failed because Metro resolved the existing `index.ts` through the `/tmp` to `/private/tmp` symlink path, and the first 2026-05-31 iOS retry was correctly rejected because App Store Connect already had build `22`. Remaining work is intentionally split into follow-up items, including QR-MOB-017 for Sonnet timestamp behavior and separate web picker / future provider spikes.
+**Completion note:** Source-of-truth deploy progress and issue notes are in `/Users/mjreinig/projects/Gabriel_App/worktrees/Gabriel-qr-mob-006-model-strategy/docs/qr-mob-006-model-strategy/progress.md`. Backend QA was deployed at commit `0760a33` with Anthropic env configured on QA Lambdas and `chat_model_anthropic_fast_chat` enabled only for the existing restricted advanced-model allowlist. The authenticated QA catalog smoke returned GPT-5.1, GPT-5.3, GPT-5.5, and Sonnet 4.6 for an allowlisted user, and a deployed Sonnet stream returned a substantive non-`OK` response. Mobile `develop` includes QR-MOB-006 (`df1c12b`), selectable text (`202385e`), keyboard/resting layout fixes (`d13826a`), Android QA startup fix (`daff56e`), and iOS QA build bump (`b947e93`). QA Android Play internal versionCode `17` uploaded as draft release `QA internal 17` through Play edit `07096484586492673559` with AAB SHA256 `6004a0a0037c54e3baf250fe32a97b4e4a6b23f6606bcf7529b8c845b3fcf1e5`; QA iOS TestFlight build `23` uploaded successfully after the release-simulator app reached the home screen and QA backend requests returned HTTP 200. Notable deploy issues: the first iOS archive from `/tmp` failed because Metro resolved the existing `index.ts` through the `/tmp` to `/private/tmp` symlink path, and the first 2026-05-31 iOS retry was correctly rejected because App Store Connect already had build `22`. Remaining work is intentionally split into follow-up items, including completed QR-MOB-017 for Sonnet timestamp behavior, QR-MOB-018 for split-profile model evals, and separate web picker / future provider spikes.
 
 ### QR-MOB-007 - Selectable chat message text
 
@@ -110,7 +111,7 @@ This document is a living tracker for mobile app follow-up work, investigations,
 
 **Goal:** Determine whether the split-profile architecture is improving long-term personalization quality, retrieval usefulness, and response grounding after months of accumulated real-world usage.
 
-**Task split:** Keep this separate from QR-MOB-008 and QR-MOB-017. QR-MOB-008 answered the narrow profile-builder model question for `gpt-5.5`; QR-MOB-009 should evaluate the split-profile architecture itself. QR-MOB-017 should stay focused on Sonnet chat timestamp leakage and temporal reasoning failures using QA reports. Do not turn this into a model shootout unless the profile review uncovers a specific model-dependent issue that needs a follow-up.
+**Task split:** Keep this separate from QR-MOB-008, QR-MOB-017, and QR-MOB-018. QR-MOB-008 answered the narrow profile-builder model question for `gpt-5.5`; QR-MOB-009 should evaluate the split-profile architecture itself. QR-MOB-017 is completed Sonnet timestamp investigation work. QR-MOB-018 covers the new split-profile model comparison for `gpt-5.5` and Sonnet 4.6.
 
 **Initial questions:**
 
@@ -333,45 +334,52 @@ This document is a living tracker for mobile app follow-up work, investigations,
 
 **Goal:** Understand why Sonnet 4.6 occasionally references incorrect timing information or appears to use timestamp metadata despite Gabriel's existing timestamp guardrails.
 
-**Background:** Backend review confirmed that Sonnet receives the shared chat-stream timestamp guardrails through the Anthropic adapter. The remaining issue is not missing prompt text, but either prompt adherence, timestamp metadata salience, incorrect/localized time context, provider-specific behavior, or some combination. This task should use real QA reports before proposing changes.
+**Status:** Done.
+
+**Completion note:** Backend review confirmed that Sonnet receives the shared chat-stream timestamp guardrails through the Anthropic adapter. The original concern is no longer that Sonnet was missing the guardrails. Any future work should be opened as a new follow-up only if fresh QA reports show reproducible provider-specific temporal failures.
+
+### QR-MOB-018 - Split-profile model evaluation for GPT-5.5 and Sonnet 4.6
+
+**Goal:** Evaluate whether `gpt-5.5` or Anthropic Sonnet 4.6 improve split-profile generation quality compared with the current profile-builder model.
+
+**Task split:** Keep this separate from QR-MOB-009. QR-MOB-009 is the retrospective architecture-health review: how the split-profile system has performed over months of real use. QR-MOB-018 is the model-eval task: given the split-profile system and replay/eval harness, compare model outputs and decide whether any candidate is worth QA-only rollout.
 
 **Initial questions:**
 
-- Which recent QA reports demonstrate Sonnet timestamp leakage, incorrect time references, or unsupported temporal reasoning?
-- What exact conversation history, profile data, timestamp metadata, model route, and provider payload did Sonnet receive for each failure?
-- Did Sonnet reference timing that was present in metadata, inferred from context, wrong because of timezone/localization, or not present at all?
-- Are there two distinct issues: metadata bleed-through and wrong local time inference?
-- Does the same prompt fail with GPT-5.5, GPT-5.3, or the current default OpenAI chat model?
-- Are per-message `timestamp_local`, profile timestamp, `now_local`, or `user_tz_offset_minutes` annotations too prominent in the prompt?
-- Should the fix reduce timestamp metadata injection, change the prompt wording, add provider-specific handling, improve local time conversion, or add output validation/sanitization?
+- Which exact model currently powers split-profile/profile-builder generation in QA and prod?
+- Can the existing split-profile replay/eval harness run `gpt-5.5` and Anthropic Sonnet 4.6 through equivalent inputs?
+- If Sonnet 4.6 cannot run through the profile-builder path yet, what provider-broker or harness work is required?
+- Does `gpt-5.5` perform best with `reasoning_effort=none`, as QR-MOB-008 suggested, or does the split-profile harness show a different result?
+- Does Sonnet 4.6 follow the split-profile JSON/schema requirements reliably?
+- Which model best preserves third-person profile voice, concision, temporal accuracy, Catholic/spiritual framing, and emotional humility?
+- Which model avoids stale-context over-preservation, over-certainty, duplication, and hallucinated continuity?
+- How do latency, token usage, output length, and failure/retry behavior compare?
 
 **Investigation steps:**
 
-- Pull recent QA report logs for conversations using Sonnet 4.6.
-- Identify timestamp-related failures and separate them from unrelated QA feedback.
-- Collect at least five failing Sonnet examples and at least five non-failing Sonnet examples for comparison, if enough data exists.
-- Reconstruct the final model input for each failure, including system prompt, conversation context, profile context, timestamp annotations, selected model route, and Anthropic payload shape.
-- Replay representative failures through Sonnet 4.6 and available GPT models where practical.
-- Document whether each failure is reproducible, model-specific, data-shape-specific, or caused by incorrect app/backend time data.
+- Review QR-MOB-008 artifacts so the new eval builds on the completed `gpt-5.5` profile-builder work rather than duplicating it.
+- Select representative split-profile replay cases, including steady-state and fresh-start scenarios if the harness supports both.
+- Run the current profile-builder model, `gpt-5.5`, and Sonnet 4.6 through equivalent profile inputs where technically possible.
+- If Sonnet 4.6 requires provider-broker or eval-harness changes, implement or document those prerequisites before judging quality.
+- Score outputs for schema validity, section fit, third-person voice, concision, temporal accuracy, stale-state handling, emotional over-certainty, Catholic/spiritual fit, duplication, hallucination risk, and downstream usefulness.
+- Record latency, token usage, output length, retries, provider errors, and any adapter-specific differences.
+- Produce a recommendation: no change, prompt/schema work first, QA-only candidate rollout, or follow-up provider/harness work.
 
 **Acceptance criteria:**
 
-- Recent QA report logs are reviewed for Sonnet timestamp and time-reference failures.
-- Each selected failure includes conversation id, report metadata, model metadata, user message, assistant response, and relevant backend log references where available.
-- Prompt/provider input reconstruction is documented for each selected failure.
-- The analysis distinguishes raw timestamp leakage, natural-language timing leakage, and incorrect local-time inference.
-- Provider comparison notes are captured for Sonnet vs GPT models where practical.
-- Root cause is documented with evidence.
-- A recommendation is made before implementation begins.
-- Regression coverage is proposed for discovered failure modes across OpenAI and Anthropic paths.
+- The split-profile eval path can run the current model and `gpt-5.5`; Sonnet 4.6 is either run successfully or the missing prerequisite is documented clearly.
+- At least several representative split-profile cases are compared side-by-side.
+- Current model, `gpt-5.5`, and Sonnet 4.6 findings are documented separately.
+- Schema adherence, third-person voice, concision, temporal accuracy, emotional over-certainty, stale-state handling, and Catholic/spiritual fit are explicitly evaluated.
+- Latency, token usage, output length, and provider failure behavior are captured where available.
+- A recommendation is made before changing any profile-builder default or QA feature flag.
 
 **Suggested deliverables:**
 
-- `docs/qr-mob-017-sonnet-timestamp-investigation/examples.md`
-- `docs/qr-mob-017-sonnet-timestamp-investigation/reconstructed-prompts.md`
-- `docs/qr-mob-017-sonnet-timestamp-investigation/provider-comparison.md`
-- `docs/qr-mob-017-sonnet-timestamp-investigation/root-cause-analysis.md`
-- `docs/qr-mob-017-sonnet-timestamp-investigation/recommendation.md`
+- `docs/qr-mob-018-split-profile-model-eval/plan.md`
+- `docs/qr-mob-018-split-profile-model-eval/model-comparison.md`
+- `docs/qr-mob-018-split-profile-model-eval/provider-harness-notes.md`
+- `docs/qr-mob-018-split-profile-model-eval/recommendation.md`
 
 ## Backlog intake
 
