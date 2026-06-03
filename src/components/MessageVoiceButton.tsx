@@ -7,6 +7,7 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-nativ
 import { resolveVoiceUrl } from "../config/env";
 import { mobileWeb } from "../theme/mobileWeb";
 import { useAuth } from "../contexts/AuthContext";
+import { sendClientEvent } from "../lib/clientEvents";
 import {
   publishVoicePlayback,
   subscribeVoicePlayback,
@@ -21,6 +22,23 @@ type MessageVoiceButtonProps = {
   messageIndex?: number;
   testID?: string;
   text: string;
+};
+
+type VoicePlaybackSource =
+  | "conversation_get_cached"
+  | "preset_audio"
+  | "text_post_cached";
+
+type VoicePlaybackDiagnostics = {
+  audioByteLength?: number;
+  conversationId?: string | null;
+  fetchDurationMs?: number;
+  messageIndex?: number;
+  playbackSource: VoicePlaybackSource;
+  ttsRequestId?: string | null;
+  ttsTextBytes?: number | null;
+  ttsTextLength?: number | null;
+  ttsTextSha256?: string | null;
 };
 
 function uniqueVoiceId(): string {
@@ -58,9 +76,27 @@ async function writeAudioToCache(bytes: Uint8Array): Promise<string> {
   return fileUri;
 }
 
-function buildConversationVoiceUri(baseUrl: string, conversationId: string, messageIndex: number): string {
+function coerceHeaderNumber(value: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildConversationVoiceUri(
+  baseUrl: string,
+  conversationId: string,
+  messageIndex: number,
+  clientRequestId: string
+): string {
   const separator = baseUrl.includes("?") ? "&" : "?";
-  return `${baseUrl}${separator}conversation_id=${encodeURIComponent(conversationId)}&message_index=${messageIndex}`;
+  return `${baseUrl}${separator}conversation_id=${encodeURIComponent(
+    conversationId
+  )}&message_index=${messageIndex}&client_request_id=${encodeURIComponent(
+    clientRequestId
+  )}`;
 }
 
 export default function MessageVoiceButton({
@@ -77,6 +113,7 @@ export default function MessageVoiceButton({
   const [status, setStatus] = useState<VoiceStatus>("idle");
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const diagnosticsRef = useRef<VoicePlaybackDiagnostics | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
   const fileUriRef = useRef<string | null>(null);
   const instanceIdRef = useRef(uniqueVoiceId());
@@ -93,6 +130,96 @@ export default function MessageVoiceButton({
     (messageIndex as number) >= 0;
   const voiceUrl = useMemo(resolveVoiceUrl, []);
   const loadingSpin = useRef(new Animated.Value(0)).current;
+
+  const emitVoiceEvent = useCallback(
+    (event: string, payload: Record<string, unknown> = {}) => {
+      void sendClientEvent({
+        event: `voice_playback.${event}`,
+        payload: {
+          conversationId: conversationId ?? null,
+          messageIndex: Number.isInteger(messageIndex) ? messageIndex : null,
+          playbackInstanceId: instanceIdRef.current,
+          ...diagnosticsRef.current,
+          ...payload,
+        },
+        user,
+      }).catch(() => {
+        // Diagnostic logging should never disrupt playback.
+      });
+    },
+    [conversationId, messageIndex, user]
+  );
+
+  const fetchAudioToCache = useCallback(
+    async ({
+      body,
+      headers,
+      method,
+      playbackSource,
+      signal,
+      uri,
+    }: {
+      body?: string;
+      headers: Record<string, string>;
+      method: "GET" | "POST";
+      playbackSource: VoicePlaybackSource;
+      signal: AbortSignal;
+      uri: string;
+    }) => {
+      const startedAt = Date.now();
+      const response = await fetch(uri, {
+        body,
+        headers,
+        method,
+        signal,
+      });
+
+      const fetchDurationMs = Date.now() - startedAt;
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(`Voice stream failed: ${response.status} ${detail}`);
+      }
+
+      const audioBytes = new Uint8Array(await response.arrayBuffer());
+      const localUri = await writeAudioToCache(audioBytes);
+      fileUriRef.current = localUri;
+
+      const diagnostics: VoicePlaybackDiagnostics = {
+        audioByteLength: audioBytes.byteLength,
+        conversationId: conversationId ?? null,
+        fetchDurationMs,
+        messageIndex: Number.isInteger(messageIndex) ? messageIndex : undefined,
+        playbackSource,
+        ttsRequestId: response.headers.get("X-Gabriel-TTS-Request-Id"),
+        ttsTextBytes: coerceHeaderNumber(
+          response.headers.get("X-Gabriel-TTS-Text-Bytes")
+        ),
+        ttsTextLength: coerceHeaderNumber(
+          response.headers.get("X-Gabriel-TTS-Text-Length")
+        ),
+        ttsTextSha256: response.headers.get("X-Gabriel-TTS-Text-SHA256"),
+      };
+
+      diagnosticsRef.current = diagnostics;
+      emitVoiceEvent("audio_fetched", diagnostics);
+
+      return { diagnostics, localUri };
+    },
+    [conversationId, emitVoiceEvent, messageIndex]
+  );
+
+  const clearCachedAudio = useCallback(async () => {
+    if (fileUriRef.current) {
+      const localUri = fileUriRef.current;
+      fileUriRef.current = null;
+      try {
+        await FileSystem.deleteAsync(localUri, { idempotent: true });
+      } catch {
+        // Intentionally ignored.
+      }
+    }
+    diagnosticsRef.current = null;
+  }, []);
 
   const cleanup = useCallback(async () => {
     if (abortControllerRef.current) {
@@ -117,18 +244,10 @@ export default function MessageVoiceButton({
       soundRef.current = null;
     }
 
-    if (fileUriRef.current) {
-      const localUri = fileUriRef.current;
-      fileUriRef.current = null;
-      try {
-        await FileSystem.deleteAsync(localUri, { idempotent: true });
-      } catch {
-        // Intentionally ignored.
-      }
-    }
-  }, []);
+    await clearCachedAudio();
+  }, [clearCachedAudio]);
 
-  const pausePlayback = useCallback(async () => {
+  const pausePlayback = useCallback(async (reason = "manual") => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -137,17 +256,19 @@ export default function MessageVoiceButton({
     if (soundRef.current) {
       try {
         await soundRef.current.pauseAsync();
+        emitVoiceEvent("paused", { reason });
       } catch {
         // Intentionally ignored.
       }
     }
 
     setStatus("idle");
-  }, []);
+  }, [emitVoiceEvent]);
 
   const loadAndPlayFromSource = useCallback(
-    async (source: AVPlaybackSource) => {
+    async (source: AVPlaybackSource, diagnostics: VoicePlaybackDiagnostics) => {
       await setAudioMode();
+      diagnosticsRef.current = diagnostics;
 
       const { sound } = await Audio.Sound.createAsync(
         source,
@@ -161,32 +282,45 @@ export default function MessageVoiceButton({
           if (playbackStatus.error) {
             setStatus("error");
             setError("Voice playback failed.");
+            emitVoiceEvent("error", {
+              error: playbackStatus.error,
+              stage: "playback_status",
+            });
           }
           return;
         }
 
         if (playbackStatus.didJustFinish) {
           setStatus("idle");
+          emitVoiceEvent("finished", {
+            didJustFinish: true,
+            durationMillis: playbackStatus.durationMillis ?? null,
+            positionMillis: playbackStatus.positionMillis,
+          });
         }
       });
 
       soundRef.current = sound;
       setStatus("playing");
+      emitVoiceEvent("started", diagnostics);
     },
-    []
+    [emitVoiceEvent]
   );
 
-  const resolveAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
-    if (!user) {
-      return {};
-    }
+  const resolveAuthHeaders = useCallback(
+    async (): Promise<Record<string, string>> => {
+      if (!user) {
+        return {};
+      }
 
-    const token = await user.getIdToken();
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  }, [user]);
+      const token = await user.getIdToken();
+      return token ? { Authorization: `Bearer ${token}` } : {};
+    },
+    [user]
+  );
 
   const startConversationPlayback = useCallback(
-    async (authHeaders: Record<string, string>) => {
+    async (authHeaders: Record<string, string>, controller: AbortController) => {
       if (!hasConversationAudio) {
         return false;
       }
@@ -194,18 +328,34 @@ export default function MessageVoiceButton({
       const remoteUri = buildConversationVoiceUri(
         voiceUrl,
         conversationId!.trim(),
-        messageIndex as number
+        messageIndex as number,
+        instanceIdRef.current
       );
 
-      await loadAndPlayFromSource({
+      const { diagnostics, localUri } = await fetchAudioToCache({
         headers: authHeaders,
-        overrideFileExtensionAndroid: "mp3",
+        method: "GET",
+        playbackSource: "conversation_get_cached",
+        signal: controller.signal,
         uri: remoteUri,
       });
 
+      if (controller.signal.aborted) {
+        return true;
+      }
+
+      await loadAndPlayFromSource({ uri: localUri }, diagnostics);
+
       return true;
     },
-    [conversationId, hasConversationAudio, loadAndPlayFromSource, messageIndex, voiceUrl]
+    [
+      conversationId,
+      fetchAudioToCache,
+      hasConversationAudio,
+      loadAndPlayFromSource,
+      messageIndex,
+      voiceUrl,
+    ]
   );
 
   const startPlayback = useCallback(async () => {
@@ -236,7 +386,14 @@ export default function MessageVoiceButton({
 
     try {
       if (hasPresetAudio) {
-        await loadAndPlayFromSource({ uri: resolvedAudioSrc });
+        await loadAndPlayFromSource(
+          { uri: resolvedAudioSrc },
+          {
+            conversationId: conversationId ?? null,
+            messageIndex: Number.isInteger(messageIndex) ? messageIndex : undefined,
+            playbackSource: "preset_audio",
+          }
+        );
         abortControllerRef.current = null;
         return;
       }
@@ -245,7 +402,10 @@ export default function MessageVoiceButton({
 
       if (hasConversationAudio) {
         try {
-          const startedConversationPlayback = await startConversationPlayback(authHeaders);
+          const startedConversationPlayback = await startConversationPlayback(
+            authHeaders,
+            controller
+          );
           if (startedConversationPlayback) {
             abortControllerRef.current = null;
             return;
@@ -255,40 +415,37 @@ export default function MessageVoiceButton({
             return;
           }
 
-          await cleanup();
+          await clearCachedAudio();
           abortControllerRef.current = controller;
           setStatus("loading");
-          console.warn("Conversation voice playback failed; falling back to text POST", conversationError);
+          console.warn(
+            "Conversation voice playback failed; falling back to text POST",
+            conversationError
+          );
         }
       }
 
-      const response = await fetch(voiceUrl, {
+      const { diagnostics, localUri } = await fetchAudioToCache({
         body: JSON.stringify({ text: trimmedText }),
         headers: {
           ...authHeaders,
           "Content-Type": "application/json",
         },
         method: "POST",
+        playbackSource: "text_post_cached",
         signal: controller.signal,
+        uri: voiceUrl,
       });
-
-      if (!response.ok) {
-        const detail = await response.text().catch(() => "");
-        throw new Error(`Voice stream failed: ${response.status} ${detail}`);
-      }
-
-      const audioBytes = new Uint8Array(await response.arrayBuffer());
-      const localUri = await writeAudioToCache(audioBytes);
-      fileUriRef.current = localUri;
 
       if (controller.signal.aborted) {
         return;
       }
 
-      await loadAndPlayFromSource({ uri: localUri });
+      await loadAndPlayFromSource({ uri: localUri }, diagnostics);
       abortControllerRef.current = null;
     } catch (rawError) {
       if ((rawError as Error | null)?.name === "AbortError") {
+        emitVoiceEvent("cancelled", { reason: "abort" });
         return;
       }
 
@@ -298,9 +455,17 @@ export default function MessageVoiceButton({
       console.warn("Voice playback failed", rawError);
       setStatus("error");
       setError(message);
+      emitVoiceEvent("error", {
+        error: message,
+        stage: "start_playback",
+      });
     }
   }, [
     cleanup,
+    conversationId,
+    clearCachedAudio,
+    emitVoiceEvent,
+    fetchAudioToCache,
     hasPlayableContent,
     hasConversationAudio,
     hasPresetAudio,
@@ -319,7 +484,7 @@ export default function MessageVoiceButton({
     }
 
     if (status === "playing" || status === "loading") {
-      await pausePlayback();
+      await pausePlayback("toggle");
       return;
     }
 
@@ -329,7 +494,7 @@ export default function MessageVoiceButton({
   useEffect(() => {
     const unsubscribe = subscribeVoicePlayback((activeId) => {
       if (activeId !== instanceIdRef.current) {
-        void pausePlayback();
+        void pausePlayback("other_voice_started");
       }
     });
 
@@ -466,9 +631,6 @@ const styles = StyleSheet.create({
     maxWidth: 180,
   },
 });
-
-
-
 
 
 
