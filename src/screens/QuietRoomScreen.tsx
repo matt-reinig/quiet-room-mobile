@@ -35,6 +35,7 @@ import { getAiConsentAccepted, setAiConsentAccepted } from "../lib/aiConsent";
 import { labelForChatModel } from "../lib/chatModels";
 import {
   submitResponseReport,
+  type ReportResponseContextScope,
   type ReportResponseReason,
 } from "../lib/reportResponse";
 import { mobileWeb } from "../theme/mobileWeb";
@@ -334,7 +335,11 @@ export default function QuietRoomScreen() {
   );
 
   const submitReportResponse = useCallback(
-    async (reason: ReportResponseReason, note: string) => {
+    async (
+      reason: ReportResponseReason,
+      note: string,
+      contextScope: ReportResponseContextScope
+    ) => {
       if (!user || !reportResponseTarget || reportResponsePending) {
         return;
       }
@@ -345,6 +350,7 @@ export default function QuietRoomScreen() {
       try {
         await submitResponseReport({
           ...reportResponseTarget,
+          contextScope,
           note,
           reason,
           user,

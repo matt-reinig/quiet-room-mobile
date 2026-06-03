@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
+  REPORT_RESPONSE_CONTEXT_SCOPES,
   REPORT_RESPONSE_REASONS,
+  type ReportResponseContextScope,
   type ReportResponseReason,
 } from "../lib/reportResponse";
 import { mobileWeb } from "../theme/mobileWeb";
@@ -10,7 +12,11 @@ import { testIds } from "../testIds";
 type ReportResponseModalProps = {
   error: string | null;
   onClose: () => void;
-  onSubmit: (reason: ReportResponseReason, note: string) => void;
+  onSubmit: (
+    reason: ReportResponseReason,
+    note: string,
+    contextScope: ReportResponseContextScope
+  ) => void;
   pending: boolean;
   submitted: boolean;
   visible: boolean;
@@ -25,11 +31,14 @@ export default function ReportResponseModal({
   visible,
 }: ReportResponseModalProps) {
   const [reason, setReason] = useState<ReportResponseReason>("harmful_or_unsafe");
+  const [contextScope, setContextScope] =
+    useState<ReportResponseContextScope>("metadata_only");
   const [note, setNote] = useState("");
 
   useEffect(() => {
     if (!visible) {
       setReason("harmful_or_unsafe");
+      setContextScope("metadata_only");
       setNote("");
     }
   }, [visible]);
@@ -53,49 +62,97 @@ export default function ReportResponseModal({
           ) : (
             <>
               <Text style={styles.title}>Report response</Text>
-              <View style={styles.reasonList}>
-                {REPORT_RESPONSE_REASONS.map((option) => {
-                  const selected = option.value === reason;
-                  return (
-                    <Pressable
-                      accessibilityLabel={option.label}
-                      accessibilityRole="radio"
-                      accessibilityState={{ checked: selected }}
-                      key={option.value}
-                      onPress={() => {
-                        setReason(option.value);
-                      }}
-                      style={({ pressed }) => [
-                        styles.reasonButton,
-                        selected && styles.reasonButtonSelected,
-                        pressed && styles.buttonPressed,
-                      ]}
-                      testID={`${testIds.reportResponseReason}.${option.value}`}
-                    >
-                      <Text
-                        style={[
-                          styles.reasonLabel,
-                          selected && styles.reasonLabelSelected,
-                        ]}
-                      >
-                        {option.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <ScrollView
+                bounces={false}
+                contentContainerStyle={styles.formContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                style={styles.formScroll}
+                testID={testIds.reportResponseForm}
+              >
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Reason</Text>
+                  <View style={styles.optionList}>
+                    {REPORT_RESPONSE_REASONS.map((option) => {
+                      const selected = option.value === reason;
+                      return (
+                        <Pressable
+                          accessibilityLabel={option.label}
+                          accessibilityRole="radio"
+                          accessibilityState={{ checked: selected }}
+                          key={option.value}
+                          onPress={() => {
+                            setReason(option.value);
+                          }}
+                          style={({ pressed }) => [
+                            styles.optionButton,
+                            selected && styles.optionButtonSelected,
+                            pressed && styles.buttonPressed,
+                          ]}
+                          testID={`${testIds.reportResponseReason}.${option.value}`}
+                        >
+                          <Text
+                            style={[
+                              styles.optionLabel,
+                              selected && styles.optionLabelSelected,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
 
-              <TextInput
-                maxLength={1000}
-                multiline
-                onChangeText={setNote}
-                placeholder="Optional note"
-                placeholderTextColor={mobileWeb.colors.gray500}
-                style={styles.noteInput}
-                testID={testIds.reportResponseNote}
-                textAlignVertical="top"
-                value={note}
-              />
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Shared with reviewers</Text>
+                  <View style={styles.optionList}>
+                    {REPORT_RESPONSE_CONTEXT_SCOPES.map((option) => {
+                      const selected = option.value === contextScope;
+                      return (
+                        <Pressable
+                          accessibilityLabel={option.label}
+                          accessibilityRole="radio"
+                          accessibilityState={{ checked: selected }}
+                          key={option.value}
+                          onPress={() => {
+                            setContextScope(option.value);
+                          }}
+                          style={({ pressed }) => [
+                            styles.optionButton,
+                            selected && styles.optionButtonSelected,
+                            pressed && styles.buttonPressed,
+                          ]}
+                          testID={`${testIds.reportResponseContextScope}.${option.value}`}
+                        >
+                          <Text
+                            style={[
+                              styles.optionLabel,
+                              selected && styles.optionLabelSelected,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                          <Text style={styles.optionDescription}>{option.description}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <TextInput
+                  maxLength={1000}
+                  multiline
+                  onChangeText={setNote}
+                  placeholder="Optional note"
+                  placeholderTextColor={mobileWeb.colors.gray500}
+                  style={styles.noteInput}
+                  testID={testIds.reportResponseNote}
+                  textAlignVertical="top"
+                  value={note}
+                />
+              </ScrollView>
 
               {error ? (
                 <Text accessibilityRole="alert" style={styles.error} testID={testIds.reportResponseError}>
@@ -121,7 +178,7 @@ export default function ReportResponseModal({
                   accessibilityLabel="Submit report response"
                   disabled={pending}
                   onPress={() => {
-                    onSubmit(reason, note);
+                    onSubmit(reason, note, contextScope);
                   }}
                   style={({ pressed }) => [
                     styles.primaryButton,
@@ -154,6 +211,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     gap: 14,
+    maxHeight: "86%",
     maxWidth: 420,
     padding: 18,
     width: "90%",
@@ -167,6 +225,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 10,
     justifyContent: "flex-end",
+  },
+  formContent: {
+    gap: 14,
+    paddingBottom: 8,
+  },
+  formScroll: {
+    flexShrink: 1,
+    maxHeight: 440,
   },
   noteInput: {
     backgroundColor: mobileWeb.colors.white,
@@ -193,26 +259,32 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
   },
-  reasonButton: {
+  optionButton: {
     borderColor: mobileWeb.colors.gray200,
     borderRadius: 8,
     borderWidth: 1,
+    gap: 3,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  reasonButtonSelected: {
+  optionButtonSelected: {
     backgroundColor: mobileWeb.colors.blue50,
     borderColor: mobileWeb.colors.blue500,
   },
-  reasonLabel: {
+  optionDescription: {
+    color: mobileWeb.colors.gray600,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  optionLabel: {
     color: mobileWeb.colors.gray700,
     fontSize: 14,
     fontWeight: "600",
   },
-  reasonLabelSelected: {
+  optionLabelSelected: {
     color: mobileWeb.colors.blue600,
   },
-  reasonList: {
+  optionList: {
     gap: 8,
   },
   scrim: {
@@ -243,5 +315,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     lineHeight: 24,
+  },
+  section: {
+    gap: 8,
+  },
+  sectionTitle: {
+    color: mobileWeb.colors.gray700,
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
   },
 });

@@ -21,6 +21,8 @@ export const testIds = {
   reportResponseNote: "quiet-room.report-response.note",
   reportResponseSubmit: "quiet-room.report-response.submit",
   reportResponseReason: "quiet-room.report-response.reason",
+  reportResponseContextScope: "quiet-room.report-response.context-scope",
+  reportResponseForm: "quiet-room.report-response.form",
   conversationsButton: "quiet-room.conversations.open",
   crucifixWrapper: "quiet-room.crucifix.wrapper",
   crucifixButton: "quiet-room.crucifix.open",
