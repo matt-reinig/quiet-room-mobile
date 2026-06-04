@@ -6,7 +6,7 @@ Upload a new QA iOS build from current `develop` after regenerating the native i
 
 Recommended next QA build: `26`.
 
-Build `26` has now passed local config, typecheck, release-simulator build, simulator launch, device archive, entitlement verification, and local export. App Store Connect upload is blocked only by the local Xcode account session.
+Build `26` has now passed local config, typecheck, release-simulator build, simulator launch, device archive, entitlement verification, local export, and App Store Connect/TestFlight upload.
 
 ## Recovery Steps
 
@@ -61,7 +61,7 @@ xcrun simctl spawn booted log show --last 3m --style compact --predicate 'proces
 npm run ios:testflight:deploy:qa
 ```
 
-If upload fails with `exportArchive Failed to Use Accounts`, restore App Store Connect access in Xcode Accounts for team `SV7SPMY2Q8`, then retry from the existing archive rather than rebuilding:
+If upload fails with `exportArchive Failed to Use Accounts`, restore App Store Connect access in Xcode Accounts for team `SV7SPMY2Q8`, then retry from the existing archive rather than rebuilding. That was the successful recovery path for build `26` after Xcode was restarted:
 
 ```bash
 xcodebuild -exportArchive \
@@ -73,7 +73,7 @@ xcodebuild -exportArchive \
 
 ## Rollback Option
 
-If build `23` is still installable for the affected testers in TestFlight, it can be used as the fastest temporary rollback because the tracker records it as last-known-good. If TestFlight does not offer build `23` after removing or expiring builds `24`/`25`, rebuild and upload a new build number instead.
+If build `26` does not become available to testers after Apple processing completes, build `23` remains the last recorded temporary rollback option if it is still installable for the affected testers in TestFlight.
 
 ## Process Hardening
 

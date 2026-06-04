@@ -95,16 +95,24 @@ The device archive also succeeded:
 - Apple Sign In entitlement: `Default`
 - archive output: `** ARCHIVE SUCCEEDED **`
 
-The App Store Connect upload did not complete because local Xcode account access is broken:
+The first App Store Connect upload did not complete because local Xcode account access was broken:
 
 ```text
 error: exportArchive Failed to Use Accounts
 Failed to find an account with App Store Connect access for team ... teamID='SV7SPMY2Q8'
 ```
 
-That upload blocker matches the known Xcode/App Store Connect session failure mode from prior iOS QA deploys. It is not a build `26` app regression.
+That upload blocker matched the known Xcode/App Store Connect session failure mode from prior iOS QA deploys. It was not a build `26` app regression.
 
 A local App Store export from the successful archive did work:
 
 - export path: `build/testflight-export-qa-b26-local`
+- export output: `** EXPORT SUCCEEDED **`
+
+After Xcode was restarted, re-exporting the existing archive with `build/exportOptions-qa-b26.plist` succeeded and uploaded to App Store Connect/TestFlight:
+
+- archive: `build/ios-qa-b26.xcarchive`
+- upload output: `Uploaded package is processing`
+- upload output: `Upload succeeded`
+- upload output: `Uploaded QuietRoomQA`
 - export output: `** EXPORT SUCCEEDED **`
