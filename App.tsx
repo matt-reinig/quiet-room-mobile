@@ -6,6 +6,7 @@ import { FeatureFlagsProvider } from "./src/contexts/FeatureFlagsContext";
 import { RENDER_MODE } from "./src/config/env";
 import QuietRoomScreen from "./src/screens/QuietRoomScreen";
 import QuietRoomWebParityScreen from "./src/screens/QuietRoomWebParityScreen";
+import VoicePlaybackDiagnosticsScreen from "./src/screens/VoicePlaybackDiagnosticsScreen";
 
 const detoxSettings = NativeModules.SettingsManager?.settings ?? {};
 const isDetoxSession = Boolean(
@@ -19,6 +20,16 @@ if (isDetoxSession) {
 }
 
 export default function App() {
+  if (RENDER_MODE === "voice-diagnostics") {
+    return (
+      <SafeAreaProvider>
+        <AuthProvider>
+          <VoicePlaybackDiagnosticsScreen />
+        </AuthProvider>
+      </SafeAreaProvider>
+    );
+  }
+
   if (RENDER_MODE === "webview") {
     return <QuietRoomWebParityScreen />;
   }

@@ -71,6 +71,20 @@ export const testIds = {
   loginSigninButton: "quiet-room.login.signin",
   loginSignupButton: "quiet-room.login.signup",
   loginResetButton: "quiet-room.login.reset",
+  voiceDiagnostics: {
+    conversationId: "quiet-room.voice-diagnostics.conversation-id",
+    email: "quiet-room.voice-diagnostics.email",
+    eventLog: "quiet-room.voice-diagnostics.event-log",
+    login: "quiet-room.voice-diagnostics.login",
+    messageIndex: "quiet-room.voice-diagnostics.message-index",
+    password: "quiet-room.voice-diagnostics.password",
+    reset: "quiet-room.voice-diagnostics.reset",
+    runCount: "quiet-room.voice-diagnostics.run-count",
+    runExpoAudio: "quiet-room.voice-diagnostics.run-expo-audio",
+    runExpoAv: "quiet-room.voice-diagnostics.run-expo-av",
+    stop: "quiet-room.voice-diagnostics.stop",
+    summary: "quiet-room.voice-diagnostics.summary",
+  },
 } as const;
 
 export function messageBubbleTestId(role: "assistant" | "user", index: number): string {

@@ -1,7 +1,9 @@
 import { Platform } from "react-native";
+import Constants from "expo-constants";
 
 export type AppVariant = "prod" | "qa";
 export type ReleaseEnv = "local" | "qa" | "prod";
+export type VoiceDiagnosticAutorun = "both" | "expo-audio" | "expo-av" | "off";
 
 type FirebaseConfig = {
   apiKey: string;
@@ -16,7 +18,17 @@ type GoogleAuthConfig = {
   webClientId: string;
 };
 
-type RenderMode = "native" | "webview";
+type RenderMode = "native" | "voice-diagnostics" | "webview";
+
+function resolveVoiceDiagnosticAutorun(value: string | undefined): VoiceDiagnosticAutorun {
+  const normalizedValue = value?.toLowerCase();
+
+  if (normalizedValue === "both" || normalizedValue === "expo-audio" || normalizedValue === "expo-av") {
+    return normalizedValue;
+  }
+
+  return "off";
+}
 
 function trimTrailingSlashes(value: string): string {
   return value.replace(/\/+$/, "");
@@ -53,14 +65,16 @@ function resolveAppScheme(appVariant: AppVariant): string {
 const devApiBase =
   Platform.OS === "android" ? "http://10.0.2.2:5000" : "http://localhost:5000";
 
+const appVariantRaw = process.env.EXPO_PUBLIC_APP_VARIANT;
+const expoExtra = Constants.expoConfig?.extra ?? {};
 const apiBaseRaw =
+  (typeof expoExtra.apiBase === "string" ? expoExtra.apiBase : undefined) ||
   process.env.EXPO_PUBLIC_API_BASE ||
   (__DEV__ ? devApiBase : "https://your-prod-api.com");
-
-const appVariantRaw = process.env.EXPO_PUBLIC_APP_VARIANT;
 const modelOptionsRaw = process.env.EXPO_PUBLIC_MODEL_OPTIONS;
 const releaseEnvRaw = process.env.EXPO_PUBLIC_RELEASE_ENV;
 const renderModeRaw =
+  (typeof expoExtra.renderMode === "string" ? expoExtra.renderMode : undefined) ||
   process.env.EXPO_PUBLIC_RENDER_MODE ||
   process.env.EXPO_PUBLIC_WEB_PARITY_MODE ||
   "native";
@@ -73,7 +87,9 @@ export const APP_SCHEME = resolveAppScheme(APP_VARIANT);
 export const API_BASE = trimTrailingSlashes(normalizeAndroidHostAliasForPlatform(apiBaseRaw));
 
 export const STREAMING_BASE = trimTrailingSlashes(
-  process.env.EXPO_PUBLIC_STREAMING_BASE || ""
+  (typeof expoExtra.streamingBase === "string" ? expoExtra.streamingBase : undefined) ||
+    process.env.EXPO_PUBLIC_STREAMING_BASE ||
+    ""
 );
 
 export const CONTACT_EMAIL =
@@ -100,8 +116,76 @@ export const MODEL_OPTIONS =
     .map((value: string) => value.trim())
     .filter(Boolean) || ["gpt-5.1-chat-latest", "gpt-5.3-chat-latest"];
 
-export const RENDER_MODE: RenderMode =
-  renderModeRaw.toLowerCase() === "webview" ? "webview" : "native";
+function resolveRenderMode(value: string): RenderMode {
+  const normalizedValue = value.toLowerCase();
+
+  if (normalizedValue === "voice-diagnostics") {
+    return "voice-diagnostics";
+  }
+
+  if (normalizedValue === "webview") {
+    return "webview";
+  }
+
+  return "native";
+}
+
+export const RENDER_MODE: RenderMode = resolveRenderMode(renderModeRaw);
+
+export const VOICE_PLAYBACK_DIAGNOSTICS_ENABLED =
+  RENDER_MODE === "voice-diagnostics" ||
+  process.env.EXPO_PUBLIC_VOICE_PLAYBACK_DIAGNOSTICS === "1";
+
+export const VOICE_DIAGNOSTIC_CONVERSATION_ID =
+  process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_CONVERSATION_ID ||
+  (typeof expoExtra.voiceDiagnosticConversationId === "string"
+    ? expoExtra.voiceDiagnosticConversationId
+    : "");
+
+export const VOICE_DIAGNOSTIC_EMAIL =
+  process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_EMAIL ||
+  (typeof expoExtra.voiceDiagnosticEmail === "string" ? expoExtra.voiceDiagnosticEmail : "");
+
+export const VOICE_DIAGNOSTIC_AUTH_TOKEN =
+  process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_AUTH_TOKEN ||
+  (typeof expoExtra.voiceDiagnosticAuthToken === "string"
+    ? expoExtra.voiceDiagnosticAuthToken
+    : "");
+
+export const VOICE_DIAGNOSTIC_API_BASE =
+  process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_API_BASE ||
+  (typeof expoExtra.voiceDiagnosticApiBase === "string"
+    ? expoExtra.voiceDiagnosticApiBase
+    : "");
+
+export const VOICE_DIAGNOSTIC_MESSAGE_INDEX = Number.parseInt(
+  process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_MESSAGE_INDEX ||
+    (typeof expoExtra.voiceDiagnosticMessageIndex === "string"
+      ? expoExtra.voiceDiagnosticMessageIndex
+      : "") ||
+    "1",
+  10
+);
+
+export const VOICE_DIAGNOSTIC_PASSWORD =
+  process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_PASSWORD ||
+  (typeof expoExtra.voiceDiagnosticPassword === "string"
+    ? expoExtra.voiceDiagnosticPassword
+    : "");
+
+export const VOICE_DIAGNOSTIC_RUNS = Number.parseInt(
+  process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_RUNS ||
+    (typeof expoExtra.voiceDiagnosticRuns === "string" ? expoExtra.voiceDiagnosticRuns : "") ||
+    "5",
+  10
+);
+
+export const VOICE_DIAGNOSTIC_AUTORUN = resolveVoiceDiagnosticAutorun(
+  process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_AUTORUN ||
+    (typeof expoExtra.voiceDiagnosticAutorun === "string"
+      ? expoExtra.voiceDiagnosticAutorun
+      : undefined)
+);
 
 export const WEB_APP_URL = trimTrailingSlashes(webAppUrlRaw.trim());
 

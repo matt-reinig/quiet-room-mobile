@@ -11,6 +11,11 @@ import {
   publishVoicePlayback,
   subscribeVoicePlayback,
 } from "../lib/voicePlaybackBus";
+import {
+  createVoicePlaybackAttemptId,
+  publishVoicePlaybackDiagnostic,
+  type VoicePlaybackEngine,
+} from "../lib/voicePlaybackDiagnostics";
 
 type VoiceStatus = "error" | "idle" | "loading" | "playing";
 
@@ -146,7 +151,17 @@ export default function MessageVoiceButton({
   }, []);
 
   const loadAndPlayFromSource = useCallback(
-    async (source: AVPlaybackSource) => {
+    async (source: AVPlaybackSource, engine: VoicePlaybackEngine) => {
+      const attemptId = createVoicePlaybackAttemptId(engine);
+
+      publishVoicePlaybackDiagnostic({
+        attemptId,
+        engine,
+        messageIndex,
+        phase: "create",
+        playbackMode: engine,
+      });
+
       await setAudioMode();
 
       const { sound } = await Audio.Sound.createAsync(
@@ -159,11 +174,32 @@ export default function MessageVoiceButton({
       sound.setOnPlaybackStatusUpdate((playbackStatus: AVPlaybackStatus) => {
         if (!playbackStatus.isLoaded) {
           if (playbackStatus.error) {
+            publishVoicePlaybackDiagnostic({
+              attemptId,
+              engine,
+              error: playbackStatus.error,
+              messageIndex,
+              phase: "error",
+              playbackMode: engine,
+            });
             setStatus("error");
             setError("Voice playback failed.");
           }
           return;
         }
+
+        publishVoicePlaybackDiagnostic({
+          attemptId,
+          didJustFinish: playbackStatus.didJustFinish,
+          durationMillis: playbackStatus.durationMillis,
+          engine,
+          isBuffering: playbackStatus.isBuffering,
+          isLoaded: playbackStatus.isLoaded,
+          messageIndex,
+          phase: playbackStatus.didJustFinish ? "finish" : "status",
+          playbackMode: engine,
+          positionMillis: playbackStatus.positionMillis,
+        });
 
         if (playbackStatus.didJustFinish) {
           setStatus("idle");
@@ -172,8 +208,15 @@ export default function MessageVoiceButton({
 
       soundRef.current = sound;
       setStatus("playing");
+      publishVoicePlaybackDiagnostic({
+        attemptId,
+        engine,
+        messageIndex,
+        phase: "play",
+        playbackMode: engine,
+      });
     },
-    []
+    [messageIndex]
   );
 
   const resolveAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
@@ -197,11 +240,14 @@ export default function MessageVoiceButton({
         messageIndex as number
       );
 
-      await loadAndPlayFromSource({
-        headers: authHeaders,
-        overrideFileExtensionAndroid: "mp3",
-        uri: remoteUri,
-      });
+      await loadAndPlayFromSource(
+        {
+          headers: authHeaders,
+          overrideFileExtensionAndroid: "mp3",
+          uri: remoteUri,
+        },
+        "expo-av-live-get"
+      );
 
       return true;
     },
@@ -236,7 +282,7 @@ export default function MessageVoiceButton({
 
     try {
       if (hasPresetAudio) {
-        await loadAndPlayFromSource({ uri: resolvedAudioSrc });
+        await loadAndPlayFromSource({ uri: resolvedAudioSrc }, "expo-av-preset");
         abortControllerRef.current = null;
         return;
       }
@@ -285,7 +331,7 @@ export default function MessageVoiceButton({
         return;
       }
 
-      await loadAndPlayFromSource({ uri: localUri });
+      await loadAndPlayFromSource({ uri: localUri }, "expo-av-text-post-cache");
       abortControllerRef.current = null;
     } catch (rawError) {
       if ((rawError as Error | null)?.name === "AbortError") {
@@ -466,7 +512,6 @@ const styles = StyleSheet.create({
     maxWidth: 180,
   },
 });
-
 
 
 

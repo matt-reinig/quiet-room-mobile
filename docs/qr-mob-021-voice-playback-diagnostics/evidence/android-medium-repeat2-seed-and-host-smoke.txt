@@ -1,0 +1,13 @@
+  "apiBase": "http://127.0.0.1:5002",
+  "authHost": "127.0.0.1:9099",
+  "conversationId": "seed-conv-001",
+  "firestoreHost": "127.0.0.1:8080",
+  "messageIndex": 1,
+  "seedTextRepeat": 2,
+  "seedTextVariant": "medium",
+  "savedAssistantTextLength": 2643,
+    "uid": "voice-diag-1780688498884"
+  "uid": "voice-diag-1780688498884"
+HTTP_STATUS=200
+CONTENT_TYPE=audio/mpeg
+SIZE= 1237632

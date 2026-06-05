@@ -55,6 +55,19 @@ function pickExistingFile(...candidates) {
 
 const appVariant = resolveAppVariant(process.env.EXPO_PUBLIC_APP_VARIANT);
 const releaseEnv = resolveReleaseEnv(process.env.EXPO_PUBLIC_RELEASE_ENV);
+const apiBase = process.env.EXPO_PUBLIC_API_BASE || "";
+const renderMode = process.env.EXPO_PUBLIC_RENDER_MODE || "native";
+const streamingBase = process.env.EXPO_PUBLIC_STREAMING_BASE || "";
+const voiceDiagnosticAutorun = process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_AUTORUN || "";
+const voiceDiagnosticConversationId =
+  process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_CONVERSATION_ID || "";
+const voiceDiagnosticEmail = process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_EMAIL || "";
+const voiceDiagnosticAuthToken = process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_AUTH_TOKEN || "";
+const voiceDiagnosticApiBase = process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_API_BASE || "";
+const voiceDiagnosticMessageIndex =
+  process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_MESSAGE_INDEX || "";
+const voiceDiagnosticPassword = process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_PASSWORD || "";
+const voiceDiagnosticRuns = process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_RUNS || "";
 const variantConfig = APP_VARIANTS[appVariant];
 const androidGoogleServicesFile = pickExistingFile(
   process.env.EXPO_PUBLIC_GOOGLE_SERVICES_FILE,
@@ -82,6 +95,14 @@ if (!plugins.includes("./plugins/withHermesDsymPhase")) {
   plugins.push("./plugins/withHermesDsymPhase");
 }
 
+if (!plugins.includes("expo-audio")) {
+  plugins.push("expo-audio");
+}
+
+if (!plugins.includes("expo-asset")) {
+  plugins.push("expo-asset");
+}
+
 if (resolvedAndroidGoogleServicesFile && fs.existsSync(resolvedAndroidGoogleServicesFile)) {
   androidConfig.googleServicesFile = androidGoogleServicesFile;
 } else {
@@ -107,7 +128,18 @@ module.exports = {
     extra: {
       ...extraConfig,
       appVariant,
+      apiBase,
       releaseEnv,
+      renderMode,
+      streamingBase,
+      voiceDiagnosticAuthToken,
+      voiceDiagnosticAutorun,
+      voiceDiagnosticApiBase,
+      voiceDiagnosticConversationId,
+      voiceDiagnosticEmail,
+      voiceDiagnosticMessageIndex,
+      voiceDiagnosticPassword,
+      voiceDiagnosticRuns,
     },
     android: androidConfig,
     ios: iosConfig,
