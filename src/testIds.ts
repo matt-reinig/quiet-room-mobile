@@ -72,11 +72,13 @@ export const testIds = {
   loginSignupButton: "quiet-room.login.signup",
   loginResetButton: "quiet-room.login.reset",
   voiceDiagnostics: {
+    close: "quiet-room.voice-diagnostics.close",
     conversationId: "quiet-room.voice-diagnostics.conversation-id",
     email: "quiet-room.voice-diagnostics.email",
     eventLog: "quiet-room.voice-diagnostics.event-log",
     login: "quiet-room.voice-diagnostics.login",
     messageIndex: "quiet-room.voice-diagnostics.message-index",
+    open: "quiet-room.voice-diagnostics.open",
     password: "quiet-room.voice-diagnostics.password",
     reset: "quiet-room.voice-diagnostics.reset",
     runCount: "quiet-room.voice-diagnostics.run-count",

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Feather } from "@expo/vector-icons";
 import { Audio, type AVPlaybackSource, type AVPlaybackStatus } from "expo-av";
 import {
   createAudioPlayer,
@@ -69,6 +70,12 @@ type DecodedJwtPayload = {
   };
   iss?: unknown;
   sub?: unknown;
+};
+
+type VoicePlaybackDiagnosticsScreenProps = {
+  initialConversationId?: string | null;
+  initialMessageIndex?: number | null;
+  onClose?: () => void;
 };
 
 const KNOWN_ASSISTANT_MESSAGE =
@@ -157,18 +164,28 @@ function summarize(results: AttemptResult[], engine: VoicePlaybackEngine) {
   };
 }
 
-export default function VoicePlaybackDiagnosticsScreen() {
+function initialMessageIndexValue(initialMessageIndex: number | null | undefined): string {
+  return Number.isInteger(initialMessageIndex) && (initialMessageIndex as number) >= 0
+    ? String(initialMessageIndex)
+    : Number.isFinite(VOICE_DIAGNOSTIC_MESSAGE_INDEX)
+      ? String(VOICE_DIAGNOSTIC_MESSAGE_INDEX)
+      : "1";
+}
+
+export default function VoicePlaybackDiagnosticsScreen({
+  initialConversationId,
+  initialMessageIndex,
+  onClose,
+}: VoicePlaybackDiagnosticsScreenProps = {}) {
   const { isAnon, loading: authLoading, loginWithEmail, logout, user } = useAuth();
   const [email, setEmail] = useState(VOICE_DIAGNOSTIC_EMAIL);
   const [password, setPassword] = useState(VOICE_DIAGNOSTIC_PASSWORD);
   const [authError, setAuthError] = useState("");
   const [apiBase, setApiBase] = useState(VOICE_DIAGNOSTIC_API_BASE || API_BASE);
-  const [conversationId, setConversationId] = useState(VOICE_DIAGNOSTIC_CONVERSATION_ID);
-  const [messageIndex, setMessageIndex] = useState(
-    Number.isFinite(VOICE_DIAGNOSTIC_MESSAGE_INDEX)
-      ? String(VOICE_DIAGNOSTIC_MESSAGE_INDEX)
-      : "1"
+  const [conversationId, setConversationId] = useState(
+    initialConversationId?.trim() || VOICE_DIAGNOSTIC_CONVERSATION_ID
   );
+  const [messageIndex, setMessageIndex] = useState(initialMessageIndexValue(initialMessageIndex));
   const [runCount, setRunCount] = useState(
     Number.isFinite(VOICE_DIAGNOSTIC_RUNS) ? String(VOICE_DIAGNOSTIC_RUNS) : "5"
   );
@@ -197,6 +214,17 @@ export default function VoicePlaybackDiagnosticsScreen() {
       : hasSignedInUser
         ? user?.email || user?.uid || "Signed-in user"
         : "Anonymous session";
+
+  useEffect(() => {
+    const nextConversationId = initialConversationId?.trim();
+    if (nextConversationId) {
+      setConversationId(nextConversationId);
+    }
+
+    if (Number.isInteger(initialMessageIndex) && (initialMessageIndex as number) >= 0) {
+      setMessageIndex(String(initialMessageIndex));
+    }
+  }, [initialConversationId, initialMessageIndex]);
 
   const emit = useCallback(
     (event: Omit<VoicePlaybackDiagnosticEvent, "timestamp">) => {
@@ -793,8 +821,27 @@ export default function VoicePlaybackDiagnosticsScreen() {
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>QR-MOB-021</Text>
-          <Text style={styles.title}>Voice playback diagnostics</Text>
+          <View style={styles.headerTopRow}>
+            <View style={styles.headerTitleBlock}>
+              <Text style={styles.eyebrow}>QR-MOB-021</Text>
+              <Text style={styles.title}>Voice playback diagnostics</Text>
+            </View>
+            {onClose ? (
+              <Pressable
+                accessibilityLabel="Return to chat"
+                accessibilityRole="button"
+                onPress={onClose}
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  pressed && styles.buttonPressed,
+                ]}
+                testID={testIds.voiceDiagnostics.close}
+              >
+                <Feather name="message-circle" size={18} color={mobileWeb.colors.gray700} />
+                <Text style={styles.closeButtonText}>Chat</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
 
         <View style={styles.panel}>
@@ -1069,6 +1116,17 @@ const styles = StyleSheet.create({
   header: {
     gap: 4,
   },
+  headerTitleBlock: {
+    flex: 1,
+    gap: 4,
+    minWidth: 0,
+  },
+  headerTopRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between",
+  },
   iconButton: {
     alignItems: "center",
     backgroundColor: mobileWeb.colors.surfaceStrong,
@@ -1099,6 +1157,23 @@ const styles = StyleSheet.create({
     color: mobileWeb.colors.gray600,
     fontSize: 12,
     fontWeight: "700",
+  },
+  closeButton: {
+    alignItems: "center",
+    backgroundColor: mobileWeb.colors.surfaceStrong,
+    borderColor: mobileWeb.colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
+    minHeight: 40,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  closeButtonText: {
+    color: mobileWeb.colors.gray700,
+    fontSize: 13,
+    fontWeight: "800",
   },
   logLine: {
     color: mobileWeb.colors.gray700,

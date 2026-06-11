@@ -328,3 +328,180 @@ Current conclusion:
 - This iOS batch still does not confirm the reported clipping, because the harness did not record an early `didJustFinish=true` or a `clipped` summary classification.
 - It did expose a new iOS `expo-av` failure-shaped behavior: after seven normal finishes, run `8` stopped advancing diagnostics at `54000ms` and never produced a terminal event.
 - The next useful reproduction step is to make the iOS path classify this no-terminal-event case explicitly, then rerun iOS and compare the same repeated-medium seed against `expo-audio`.
+
+### 2026-06-06 Android in-app switcher rehearsal
+
+Switcher-enabled local-QA launch:
+
+- Command: `npm run voice:diagnostics:switcher:android:local-qa`.
+- Device: Android emulator `emulator-10896`, focused app `com.quietroom.mobile.qa/.MainActivity`.
+- Build result: Gradle `BUILD SUCCESSFUL`; Metro bundled `index.ts`; app launched through the QA development-client deep link.
+- Normal chat stayed the first screen and showed the flag-gated voice diagnostics activity icon in the header.
+- Tapping the activity icon opened the `Voice playback diagnostics` screen in the same installed app.
+- Tapping `Chat` returned to the normal chat screen without reinstalling or relaunching.
+- Evidence screenshots:
+  - `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-switcher-normal-chat.png`
+  - `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-switcher-diagnostics.png`
+  - `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-switcher-return-chat.png`
+
+Flag-off local-QA launch:
+
+- Command: `bash ./scripts/with-mobile-env.sh qa local npx expo run:android`.
+- Build result: Gradle `BUILD SUCCESSFUL`; Metro bundled `index.ts`.
+- The normal chat screen launched without the voice diagnostics activity icon, confirming the switcher is hidden when `EXPO_PUBLIC_VOICE_PLAYBACK_DIAGNOSTICS=1` is not set.
+- Evidence screenshot: `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-switcher-flag-off-chat.png`.
+
+Limitations:
+
+- The local Firebase/backend services were not available during this switcher rehearsal, so chat generation and live voice playback were not exercised in this run.
+- Device logs showed only the expected local network failures: `Failed to load feature flags`, `Failed to load conversations`, and `Failed to load model catalog`; no `FATAL EXCEPTION` appeared during the switcher round trip.
+
+### 2026-06-06 Android QA newuser voice flow
+
+QA setup:
+
+- Device: Android emulator `emulator-10896`, app package `com.quietroom.mobile.qa`.
+- Launch command: `bash ./scripts/with-mobile-env.sh qa qa env EXPO_PUBLIC_VOICE_PLAYBACK_DIAGNOSTICS=1 npx expo run:android`.
+- QA API health checks passed for both configured Lambda URLs:
+  - `https://6rc3hj3tvyjheia4ilr5svat5i0vdkzm.lambda-url.us-east-1.on.aws/health`
+  - `https://wcqbsjvwjbv3hvkthaoxqboljq0kmcap.lambda-url.us-east-1.on.aws/health`
+- Account: `newuser@example.com`, authenticated through the QA Firebase project `gabriel-qa-89f20`.
+- Conversation selected from QA `/api/conversations`: `1776812388514-jbsmz64q`, latest assistant message index `9`.
+
+User-like flow:
+
+- Cleared app state with `adb shell pm clear com.quietroom.mobile.qa`.
+- Launched the QA dev client, signed in as `newuser@example.com`, and loaded an existing conversation about Psalm 42.
+- Sent a realistic prompt through the normal chat UI. The intended prompt was "Please give me a medium reflection on Psalm 42 for someone discouraged about 180 words"; the actual adb-entered prompt visible in the app was truncated to `Please give me a medium reflection on Psalm 42 for someo about 180 words`.
+- QA returned a completed assistant response. The normal chat card rendered the production voice button.
+
+Production voice-button result:
+
+- Tapped the normal assistant message voice button, not the diagnostics screen.
+- Engine: `expo-av-live-get`.
+- Message index: `9`.
+- Terminal event: `phase=finish`, `didJustFinish=true`, `positionMillis=64690`, `durationMillis=64690`, timestamp `2026-06-06T23:34:01.449Z`.
+- Result: no clipping, no playback error observed.
+- Evidence log: `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-qa-newuser-voice-production.log`.
+
+In-app diagnostics against the same QA conversation/message:
+
+- Opened the diagnostics screen from the new header activity icon while staying in the same QA app session.
+- Diagnostics screen showed `Current: newuser@example.com` and the QA API base.
+- Inputs: conversation ID `1776812388514-jbsmz64q`, message index `9`, run count `1`.
+- `expo-av-live-get`:
+  - QA auth succeeded with token source `firebase-user`, provider `password`, audience `gabriel-qa-89f20`.
+  - Conversation probe returned `200` with `messages-10/index-role-assistant`.
+  - Stream probe returned `200 audio/mpeg`.
+  - Terminal event: `phase=finish`, `positionMillis=64320`, `durationMillis=64320`, timestamp `2026-06-06T23:40:41.211Z`.
+  - Summary: `passedAttempts=1`, `clippedAttempts=0`, `errorAttempts=0`.
+  - Evidence log: `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-qa-newuser-diagnostics-av.log`.
+- `expo-audio-live-get`:
+  - QA auth succeeded with token source `firebase-user`, provider `password`, audience `gabriel-qa-89f20`.
+  - Conversation probe returned `200` with `messages-10/index-role-assistant`.
+  - Stream probe returned `200 audio/mpeg`.
+  - It remained in `buffering/paused` for roughly 22 seconds before transitioning to `ready/playing`.
+  - Terminal event: `phase=finish`, `positionMillis=59023`, `durationMillis=59016`, timestamp `2026-06-06T23:42:57.017Z`.
+  - Summary: `passedAttempts=1`, `clippedAttempts=0`, `errorAttempts=0`.
+  - Evidence log: `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-qa-newuser-diagnostics-audio.log`.
+
+Evidence screenshots:
+
+- `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-qa-newuser-01-guest-chat.png`
+- `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-qa-newuser-03-login-modal.png`
+- `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-qa-newuser-05-login-filled.png`
+- `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-qa-newuser-09-response-wait-25s.png`
+- `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-qa-newuser-10-response-end.png`
+- `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-qa-newuser-11-voice-started.png`
+- `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-qa-newuser-13-voice-finished.png`
+- `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-qa-newuser-14-diagnostics-open.png`
+- `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-qa-newuser-17c-diagnostics-values-visible.png`
+- `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-qa-newuser-20-diagnostics-av-finished.png`
+- `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-qa-newuser-22-diagnostics-audio-finished.png`
+- `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-qa-newuser-conversations.json`
+
+Current conclusion:
+
+- The full QA user flow worked end to end for `newuser@example.com`: sign-in, normal chat response, production voice playback, in-app diagnostics navigation, and both diagnostic engines against the same saved assistant message.
+- Android QA did not reproduce clipping on this real account/message through either the production voice button or the one-run diagnostic comparison.
+- The diagnostic comparison did reveal an engine-level difference on QA: `expo-audio` spent noticeably longer buffering and reported a shorter generated stream duration than `expo-av`. Because each run fetches a fresh stream for the same saved text, the duration values are useful playback evidence but not byte-identical audio comparisons.
+
+### 2026-06-11 physical Pixel 8a QA diagnostic sideload
+
+Device:
+
+- Serial: `42151JEKB05266`.
+- Model: Pixel 8a.
+- Android: `16`.
+
+Installed build:
+
+- Package: `com.quietroom.mobile.qa`.
+- Version code: `20`.
+- Version name: `1.0.0`.
+- APK: `android/app/build/outputs/apk/release/app-release.apk`.
+- APK SHA256: `8ae64d56b6beba48c9a1536d2be1a33c72b2b4f442e115bb972b48ea908caef7`.
+- APK signing SHA1: `D2:6F:2C:F6:85:1D:FC:8C:11:CA:91:A9:C0:23:C9:61:ED:D9:AA:53`.
+- APK signing SHA256: `39:70:61:3B:B5:4B:DC:FD:D4:6A:2A:F3:43:F4:E5:BE:6E:C3:AF:71:E1:35:01:43:D7:24:2F:4D:3C:88:F7:97`.
+- Install command: `adb -s 42151JEKB05266 install -r android/app/build/outputs/apk/release/app-release.apk`.
+- Install result: `Success`.
+- Device package readback: `versionCode=20`, `lastUpdateTime=2026-06-11 14:47:04`, `installerPackageName=null`.
+
+QA config notes:
+
+- The build was created with `bash ./scripts/with-mobile-env.sh qa qa env EXPO_PUBLIC_VOICE_PLAYBACK_DIAGNOSTICS=1 bash -lc 'cd android && ./gradlew assembleRelease'`.
+- The worktree local `google-services.qa.json` and generated `android/app/google-services.json` were refreshed from `../quiet-room-mobile-store-distribution/google-services.qa.json` before building.
+- That refreshed Firebase file targets QA project `gabriel-qa-89f20`, package `com.quietroom.mobile.qa`, and includes an Android OAuth client for certificate hash `2f06c1d3499a1aacbf660cf35bbc097be630373a`.
+- The sideloaded APK is signed with the upload key hash `d26f2cf6851dfc8c11ca91a9c023c961edd9aa53`, not the `2f06...` Play app-signing hash in the refreshed Firebase file. Therefore a direct sideload can still hit Google `DEVELOPER_ERROR` unless the QA Firebase / Google OAuth Android app also registers the upload-key SHA1 for `com.quietroom.mobile.qa`.
+- `firebase` and `gcloud` CLIs were not available in this shell, so the sideload SHA could not be added from this environment.
+
+Phone evidence:
+
+- `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-physical-pixel8a-qa-diagnostic-v20-installed.png`.
+- `docs/qr-mob-021-voice-playback-diagnostics/evidence/android-physical-pixel8a-qa-diagnostic-v20-relaunch.png`.
+- The screenshots are black because the physical phone was asleep/locked during adb capture (`screenState=SCREEN_STATE_OFF`, focused app `com.quietroom.mobile.qa/.MainActivity`). Logcat showed the app process started and React Native ran `main`; no launch-time fatal exception was observed.
+
+Verification:
+
+- `npm run typecheck`: pass.
+- `git diff --check`: pass.
+
+### 2026-06-11 Android QA internal gated diagnostics deploy
+
+Implementation update:
+
+- Added `EXPO_PUBLIC_VOICE_PLAYBACK_DIAGNOSTICS_USER_IDS` support.
+- The normal in-app diagnostics entry now requires both `EXPO_PUBLIC_VOICE_PLAYBACK_DIAGNOSTICS=1` and either an empty allowlist or a matching authenticated Firebase UID.
+- The deployed QA build was configured with allowlist UID `b71cO4Azg8Sx2YofK5UFblMLCMk2`.
+- The diagnostics screen still pre-fills the current conversation ID and latest assistant message index when opened from chat.
+
+Verification before deploy:
+
+- `npm run typecheck`: pass.
+- `npm run android:play:status:qa`: pass; package `com.quietroom.mobile.qa`, versionCode `20`, upload key configured.
+- `npm run android:play:preflight:qa`: pass; `19` pass, `0` warn, `0` fail.
+- `git diff --check`: pass.
+
+Build:
+
+- Command: `bash ./scripts/with-mobile-env.sh qa qa env EXPO_PUBLIC_VOICE_PLAYBACK_DIAGNOSTICS=1 EXPO_PUBLIC_VOICE_PLAYBACK_DIAGNOSTICS_USER_IDS=b71cO4Azg8Sx2YofK5UFblMLCMk2 bash -lc 'cd android && ./gradlew bundleRelease'`.
+- Result: Gradle `BUILD SUCCESSFUL`.
+- AAB: `android/app/build/outputs/bundle/release/app-release.aab`.
+- AAB SHA256: `7854fd073079e195b645b5a034c34cc7bd90add2f854fe3f90cc76d87cba4387`.
+
+Google Play QA internal:
+
+- Previous internal track readback: `QA internal 19`, versionCodes `["19"]`, status `completed`.
+- Upload edit: `06451464618696938177`.
+- Uploaded versionCode: `20`.
+- Commit result: edit `06451464618696938177` committed.
+- Track readback after commit:
+  - track: `internal`
+  - release: `QA internal 20`
+  - versionCodes: `["20"]`
+  - status: `completed`
+  - release notes: `qa/qa internal testing build versionCode 20; QR-MOB-021 voice playback diagnostics gated to the requested QA user id.`
+
+Tracker:
+
+- Updated `/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile/docs/project-tracker.md` QR-MOB-021 row to record the Android QA internal `versionCode 20` gated diagnostics deploy.

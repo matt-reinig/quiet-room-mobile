@@ -85,6 +85,15 @@ type ReportResponseTarget = {
   conversationId: string;
 };
 
+type VoiceDiagnosticsTarget = {
+  conversationId: string | null;
+  messageIndex: number | null;
+};
+
+type QuietRoomScreenProps = {
+  onOpenVoiceDiagnostics?: (target: VoiceDiagnosticsTarget) => void;
+};
+
 function headerTopPadding(): number {
   return Platform.OS === "ios" ? 84 : 12;
 }
@@ -113,7 +122,7 @@ function keyboardInsetFromScreenY(height: number | undefined, screenY: number | 
   return height && height > 0 ? height : 0;
 }
 
-export default function QuietRoomScreen() {
+export default function QuietRoomScreen({ onOpenVoiceDiagnostics }: QuietRoomScreenProps = {}) {
   const { deleteAccount, isAnon, logout, user } = useAuth();
   const voiceModeAvailable = useFeatureFlag("voice_mode", false);
   const insets = useSafeAreaInsets();
@@ -147,6 +156,15 @@ export default function QuietRoomScreen() {
   const composerModelLabel = showChatOptionsButton
     ? labelForChatModel(currentModel, modelOptions)
     : "";
+  const latestAssistantMessageIndex = useMemo(() => {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]?.role === "assistant") {
+        return index;
+      }
+    }
+
+    return null;
+  }, [messages]);
 
   const [showAbout, setShowAbout] = useState(false);
   const [showCrucifix, setShowCrucifix] = useState(false);
@@ -1133,6 +1151,26 @@ export default function QuietRoomScreen() {
           ) : null}
 
           <View style={styles.headerRight}>
+            {onOpenVoiceDiagnostics ? (
+              <Pressable
+                onPress={() => {
+                  setShowProfileMenu(false);
+                  setShowChatOptions(false);
+                  onOpenVoiceDiagnostics({
+                    conversationId: currentId ?? null,
+                    messageIndex: latestAssistantMessageIndex,
+                  });
+                }}
+                onPressIn={dismissKeyboard}
+                style={styles.headerIconButton}
+                testID={testIds.voiceDiagnostics.open}
+                accessibilityRole="button"
+                accessibilityLabel="Open voice playback diagnostics"
+                hitSlop={8}
+              >
+                <Feather name="activity" size={20} color={mobileWeb.colors.gray700} />
+              </Pressable>
+            ) : null}
             <Pressable
               onPress={() => {
                 setShowProfileMenu(false);

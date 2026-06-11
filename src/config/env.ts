@@ -34,6 +34,15 @@ function trimTrailingSlashes(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
+function parseCsv(value: string | undefined): string[] {
+  return (
+    value
+      ?.split(",")
+      .map((item) => item.trim())
+      .filter(Boolean) || []
+  );
+}
+
 function normalizeAndroidHostAliasForPlatform(value: string): string {
   if (Platform.OS === "android") {
     return value;
@@ -134,7 +143,27 @@ export const RENDER_MODE: RenderMode = resolveRenderMode(renderModeRaw);
 
 export const VOICE_PLAYBACK_DIAGNOSTICS_ENABLED =
   RENDER_MODE === "voice-diagnostics" ||
-  process.env.EXPO_PUBLIC_VOICE_PLAYBACK_DIAGNOSTICS === "1";
+  process.env.EXPO_PUBLIC_VOICE_PLAYBACK_DIAGNOSTICS === "1" ||
+  expoExtra.voicePlaybackDiagnostics === "1";
+
+export const VOICE_PLAYBACK_DIAGNOSTICS_ALLOWED_USER_IDS = parseCsv(
+  process.env.EXPO_PUBLIC_VOICE_PLAYBACK_DIAGNOSTICS_USER_IDS ||
+    (typeof expoExtra.voicePlaybackDiagnosticsUserIds === "string"
+      ? expoExtra.voicePlaybackDiagnosticsUserIds
+      : undefined)
+);
+
+export function isVoicePlaybackDiagnosticsAllowedForUser(uid: string | null | undefined): boolean {
+  if (!VOICE_PLAYBACK_DIAGNOSTICS_ENABLED) {
+    return false;
+  }
+
+  if (VOICE_PLAYBACK_DIAGNOSTICS_ALLOWED_USER_IDS.length === 0) {
+    return true;
+  }
+
+  return Boolean(uid && VOICE_PLAYBACK_DIAGNOSTICS_ALLOWED_USER_IDS.includes(uid));
+}
 
 export const VOICE_DIAGNOSTIC_CONVERSATION_ID =
   process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_CONVERSATION_ID ||

@@ -15,6 +15,8 @@
     "voice:diagnostics:seed:local-qa": "bash ./scripts/with-mobile-env.sh qa local node ./scripts/seed-voice-diagnostics.js",
     "voice:diagnostics:android:local-qa": "bash ./scripts/with-mobile-env.sh qa local env EXPO_PUBLIC_RENDER_MODE=voice-diagnostics npx expo run:android",
     "voice:diagnostics:ios:local-qa": "bash ./scripts/with-mobile-env.sh qa local env EXPO_PUBLIC_RENDER_MODE=voice-diagnostics npx expo run:ios",
+    "voice:diagnostics:switcher:android:local-qa": "bash ./scripts/with-mobile-env.sh qa local env EXPO_PUBLIC_VOICE_PLAYBACK_DIAGNOSTICS=1 npx expo run:android",
+    "voice:diagnostics:switcher:ios:local-qa": "bash ./scripts/with-mobile-env.sh qa local env EXPO_PUBLIC_VOICE_PLAYBACK_DIAGNOSTICS=1 npx expo run:ios",
     "native:sync:local-qa": "bash ./scripts/sync-native-variant.sh qa local",
     "native:sync:qa": "bash ./scripts/sync-native-variant.sh qa qa",
     "native:sync:prod": "bash ./scripts/sync-native-variant.sh prod prod",

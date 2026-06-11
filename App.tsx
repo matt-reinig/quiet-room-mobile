@@ -1,12 +1,18 @@
-import { LogBox, NativeModules } from "react-native";
+import { LogBox, NativeModules, StyleSheet, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { AuthProvider } from "./src/contexts/AuthContext";
+import { useState } from "react";
+import { AuthProvider, useAuth } from "./src/contexts/AuthContext";
 import FeatureFlagsGate from "./src/components/FeatureFlagsGate";
 import { FeatureFlagsProvider } from "./src/contexts/FeatureFlagsContext";
-import { RENDER_MODE } from "./src/config/env";
+import { RENDER_MODE, isVoicePlaybackDiagnosticsAllowedForUser } from "./src/config/env";
 import QuietRoomScreen from "./src/screens/QuietRoomScreen";
 import QuietRoomWebParityScreen from "./src/screens/QuietRoomWebParityScreen";
 import VoicePlaybackDiagnosticsScreen from "./src/screens/VoicePlaybackDiagnosticsScreen";
+
+type VoiceDiagnosticsTarget = {
+  conversationId?: string | null;
+  messageIndex?: number | null;
+};
 
 const detoxSettings = NativeModules.SettingsManager?.settings ?? {};
 const isDetoxSession = Boolean(
@@ -37,12 +43,55 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <FeatureFlagsProvider>
-          <FeatureFlagsGate>
-            <QuietRoomScreen />
-          </FeatureFlagsGate>
-        </FeatureFlagsProvider>
+        <NativeApp />
       </AuthProvider>
     </SafeAreaProvider>
   );
 }
+
+function NativeApp() {
+  const { user } = useAuth();
+  const [showVoiceDiagnostics, setShowVoiceDiagnostics] = useState(false);
+  const [voiceDiagnosticsTarget, setVoiceDiagnosticsTarget] =
+    useState<VoiceDiagnosticsTarget | null>(null);
+  const diagnosticsAllowed = isVoicePlaybackDiagnosticsAllowedForUser(user?.uid);
+
+  return (
+    <>
+      <View style={showVoiceDiagnostics ? styles.hiddenSurface : styles.activeSurface}>
+        <FeatureFlagsProvider>
+          <FeatureFlagsGate>
+            <QuietRoomScreen
+              onOpenVoiceDiagnostics={
+                diagnosticsAllowed
+                  ? (target) => {
+                      setVoiceDiagnosticsTarget(target);
+                      setShowVoiceDiagnostics(true);
+                    }
+                  : undefined
+              }
+            />
+          </FeatureFlagsGate>
+        </FeatureFlagsProvider>
+      </View>
+      {showVoiceDiagnostics ? (
+        <View style={styles.activeSurface}>
+          <VoicePlaybackDiagnosticsScreen
+            initialConversationId={voiceDiagnosticsTarget?.conversationId}
+            initialMessageIndex={voiceDiagnosticsTarget?.messageIndex}
+            onClose={() => setShowVoiceDiagnostics(false)}
+          />
+        </View>
+      ) : null}
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  activeSurface: {
+    flex: 1,
+  },
+  hiddenSurface: {
+    display: "none",
+  },
+});

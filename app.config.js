@@ -58,6 +58,9 @@ const releaseEnv = resolveReleaseEnv(process.env.EXPO_PUBLIC_RELEASE_ENV);
 const apiBase = process.env.EXPO_PUBLIC_API_BASE || "";
 const renderMode = process.env.EXPO_PUBLIC_RENDER_MODE || "native";
 const streamingBase = process.env.EXPO_PUBLIC_STREAMING_BASE || "";
+const voicePlaybackDiagnostics = process.env.EXPO_PUBLIC_VOICE_PLAYBACK_DIAGNOSTICS || "";
+const voicePlaybackDiagnosticsUserIds =
+  process.env.EXPO_PUBLIC_VOICE_PLAYBACK_DIAGNOSTICS_USER_IDS || "";
 const voiceDiagnosticAutorun = process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_AUTORUN || "";
 const voiceDiagnosticConversationId =
   process.env.EXPO_PUBLIC_VOICE_DIAGNOSTIC_CONVERSATION_ID || "";
@@ -132,6 +135,8 @@ module.exports = {
       releaseEnv,
       renderMode,
       streamingBase,
+      voicePlaybackDiagnostics,
+      voicePlaybackDiagnosticsUserIds,
       voiceDiagnosticAuthToken,
       voiceDiagnosticAutorun,
       voiceDiagnosticApiBase,
