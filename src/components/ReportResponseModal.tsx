@@ -1,5 +1,17 @@
-import { useEffect, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import {
+  Keyboard,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   REPORT_RESPONSE_CONTEXT_SCOPES,
   REPORT_RESPONSE_REASONS,
@@ -22,6 +34,10 @@ type ReportResponseModalProps = {
   visible: boolean;
 };
 
+const ANDROID_KEYBOARD_CLEARANCE = 24;
+const IOS_KEYBOARD_CLEARANCE = 12;
+const MODAL_EDGE_PADDING = 16;
+
 export default function ReportResponseModal({
   error,
   onClose,
@@ -30,9 +46,13 @@ export default function ReportResponseModal({
   submitted,
   visible,
 }: ReportResponseModalProps) {
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const scrollRef = useRef<ScrollView | null>(null);
   const [reason, setReason] = useState<ReportResponseReason>("harmful_or_unsafe");
   const [contextScope, setContextScope] =
     useState<ReportResponseContextScope>("metadata_only");
+  const [keyboardInset, setKeyboardInset] = useState(0);
   const [note, setNote] = useState("");
 
   useEffect(() => {
@@ -43,10 +63,60 @@ export default function ReportResponseModal({
     }
   }, [visible]);
 
+  useEffect(() => {
+    if (!visible) {
+      setKeyboardInset(0);
+      return;
+    }
+
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSubscription = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardInset(event.endCoordinates.height);
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      });
+    });
+    const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      setKeyboardInset(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [visible]);
+
+  const keyboardVisible = keyboardInset > 0;
+  const keyboardClearance =
+    Platform.OS === "ios" ? IOS_KEYBOARD_CLEARANCE : ANDROID_KEYBOARD_CLEARANCE;
+  const topPadding = Math.max(MODAL_EDGE_PADDING, insets.top + MODAL_EDGE_PADDING);
+  const bottomPadding = keyboardVisible
+    ? Math.max(MODAL_EDGE_PADDING, keyboardInset + keyboardClearance)
+    : Math.max(MODAL_EDGE_PADDING, insets.bottom + MODAL_EDGE_PADDING);
+  const availableHeight = Math.max(
+    260,
+    windowHeight - topPadding - bottomPadding - MODAL_EDGE_PADDING
+  );
+
   return (
     <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
       <View style={styles.scrim}>
-        <View style={styles.dialog} testID={testIds.reportResponseModal}>
+        <View
+          pointerEvents="box-none"
+          style={[
+            styles.modalFrame,
+            {
+              justifyContent: keyboardVisible ? "flex-end" : "center",
+              paddingBottom: bottomPadding,
+              paddingTop: topPadding,
+            },
+          ]}
+        >
+        <View
+          style={[styles.dialog, { maxHeight: availableHeight }]}
+          testID={testIds.reportResponseModal}
+        >
           {submitted ? (
             <>
               <Text style={styles.title}>Thanks, your report was submitted.</Text>
@@ -66,6 +136,7 @@ export default function ReportResponseModal({
                 bounces={false}
                 contentContainerStyle={styles.formContent}
                 keyboardShouldPersistTaps="handled"
+                ref={scrollRef}
                 showsVerticalScrollIndicator={false}
                 style={styles.formScroll}
                 testID={testIds.reportResponseForm}
@@ -145,6 +216,11 @@ export default function ReportResponseModal({
                   maxLength={1000}
                   multiline
                   onChangeText={setNote}
+                  onFocus={() => {
+                    requestAnimationFrame(() => {
+                      scrollRef.current?.scrollToEnd({ animated: true });
+                    });
+                  }}
                   placeholder="Optional note"
                   placeholderTextColor={mobileWeb.colors.gray500}
                   style={styles.noteInput}
@@ -193,6 +269,7 @@ export default function ReportResponseModal({
             </>
           )}
         </View>
+        </View>
       </View>
     </Modal>
   );
@@ -232,7 +309,11 @@ const styles = StyleSheet.create({
   },
   formScroll: {
     flexShrink: 1,
-    maxHeight: 440,
+  },
+  modalFrame: {
+    alignItems: "center",
+    flex: 1,
+    paddingHorizontal: MODAL_EDGE_PADDING,
   },
   noteInput: {
     backgroundColor: mobileWeb.colors.white,

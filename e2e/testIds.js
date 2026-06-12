@@ -54,6 +54,7 @@ module.exports = {
   crucifixClose: 'quiet-room.crucifix.close',
   crucifixImage: 'quiet-room.crucifix.image',
   loginModal: 'quiet-room.login.modal',
+  loginClose: 'quiet-room.login.close',
   loginAppleButton: 'quiet-room.login.apple',
   loginGoogleButton: 'quiet-room.login.google',
   loginEmailInput: 'quiet-room.login.email',

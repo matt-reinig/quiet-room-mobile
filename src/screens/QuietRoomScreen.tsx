@@ -45,7 +45,7 @@ import type { ChatMessage } from "../types/chat";
 const VOICE_MODE_STORAGE_KEY = "gabriel.voiceModeEnabled";
 const USER_ANCHOR_TOP_OFFSET = 6;
 const MESSAGE_LIST_PADDING_TOP = 0;
-const MESSAGE_LIST_PADDING_BOTTOM = 12;
+const MESSAGE_LIST_PADDING_BOTTOM = 104;
 const COMPOSER_ROW_PADDING_TOP = 12;
 const COMPOSER_ROW_PADDING_BOTTOM = 16;
 const COMPOSER_META_ROW_HEIGHT = 32;
@@ -1566,7 +1566,13 @@ export default function QuietRoomScreen() {
           visible={showComposerFullscreen}
           onRequestClose={() => setShowComposerFullscreen(false)}
         >
-          <SafeAreaView style={styles.fullscreenSafeArea}>
+          <SafeAreaView
+            edges={["left", "right"]}
+            style={[
+              styles.fullscreenSafeArea,
+              { paddingBottom: insets.bottom, paddingTop: insets.top },
+            ]}
+          >
             <View style={styles.fullscreenHeader}>
               <Text style={styles.fullscreenHeaderTitle}>Compose</Text>
               <Pressable onPress={() => setShowComposerFullscreen(false)} style={styles.fullscreenHeaderButton} testID={testIds.composerFullscreenClose}>
@@ -1727,7 +1733,14 @@ export default function QuietRoomScreen() {
           visible={showCrucifix}
           onRequestClose={() => setShowCrucifix(false)}
         >
-          <SafeAreaView style={styles.crucifixModalScreen} testID={testIds.crucifixModal}>
+          <SafeAreaView
+            edges={["left", "right"]}
+            style={[
+              styles.crucifixModalScreen,
+              { paddingBottom: insets.bottom, paddingTop: insets.top },
+            ]}
+            testID={testIds.crucifixModal}
+          >
             <View style={styles.crucifixModalHeader}>
               <Pressable
                 accessibilityLabel="Close crucifix"

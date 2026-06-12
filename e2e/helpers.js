@@ -244,6 +244,9 @@ async function loginWithKnownAccount() {
   const credentials = getE2ECredentials();
   await openLoginModal();
   await element(by.id(ids.loginEmailInput)).replaceText(credentials.email);
+  if (device.getPlatform() === 'ios') {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
   await element(by.id(ids.loginPasswordInput)).replaceText(credentials.password);
   await element(by.id(ids.loginSigninButton)).tap();
   await waitFor(element(by.id(ids.loginModal))).not.toExist().withTimeout(15000).catch(() => null);
@@ -255,6 +258,9 @@ async function loginWithKnownAccount() {
 async function loginWithEmailCredentials(credentials) {
   await openLoginModal();
   await element(by.id(ids.loginEmailInput)).replaceText(credentials.email);
+  if (device.getPlatform() === 'ios') {
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
   await element(by.id(ids.loginPasswordInput)).replaceText(credentials.password);
   await element(by.id(ids.loginSigninButton)).tap();
   await waitFor(element(by.id(ids.loginModal))).not.toExist().withTimeout(15000).catch(() => null);

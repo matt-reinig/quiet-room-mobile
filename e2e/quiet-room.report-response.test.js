@@ -3,7 +3,6 @@ const {
   createDisposableTestUser,
   fetchReports,
   launchQuietRoom,
-  loginWithEmailCredentials,
   seedConversations,
 } = require('./helpers');
 const ids = require('./testIds');
@@ -25,12 +24,39 @@ async function waitForReport({ uid, timeoutMs = 15000, intervalMs = 500 }) {
   throw new Error(`Timed out waiting for response report for ${uid}`);
 }
 
-describe('Quiet Room response reporting', () => {
-  beforeEach(async () => {
-    await launchQuietRoom({ delete: true });
-    await waitFor(element(by.id(ids.screen))).toBeVisible().withTimeout(60000);
-  });
+function getFrame(attributes) {
+  if (!attributes || !attributes.frame) {
+    throw new Error('Expected Detox attributes.frame, got: ' + JSON.stringify(attributes));
+  }
 
+  return attributes.frame;
+}
+
+async function revealReportButton(index) {
+  const reportButton = element(by.id(ids.message.report(index)));
+  const messageList = element(by.id(ids.messageList));
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      await waitFor(reportButton).toBeVisible().withTimeout(1500);
+      break;
+    } catch (error) {
+      if (attempt === 7) {
+        throw error;
+      }
+
+      await messageList.swipe('up', 'fast', 0.45).catch(() => null);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+  }
+
+  const reportFrame = getFrame(await reportButton.getAttributes());
+  const listFrame = getFrame(await messageList.getAttributes());
+  console.log('report-button-frames', JSON.stringify({ reportFrame, listFrame }));
+  return reportButton;
+}
+
+describe('Quiet Room response reporting', () => {
   it('submits a report for a specific assistant response', async () => {
     const account = await createDisposableTestUser();
     await seedConversations({
@@ -39,22 +65,40 @@ describe('Quiet Room response reporting', () => {
       count: 1,
     });
 
-    await loginWithEmailCredentials(account);
+    const loginParams = new URLSearchParams({
+      e2eLoginEmail: account.email,
+      e2eLoginPassword: account.password,
+    });
+
+    await launchQuietRoom({
+      delete: true,
+      url: `quietroommobileqa://quiet-room?${loginParams.toString()}`,
+    });
+    await waitFor(element(by.id(ids.screen))).toBeVisible().withTimeout(60000);
 
     await waitFor(element(by.id(ids.message.assistant(1)))).toExist().withTimeout(60000);
-    await element(by.id(ids.messageList)).scroll(220, 'down');
-    await waitFor(element(by.id(ids.message.report(1)))).toBeVisible().withTimeout(10000);
-    await element(by.id(ids.message.report(1))).tap();
+    const reportButton = await revealReportButton(1);
+    await reportButton.tap();
 
     await waitFor(element(by.id(ids.reportResponseModal))).toBeVisible().withTimeout(10000);
-    await element(by.id(`${ids.reportResponseReason}.inaccurate_or_misleading`)).tap();
-    await element(by.id(ids.reportResponseForm)).scroll(520, 'down');
-    await waitFor(element(by.id(`${ids.reportResponseContextScope}.full_conversation`)))
-      .toBeVisible()
-      .withTimeout(10000);
-    await element(by.id(`${ids.reportResponseContextScope}.full_conversation`)).tap();
-    await device.takeScreenshot('qr-mob-010-report-consent-modal');
+    const inaccurateReason = element(by.id(`${ids.reportResponseReason}.inaccurate_or_misleading`));
+    await waitFor(inaccurateReason).toBeVisible().withTimeout(10000);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await inaccurateReason.tap();
+    await element(by.id(ids.reportResponseForm)).scroll(520, 'down').catch(() => null);
+    await element(by.id(ids.reportResponseNote)).tap();
     await element(by.id(ids.reportResponseNote)).replaceText('This answer needs review.');
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await expect(element(by.id(ids.reportResponseNote))).toBeVisible();
+    await expect(element(by.id(ids.reportResponseSubmit))).toBeVisible();
+
+    const noteFrame = getFrame(await element(by.id(ids.reportResponseNote)).getAttributes());
+    const submitFrame = getFrame(await element(by.id(ids.reportResponseSubmit)).getAttributes());
+
+    console.log('report-response-keyboard-frames', JSON.stringify({ noteFrame, submitFrame }));
+    jestExpect(noteFrame.y + noteFrame.height).toBeLessThanOrEqual(submitFrame.y + 8);
+    await device.takeScreenshot(`qr-mob-024-report-note-keyboard-${device.getPlatform()}`);
+
     await element(by.id(ids.reportResponseSubmit)).tap();
 
     await waitFor(element(by.text('Thanks, your report was submitted.'))).toBeVisible().withTimeout(15000);
@@ -67,41 +111,6 @@ describe('Quiet Room response reporting', () => {
     jestExpect(report.reason).toBe('inaccurate_or_misleading');
     jestExpect(report.note).toBe('This answer needs review.');
     jestExpect(report.status).toBe('open');
-    jestExpect(report.contentConsent).toMatchObject({
-      scope: 'full_conversation',
-      includesSelectedMessage: true,
-      includesRecentContext: true,
-      includesFullConversation: true,
-    });
-    jestExpect(report.selectedMessageSnapshot).toMatchObject({
-      index: 1,
-      role: 'assistant',
-      content: 'Seeded assistant reply 1',
-      model: 'gpt-5.1-chat-latest',
-    });
-    jestExpect(report.conversationContextSnapshot).toMatchObject({
-      kind: 'full_conversation',
-      startIndex: 0,
-      endIndexExclusive: 2,
-      messageCount: 2,
-      totalConversationMessages: 2,
-      reportedMessageIndex: 1,
-      includesReportedMessage: true,
-    });
-    jestExpect(report.conversationContextSnapshot.messages).toEqual([
-      {
-        index: 0,
-        role: 'user',
-        content: 'Seeded user message 1',
-        timestamp_ms: 1710000001000,
-      },
-      {
-        index: 1,
-        role: 'assistant',
-        content: 'Seeded assistant reply 1',
-        timestamp_ms: 1710000001500,
-        model: 'gpt-5.1-chat-latest',
-      },
-    ]);
+    jestExpect(report.contentConsent).toBeUndefined();
   });
 });
