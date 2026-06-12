@@ -32,14 +32,19 @@ describe('Quiet Room crucifix modal', () => {
     await expect(image).toBeVisible();
 
     const modalFrame = getFrame(await modal.getAttributes());
+    const closeFrame = getFrame(await closeButton.getAttributes());
     const imageFrame = getFrame(await image.getAttributes());
 
-    console.log('crucifix-modal-frames', JSON.stringify({ screenFrame, modalFrame, imageFrame }));
+    console.log('crucifix-modal-frames', JSON.stringify({ screenFrame, modalFrame, closeFrame, imageFrame }));
 
     jestExpect(modalFrame.height).toBeGreaterThan(screenFrame.height * 0.9);
     jestExpect(modalFrame.width).toBeGreaterThan(screenFrame.width * 0.9);
+    if (device.getPlatform() === 'ios') {
+      jestExpect(closeFrame.y).toBeGreaterThanOrEqual(44);
+    }
     jestExpect(imageFrame.height).toBeGreaterThan(modalFrame.height * 0.7);
 
+    await device.takeScreenshot(`qr-mob-023-crucifix-close-safe-area-${device.getPlatform()}`);
     await closeButton.tap();
     await waitFor(modal).not.toExist().withTimeout(10000);
   });
