@@ -72,10 +72,25 @@ Updated on 2026-06-18.
   - `npm run android:play:status:prod`
   - `npm run android:play:preflight:prod`
 
+### Backend Production Deploy Completed
+
+- Explicit approval received on 2026-06-18 for the backend production deploy.
+- Promoted backend `origin/develop-from-main` at `a70292e` to `origin/main` with merge commit `f191fd8` (`Promote QA backend to production`).
+- Ran `./deploy-prod.sh` from local branch `main` at `f191fd8`.
+- Built and pushed prod ECR image `054769575180.dkr.ecr.us-east-1.amazonaws.com/gabriel-backend-prod:f191fd8`.
+- Updated prod Lambdas:
+  - `gabriel_lambda_prod`
+  - `gabriel-profile-builder_prod`
+  - `gabriel_streaming_lambda_prod`
+- Confirmed all three prod Lambdas report `Active`, `LastUpdateStatus=Successful`, and image `gabriel-backend-prod:f191fd8`.
+- Updated prod Lambda env readiness while preserving existing prod variables:
+  - `ANTHROPIC_API_KEY` present on all three prod Lambdas.
+  - `ANTHROPIC_MAX_TOKENS=4096` on all three prod Lambdas.
+  - `PROFILE_BUILDER_PROVIDER=anthropic`, `PROFILE_BUILDER_MODEL=claude-sonnet-4-6`, and `PROFILE_BUILDER_ALLOW_EMPTY_CORE=true` on `gabriel-profile-builder_prod`.
+- Verified prod `/health` returned HTTP 200 for all three Function URLs.
+
 ### Still Approval-Gated
 
-- Prod Lambda env mutation has not been run.
-- Prod backend deploy has not been run.
 - Prod feature flag upserts have not been run.
 - Mobile `master` has not been pushed.
 - App Store Connect upload has not been run.
