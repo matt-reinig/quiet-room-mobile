@@ -81,8 +81,8 @@ Expected behavior:
 
 Verification:
 
-- Confirm prod flag docs evaluate on for a production tester.
-- Trigger or observe a prod profile-builder run.
+- Confirm prod flag docs evaluate on for production smoke user `newuser@example.com`.
+- Trigger or observe a prod profile-builder run for `newuser@example.com`.
 - Confirm CloudWatch logs include `profile_builder.split_memory_completed`.
 - Confirm Firestore has:
   - `users/{uid}/meta/spiritual_profile_core`
@@ -109,7 +109,7 @@ Verification:
 
 ### 4. Mobile Production Smoke
 
-From the production app or production-config build, verify:
+From the production app or production-config build, use `newuser@example.com` to verify:
 
 - Anonymous or known production sign-in works.
 - Feature flags load.
@@ -147,4 +147,3 @@ Do not run these without explicit approval:
 
 - Should mobile production branch promotion happen in the same rollout as the backend prod deploy, or should it be a follow-up after backend prod smoke?
 - Should split-profile flags go directly to 100 percent in prod, or should they start with an allowlisted production tester and then move to everyone after proof?
-- What production tester UID should be used for split-profile verification and mobile smoke?
