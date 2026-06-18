@@ -89,12 +89,32 @@ Updated on 2026-06-18.
   - `PROFILE_BUILDER_PROVIDER=anthropic`, `PROFILE_BUILDER_MODEL=claude-sonnet-4-6`, and `PROFILE_BUILDER_ALLOW_EMPTY_CORE=true` on `gabriel-profile-builder_prod`.
 - Verified prod `/health` returned HTTP 200 for all three Function URLs.
 
+### Mobile Production Deploy Completed
+
+- Explicit approval received on 2026-06-18 for the mobile production deploy.
+- Pushed the mobile production candidate to `origin/master` at `98b99f5`.
+- Production binary source commit: `98b99f5` (`Record backend production deploy proof`).
+- iOS production deploy:
+  - Ran `npm run ios:testflight:deploy:prod`.
+  - Archived `QuietRoom` build `28` to `build/ios-prod-b28.xcarchive`.
+  - Verified archive entitlements:
+    - `application-identifier: SV7SPMY2Q8.com.quietroom.mobile`
+    - `com.apple.developer.applesignin: Default`
+  - App Store Connect upload completed with `Uploaded QuietRoom` and `** EXPORT SUCCEEDED **`.
+- Android production deploy:
+  - Ran `bash ./scripts/with-mobile-env.sh prod prod bash -lc 'cd android && ./gradlew bundleRelease'`.
+  - Built signed AAB `android/app/build/outputs/bundle/release/app-release.aab`.
+  - AAB SHA256: `e00c9c96df522f0a4a2a1850ebfbcb79c6c2d575978cada8888f5fc4229cfd5f`.
+  - Uploaded to Google Play package `com.quietroom.mobile` internal track through Play edit `04628924593668462994`.
+  - Uploaded Android `versionCode 21`.
+  - Track readback confirmed `PROD internal 21`, `versionCodes ["21"]`, `status draft`.
+
 ### Still Approval-Gated
 
 - Prod feature flag upserts have not been run.
-- Mobile `master` has not been pushed.
-- App Store Connect upload has not been run.
-- Google Play upload has not been run.
+- Production mobile smoke from the uploaded app builds has not been run.
+- App Store review submission / public production release has not been run.
+- Play production rollout beyond the internal draft release has not been run.
 
 ## Rollout Scope
 
@@ -196,5 +216,4 @@ Do not run these without explicit approval:
 
 ## Open Questions
 
-- Should mobile production branch promotion happen in the same rollout as the backend prod deploy, or should it be a follow-up after backend prod smoke?
 - Should split-profile flags go directly to 100 percent in prod, or should they start with an allowlisted production tester and then move to everyone after proof?
