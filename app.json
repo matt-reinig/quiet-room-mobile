@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "13",
+      "buildNumber": "28",
       "bundleIdentifier": "com.quietroom.mobile",
       "usesAppleSignIn": true,
       "infoPlist": {
@@ -106,7 +106,7 @@
     },
     "android": {
       "package": "com.quietroom.mobile",
-      "versionCode": 6,
+      "versionCode": 21,
       "softwareKeyboardLayoutMode": "resize",
       "blockedPermissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
@@ -127,12 +127,6 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      [
-        "expo-av",
-        {
-          "microphonePermission": false
-        }
-      ],
       [
         "expo-splash-screen",
         {

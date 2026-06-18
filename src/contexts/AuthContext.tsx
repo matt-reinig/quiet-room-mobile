@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { User } from "firebase/auth";
-import { StyleSheet, View } from "react-native";
+import { Linking, NativeModules, StyleSheet, View } from "react-native";
 import Spinner from "../components/Spinner";
 import {
   deleteAccount as firebaseDeleteAccount,
@@ -12,6 +12,7 @@ import {
   sendPasswordReset as firebaseSendPasswordReset,
   signupWithEmail as firebaseSignupWithEmail,
 } from "../lib/firebase";
+import { APP_VARIANT, RELEASE_ENV } from "../config/env";
 
 type AuthContextValue = {
   deleteAccount: () => Promise<void>;
@@ -38,6 +39,43 @@ type AuthState = {
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+const detoxSettings = NativeModules.SettingsManager?.settings ?? {};
+const isDetoxSession = Boolean(
+  detoxSettings.detoxServer ||
+    detoxSettings.detoxSessionId ||
+    detoxSettings.detoxEnableSynchronization !== undefined
+);
+const allowLocalQaE2ELogin = APP_VARIANT === "qa" && RELEASE_ENV === "local";
+
+function parseE2ELoginFromUrl(url: string | null): { email: string; password: string } | null {
+  if ((!isDetoxSession && !allowLocalQaE2ELogin) || !url) {
+    return null;
+  }
+
+  const queryIndex = url.indexOf("?");
+  if (queryIndex < 0) {
+    return null;
+  }
+
+  const params = new URLSearchParams(url.slice(queryIndex + 1));
+  const email = params.get("e2eLoginEmail")?.trim();
+  const password = params.get("e2eLoginPassword") || "";
+
+  if (!email || password.length < 6) {
+    return null;
+  }
+
+  return { email, password };
+}
+
+async function readLaunchE2ELogin() {
+  try {
+    return parseE2ELoginFromUrl(await Linking.getInitialURL());
+  } catch (error) {
+    console.warn("Failed to parse launch-url e2e login", error);
+    return null;
+  }
+}
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [state, setState] = useState<AuthState>({
@@ -53,12 +91,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       try {
         const initialUser = (await firebaseEnsureAuth()) as User;
+        const e2eLogin = await readLaunchE2ELogin();
+        const resolvedUser = e2eLogin
+          ? ((await firebaseLoginWithEmail(e2eLogin.email, e2eLogin.password)) as { user: User }).user
+          : initialUser;
 
         setState({
           initializing: false,
-          isAnon: Boolean(initialUser?.isAnonymous),
+          isAnon: Boolean(resolvedUser?.isAnonymous),
           loading: false,
-          user: initialUser,
+          user: resolvedUser,
         });
       } catch (error) {
         console.error("Auth initialization failed", error);

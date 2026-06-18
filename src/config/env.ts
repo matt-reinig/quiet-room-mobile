@@ -77,7 +77,7 @@ export const STREAMING_BASE = trimTrailingSlashes(
 );
 
 export const CONTACT_EMAIL =
-  process.env.EXPO_PUBLIC_CONTACT_EMAIL || "your-email@example.com";
+  process.env.EXPO_PUBLIC_CONTACT_EMAIL || "Quietroomapp@gmail.com";
 
 export const PRIVACY_POLICY_URL =
   process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL ||

@@ -63,6 +63,7 @@ const E2E_MOCK_FEATURE_FLAGS = String(
   process.env.EXPO_PUBLIC_E2E_MOCK_FEATURE_FLAGS || "",
 ).toLowerCase();
 const E2E_FEATURE_FLAGS_RAW = String(process.env.EXPO_PUBLIC_E2E_FEATURE_FLAGS || "");
+const FEATURE_FLAGS_TIMEOUT_MS = 8_000;
 
 function parseFeatureFlagPayload(
   raw: string,
@@ -169,10 +170,66 @@ async function readLaunchFeatureFlags(): Promise<FeatureFlagsOverride | null> {
   }
 }
 
+function createTimeoutError(label: string): Error {
+  const error = new Error(`${label} timed out`);
+  error.name = "TimeoutError";
+  return error;
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(createTimeoutError(label));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 async function fetchFeatureFlags(userToken: string): Promise<Response> {
-  return fetch(`${API_BASE}/api/feature_flags`, {
-    headers: { Authorization: `Bearer ${userToken}` },
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, FEATURE_FLAGS_TIMEOUT_MS);
+
+  try {
+    return await fetch(`${API_BASE}/api/feature_flags`, {
+      headers: { Authorization: `Bearer ${userToken}` },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw createTimeoutError("Feature flags request");
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function getIdTokenWithTimeout(
+  getIdToken: (forceRefresh?: boolean) => Promise<string>,
+  forceRefresh = false,
+): Promise<string> {
+  return withTimeout(
+    getIdToken(forceRefresh),
+    FEATURE_FLAGS_TIMEOUT_MS,
+    forceRefresh ? "Firebase ID token refresh" : "Firebase ID token",
+  );
 }
 
 export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
@@ -219,15 +276,15 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
       let idToken: string;
 
       try {
-        idToken = await user.getIdToken();
+        idToken = await getIdTokenWithTimeout(user.getIdToken.bind(user));
       } catch {
-        idToken = await user.getIdToken(true);
+        idToken = await getIdTokenWithTimeout(user.getIdToken.bind(user), true);
       }
 
       let response = await fetchFeatureFlags(idToken);
 
       if (response.status === 401) {
-        const refreshedToken = await user.getIdToken(true);
+        const refreshedToken = await getIdTokenWithTimeout(user.getIdToken.bind(user), true);
         response = await fetchFeatureFlags(refreshedToken);
       }
 
@@ -249,7 +306,7 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
         values: filterSupportedFlagValues(data.values),
       });
     } catch (error) {
-      console.error("Failed to load feature flags", error);
+      console.warn("Failed to load feature flags", error);
       setState((prev) => ({ ...prev, loading: false, error }));
     }
   }, [user]);

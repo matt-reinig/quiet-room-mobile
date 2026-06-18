@@ -408,7 +408,9 @@ application-identifier: SV7SPMY2Q8.com.quietroom.mobile
 com.apple.developer.applesignin: Default
 ```
 
-Archive, sign with the refreshed profile, export, and upload as internal-only TestFlight:
+Archive, sign with the refreshed profile, export, and upload as a standard
+TestFlight/App Store Connect build that is eligible for external TestFlight
+groups:
 
 ```bash
 npm run ios:testflight:deploy:prod
@@ -427,7 +429,7 @@ The deploy script:
 - archives with manual App Store signing using the selected profile UUID
 - generates a build-local export options plist with `signingStyle = manual` and `provisioningProfiles.com.quietroom.mobile = <selected profile UUID>`
 - verifies the signed archive entitlements before export
-- uses `destination = upload` and `testFlightInternalTestingOnly = true` for `npm run ios:testflight:deploy:prod`
+- uses `destination = upload` and `testFlightInternalTestingOnly = false` for `npm run ios:testflight:deploy:prod`
 
 Successful output includes:
 
@@ -445,7 +447,7 @@ If a newer PROD profile is downloaded later, either install it in `~/Library/Mob
 QUIET_ROOM_IOS_PROD_PROFILE_UUID=<new-uuid> npm run ios:testflight:deploy:prod
 ```
 
-The April 24 upload logs also included:
+The April 24 upload logs included the old internal-only marker:
 
 ```text
 Upload succeeded.
@@ -453,13 +455,19 @@ UPLOAD SUCCEEDED with no errors
 testFlightInternalTestingOnly: true
 ```
 
+That old marker is intentionally not used for prod deploys anymore. If App
+Store Connect needs an external-eligible prod build, bump the iOS build number
+and upload a new prod build; an already-uploaded internal-only build cannot be
+converted in place.
+
 After upload, run the status command one more time:
 
 ```bash
 npm run ios:testflight:status:prod
 ```
 
-Then use App Store Connect to wait for processing and attach build `13` to the intended internal TestFlight group.
+Then use App Store Connect to wait for processing and attach the processed
+build to the intended TestFlight group.
 
 ## Archive And Upload
 

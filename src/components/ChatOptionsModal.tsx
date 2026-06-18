@@ -1,9 +1,10 @@
 ﻿import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import type { ChatModelOption } from "../lib/chatModels";
 import { mobileWeb } from "../theme/mobileWeb";
 
 type ChatOptionsModalProps = {
   currentModel: string;
-  modelOptions: string[];
+  modelOptions: ChatModelOption[];
   onClose: () => void;
   onSelectModel: (model: string) => void;
   visible: boolean;
@@ -11,18 +12,6 @@ type ChatOptionsModalProps = {
   voiceModeEnabled: boolean;
   onToggleVoiceMode: () => void;
 };
-
-function modelLabel(model: string): string {
-  if (model === "gpt-5.1-chat-latest") {
-    return "GPT-5.1";
-  }
-
-  if (model === "gpt-5.3-chat-latest") {
-    return "GPT-5.3";
-  }
-
-  return model;
-}
 
 export default function ChatOptionsModal({
   currentModel,
@@ -61,18 +50,18 @@ export default function ChatOptionsModal({
           <Text style={styles.sectionLabel}>MODEL</Text>
 
           {modelOptions.map((option) => {
-            const active = option === currentModel;
+            const active = option.key === currentModel;
 
             return (
               <Pressable
-                key={option}
-                onPress={() => onSelectModel(option)}
+                key={option.key}
+                onPress={() => onSelectModel(option.key)}
                 style={[styles.modelRow, active ? styles.modelRowActive : styles.modelRowInactive]}
                 accessibilityRole="button"
                 accessibilityState={{ checked: active }}
               >
                 <Text style={[styles.modelRowLabel, active ? styles.modelRowLabelActive : styles.modelRowLabelInactive]}>
-                  {modelLabel(option)}
+                  {option.shortLabel || option.label}
                 </Text>
                 {active ? <Text style={styles.modelRowBadge}>ACTIVE</Text> : null}
               </Pressable>
@@ -189,6 +178,5 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
-
 
 

@@ -3,6 +3,7 @@ export type ChatMessage = {
   content: string;
   disableVoice?: boolean;
   isStreaming?: boolean;
+  logicalModelKey?: string;
   model?: string;
   role: "assistant" | "user";
 };
@@ -11,6 +12,7 @@ export type Conversation = {
   createdAt?: number;
   currentModel?: string;
   id: string;
+  logicalModelKey?: string;
   messages: ChatMessage[];
   messagesLoaded?: boolean;
   title?: string;

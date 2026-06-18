@@ -50,6 +50,7 @@ const apiBase = process.env.EXPO_PUBLIC_API_BASE ?? "";
 const streamingBase = process.env.EXPO_PUBLIC_STREAMING_BASE ?? "";
 const webAppUrl = process.env.EXPO_PUBLIC_WEB_APP_URL ?? "";
 const firebaseProjectId = process.env.EXPO_PUBLIC_FB_PROJECT_ID ?? "";
+const firebaseAuthEmulatorHost = process.env.EXPO_PUBLIC_FB_AUTH_EMULATOR_HOST ?? "";
 const rootDir = path.resolve(__dirname, "..");
 
 function readAndroidPackageFromGoogleServices(relativePath) {
@@ -124,6 +125,7 @@ if (expectedReleaseEnv === "qa") {
   expectNotIncludes("API base", apiBase, "localhost");
   expectNotIncludes("API base", apiBase, "127.0.0.1");
   expectNotIncludes("API base", apiBase, "10.0.2.2");
+  expectEqual("Firebase auth emulator host", firebaseAuthEmulatorHost, "");
 }
 
 if (expectedReleaseEnv === "prod") {
@@ -134,6 +136,7 @@ if (expectedReleaseEnv === "prod") {
   expectNotIncludes("API base", apiBase, "10.0.2.2");
   expectNotIncludes("API base", apiBase, "your-prod-api.com");
   expectNotIncludes("web app URL", webAppUrl, "your-prod-web-app.com");
+  expectEqual("Firebase auth emulator host", firebaseAuthEmulatorHost, "");
 
   if (firebaseProjectId) {
     expectNotIncludes("Firebase project id", firebaseProjectId, "qa");
@@ -187,6 +190,7 @@ const summary = {
   streamingBase,
   webAppUrl,
   firebaseProjectId,
+  firebaseAuthEmulatorHost,
   firebaseAndroidPackage,
   firebaseIosBundleId,
   iosGoogleServicesFile,

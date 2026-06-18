@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { makeRedirectUri } from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
@@ -14,16 +14,18 @@ import * as WebBrowser from "expo-web-browser";
 import {
   Alert,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
   NativeModules,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { APP_SCHEME, GOOGLE_AUTH_CONFIG } from "../config/env";
 import { useAuth } from "../contexts/AuthContext";
 import { mobileWeb } from "../theme/mobileWeb";
@@ -66,6 +68,7 @@ function mapAuthError(code: string | undefined, kind: "login" | "signup") {
 }
 
 const ANDROID_KEYBOARD_CLEARANCE = 36;
+const IOS_KEYBOARD_CLEARANCE = 12;
 
 function mapGoogleNativeError(rawError: unknown) {
   if (isErrorWithCode(rawError)) {
@@ -89,6 +92,7 @@ function mapAppleError(rawError: unknown) {
     typeof rawError === "object" && rawError !== null && "code" in rawError
       ? String(rawError.code || "")
       : "";
+  const message = rawError instanceof Error ? rawError.message : "";
 
   if (code === "ERR_REQUEST_CANCELED") {
     return null;
@@ -98,7 +102,15 @@ function mapAppleError(rawError: unknown) {
     return "Apple sign-in is already in progress.";
   }
 
-  return rawError instanceof Error ? rawError.message : "Apple sign-in failed.";
+  if (
+    code === "ERR_REQUEST_FAILED" ||
+    /authorization attempt failed/i.test(message) ||
+    /unknown reason/i.test(message)
+  ) {
+    return "Apple sign-in could not be started on this device. Please try again, or use email and password.";
+  }
+
+  return message || "Apple sign-in failed.";
 }
 
 function createAppleNonce() {
@@ -108,6 +120,8 @@ function createAppleNonce() {
 }
 
 export default function LoginModal({ onClose, visible }: LoginModalProps) {
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const {
     loading,
     loginWithApple,
@@ -128,6 +142,7 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
   const [googleBusy, setGoogleBusy] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
   const [keyboardInset, setKeyboardInset] = useState(0);
+  const keyboardInsetRef = useRef(0);
   const isDetox =
     Boolean(NativeModules.SettingsManager?.settings?.detoxServer) ||
     Boolean(NativeModules.SettingsManager?.settings?.detoxSessionId) ||
@@ -172,9 +187,17 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
     const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
     const showSubscription = Keyboard.addListener(showEvent, (event) => {
-      setKeyboardInset(event.endCoordinates.height);
+      const nextInset = event.endCoordinates.height;
+
+      if (Platform.OS === "ios" && keyboardInsetRef.current > 0) {
+        return;
+      }
+
+      keyboardInsetRef.current = nextInset;
+      setKeyboardInset(nextInset);
     });
     const hideSubscription = Keyboard.addListener(hideEvent, () => {
+      keyboardInsetRef.current = 0;
       setKeyboardInset(0);
     });
 
@@ -193,6 +216,13 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
   }, [iosGoogleClientId, nativeGoogleWebClientId, request]);
   const showAppleSignIn = Platform.OS === "ios";
   const socialLoginBusy = loading || appleBusy || googleBusy;
+  const modalTopPadding = Math.max(20, insets.top + 12);
+  const modalBottomPadding =
+    keyboardInset > 0
+      ? keyboardInset +
+        (Platform.OS === "ios" ? IOS_KEYBOARD_CLEARANCE : ANDROID_KEYBOARD_CLEARANCE)
+      : Math.max(20, insets.bottom + 20);
+  const modalMaxHeight = Math.max(280, windowHeight - modalTopPadding - modalBottomPadding);
 
   const resetAll = () => {
     setAppleBusy(false);
@@ -398,6 +428,7 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
       const message = mapAppleError(rawError);
 
       if (message) {
+        console.warn("Apple sign-in failed", rawError);
         setAppleError(message);
       }
     } finally {
@@ -414,198 +445,208 @@ export default function LoginModal({ onClose, visible }: LoginModalProps) {
       <View style={styles.backdrop}>
         <Pressable onPress={closeModal} style={StyleSheet.absoluteFill} />
 
-        <KeyboardAvoidingView
-          enabled={Platform.OS === "ios"}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 24 : 0}
+        <View
           pointerEvents="box-none"
           style={[
             styles.keyboardFrame,
-            Platform.OS === "android" && keyboardInset > 0
-              ? { justifyContent: "flex-end", paddingBottom: keyboardInset + ANDROID_KEYBOARD_CLEARANCE }
+            {
+              paddingBottom: modalBottomPadding,
+              paddingTop: modalTopPadding,
+            },
+            keyboardInset > 0
+              ? {
+                  justifyContent: "flex-end",
+                }
               : null,
           ]}
         >
           <View
             style={[
               styles.sheet,
+              { maxHeight: modalMaxHeight },
               Platform.OS === "android" && keyboardInset > 0 ? styles.sheetLifted : null,
             ]}
             testID={testIds.loginModal}
           >
-            <View style={styles.headerRow}>
-              <View style={styles.tabs}>
-                <Pressable onPress={() => setMode("signin")} testID={testIds.loginTabSignin}>
-                  <Text style={[styles.tab, mode === "signin" && styles.tabActive]}>Sign in</Text>
-                </Pressable>
-                <Pressable onPress={() => setMode("signup")} testID={testIds.loginTabSignup}>
-                  <Text style={[styles.tab, mode === "signup" && styles.tabActive]}>
-                    Create account
-                  </Text>
-                </Pressable>
-                <Pressable onPress={() => setMode("reset")} testID={testIds.loginTabReset}>
-                  <Text style={[styles.tab, mode === "reset" && styles.tabActive]}>
-                    Reset password
-                  </Text>
+            <ScrollView
+              contentContainerStyle={styles.sheetContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.headerRow}>
+                <View style={styles.tabs}>
+                  <Pressable onPress={() => setMode("signin")} testID={testIds.loginTabSignin}>
+                    <Text style={[styles.tab, mode === "signin" && styles.tabActive]}>Sign in</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setMode("signup")} testID={testIds.loginTabSignup}>
+                    <Text style={[styles.tab, mode === "signup" && styles.tabActive]}>
+                      Create account
+                    </Text>
+                  </Pressable>
+                  <Pressable onPress={() => setMode("reset")} testID={testIds.loginTabReset}>
+                    <Text style={[styles.tab, mode === "reset" && styles.tabActive]}>
+                      Reset password
+                    </Text>
+                  </Pressable>
+                </View>
+                <Pressable onPress={closeModal} style={styles.closeButton} testID={testIds.loginClose}>
+                  <Text style={styles.closeLabel}>X</Text>
                 </Pressable>
               </View>
-              <Pressable onPress={closeModal} style={styles.closeButton} testID={testIds.loginClose}>
-                <Text style={styles.closeLabel}>X</Text>
-              </Pressable>
-            </View>
 
-            {mode === "signin" ? (
-              <>
-                {showAppleSignIn ? (
-                  <View
-                    pointerEvents={socialLoginBusy ? "none" : "auto"}
-                    style={socialLoginBusy ? styles.disabledButton : null}
+              {mode === "signin" ? (
+                <>
+                  {showAppleSignIn ? (
+                    <View
+                      pointerEvents={socialLoginBusy ? "none" : "auto"}
+                      style={socialLoginBusy ? styles.disabledButton : null}
+                    >
+                      <AppleAuthentication.AppleAuthenticationButton
+                        buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                        buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                        cornerRadius={12}
+                        onPress={() => {
+                          void doAppleSignIn();
+                        }}
+                        style={styles.appleButton}
+                        testID={testIds.loginAppleButton}
+                      />
+                    </View>
+                  ) : null}
+                  <Pressable
+                    disabled={socialLoginBusy || !googleAvailable}
+                    onPress={() => {
+                      void doGoogleSignIn();
+                    }}
+                    style={[
+                      styles.googleButton,
+                      (socialLoginBusy || !googleAvailable) && styles.disabledButton,
+                    ]}
+                    testID={testIds.loginGoogleButton}
                   >
-                    <AppleAuthentication.AppleAuthenticationButton
-                      buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-                      buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
-                      cornerRadius={12}
-                      onPress={() => {
-                        void doAppleSignIn();
-                      }}
-                      style={styles.appleButton}
-                      testID={testIds.loginAppleButton}
-                    />
-                  </View>
-                ) : null}
-                <Pressable
-                  disabled={socialLoginBusy || !googleAvailable}
-                  onPress={() => {
-                    void doGoogleSignIn();
-                  }}
-                  style={[
-                    styles.googleButton,
-                    (socialLoginBusy || !googleAvailable) && styles.disabledButton,
-                  ]}
-                  testID={testIds.loginGoogleButton}
-                >
-                  <View style={styles.socialButtonContent}>
-                    <Ionicons name="logo-google" size={20} color="#4285F4" />
-                    <Text style={styles.googleButtonLabel}>
-                      {googleBusy
-                        ? Platform.OS === "android"
-                          ? "Opening Google..."
-                          : "Opening Google..."
-                        : "Sign in with Google"}
-                    </Text>
-                  </View>
-                </Pressable>
+                    <View style={styles.socialButtonContent}>
+                      <Ionicons name="logo-google" size={20} color="#4285F4" />
+                      <Text style={styles.googleButtonLabel}>
+                        {googleBusy
+                          ? Platform.OS === "android"
+                            ? "Opening Google..."
+                            : "Opening Google..."
+                          : "Sign in with Google"}
+                      </Text>
+                    </View>
+                  </Pressable>
 
-                <Text style={styles.helperCopy}>
-                  {!googleAvailable
-                    ? Platform.OS === "android"
-                      ? "Google sign-in is disabled until EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is set."
-                      : "Google sign-in is disabled until EXPO_PUBLIC_GOOGLE client IDs are set. You can still continue with Apple or email and password."
-                    : showAppleSignIn
-                      ? "Continue with Apple, Google, or email and password."
-                      : "or use email and password"}
-                </Text>
-
-                {appleError ? <Text style={styles.error}>{appleError}</Text> : null}
-                {googleError ? <Text style={styles.error}>{googleError}</Text> : null}
-              </>
-            ) : null}
-
-            {(mode === "signin" || mode === "signup") && (
-              <>
-                <TextInput
-                  autoCapitalize="none"
-                  autoComplete={isDetox ? "off" : "email"}
-                  importantForAutofill={isDetox ? "no" : "auto"}
-                  keyboardType="email-address"
-                  onChangeText={setEmail}
-                  placeholder="Email"
-                  placeholderTextColor={mobileWeb.colors.gray500}
-                  selectionColor={mobileWeb.colors.blue600}
-                  style={styles.input}
-                  testID={testIds.loginEmailInput}
-                  textContentType={isDetox ? "none" : "username"}
-                  value={email}
-                />
-
-                <TextInput
-                  autoCapitalize="none"
-                  autoComplete={isDetox ? "off" : "password"}
-                  importantForAutofill={isDetox ? "no" : "auto"}
-                  onChangeText={setPassword}
-                  placeholder="Password"
-                  placeholderTextColor={mobileWeb.colors.gray500}
-                  secureTextEntry
-                  selectionColor={mobileWeb.colors.blue600}
-                  style={styles.input}
-                  testID={testIds.loginPasswordInput}
-                  textContentType={isDetox ? "none" : "password"}
-                  value={password}
-                />
-              </>
-            )}
-
-            {mode === "signin" ? (
-              <>
-                {error ? (
-                  <Text style={styles.error} testID={testIds.loginError}>
-                    {error}
+                  <Text style={styles.helperCopy}>
+                    {!googleAvailable
+                      ? Platform.OS === "android"
+                        ? "Google sign-in is disabled until EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is set."
+                        : "Google sign-in is disabled until EXPO_PUBLIC_GOOGLE client IDs are set. You can still continue with Apple or email and password."
+                      : showAppleSignIn
+                        ? "Continue with Apple, Google, or email and password."
+                        : "or use email and password"}
                   </Text>
-                ) : null}
-                <Pressable
-                  disabled={loading}
-                  onPress={() => void doSignin()}
-                  style={styles.primaryButton}
-                  testID={testIds.loginSigninButton}
-                >
-                  <Text style={styles.primaryButtonLabel}>Sign in</Text>
-                </Pressable>
-              </>
-            ) : null}
 
-            {mode === "signup" ? (
-              <>
-                {signupError ? <Text style={styles.error}>{signupError}</Text> : null}
-                <Pressable
-                  disabled={loading}
-                  onPress={() => void doSignup()}
-                  style={styles.successButton}
-                  testID={testIds.loginSignupButton}
-                >
-                  <Text style={styles.successButtonLabel}>Create account</Text>
-                </Pressable>
-              </>
-            ) : null}
+                  {appleError ? <Text style={styles.error}>{appleError}</Text> : null}
+                  {googleError ? <Text style={styles.error}>{googleError}</Text> : null}
+                </>
+              ) : null}
 
-            {mode === "reset" ? (
-              <>
-                <TextInput
-                  autoCapitalize="none"
-                  autoComplete={isDetox ? "off" : "email"}
-                  importantForAutofill={isDetox ? "no" : "auto"}
-                  keyboardType="email-address"
-                  onChangeText={setEmail}
-                  placeholder="Email"
-                  placeholderTextColor={mobileWeb.colors.gray500}
-                  selectionColor={mobileWeb.colors.blue600}
-                  style={styles.input}
-                  testID={testIds.loginEmailInput}
-                  textContentType={isDetox ? "none" : "username"}
-                  value={email}
-                />
-                {resetMsg ? <Text style={styles.successText}>{resetMsg}</Text> : null}
-                <Pressable
-                  disabled={loading}
-                  onPress={() => void doReset()}
-                  style={styles.primaryButton}
-                  testID={testIds.loginResetButton}
-                >
-                  <Text style={styles.primaryButtonLabel}>Send reset link</Text>
-                </Pressable>
-              </>
-            ) : null}
+              {(mode === "signin" || mode === "signup") && (
+                <>
+                  <TextInput
+                    autoCapitalize="none"
+                    autoComplete={isDetox ? "off" : "email"}
+                    importantForAutofill={isDetox ? "no" : "auto"}
+                    keyboardType="email-address"
+                    onChangeText={setEmail}
+                    placeholder="Email"
+                    placeholderTextColor={mobileWeb.colors.gray500}
+                    selectionColor={mobileWeb.colors.blue600}
+                    style={styles.input}
+                    testID={testIds.loginEmailInput}
+                    textContentType={isDetox ? "none" : "username"}
+                    value={email}
+                  />
+
+                  <TextInput
+                    autoCapitalize="none"
+                    autoComplete={isDetox ? "off" : "password"}
+                    importantForAutofill={isDetox ? "no" : "auto"}
+                    onChangeText={setPassword}
+                    placeholder="Password"
+                    placeholderTextColor={mobileWeb.colors.gray500}
+                    secureTextEntry
+                    selectionColor={mobileWeb.colors.blue600}
+                    style={styles.input}
+                    testID={testIds.loginPasswordInput}
+                    textContentType={isDetox ? "oneTimeCode" : "password"}
+                    value={password}
+                  />
+                </>
+              )}
+
+              {mode === "signin" ? (
+                <>
+                  {error ? (
+                    <Text style={styles.error} testID={testIds.loginError}>
+                      {error}
+                    </Text>
+                  ) : null}
+                  <Pressable
+                    disabled={loading}
+                    onPress={() => void doSignin()}
+                    style={styles.primaryButton}
+                    testID={testIds.loginSigninButton}
+                  >
+                    <Text style={styles.primaryButtonLabel}>Sign in</Text>
+                  </Pressable>
+                </>
+              ) : null}
+
+              {mode === "signup" ? (
+                <>
+                  {signupError ? <Text style={styles.error}>{signupError}</Text> : null}
+                  <Pressable
+                    disabled={loading}
+                    onPress={() => void doSignup()}
+                    style={styles.successButton}
+                    testID={testIds.loginSignupButton}
+                  >
+                    <Text style={styles.successButtonLabel}>Create account</Text>
+                  </Pressable>
+                </>
+              ) : null}
+
+              {mode === "reset" ? (
+                <>
+                  <TextInput
+                    autoCapitalize="none"
+                    autoComplete={isDetox ? "off" : "email"}
+                    importantForAutofill={isDetox ? "no" : "auto"}
+                    keyboardType="email-address"
+                    onChangeText={setEmail}
+                    placeholder="Email"
+                    placeholderTextColor={mobileWeb.colors.gray500}
+                    selectionColor={mobileWeb.colors.blue600}
+                    style={styles.input}
+                    testID={testIds.loginEmailInput}
+                    textContentType={isDetox ? "none" : "username"}
+                    value={email}
+                  />
+                  {resetMsg ? <Text style={styles.successText}>{resetMsg}</Text> : null}
+                  <Pressable
+                    disabled={loading}
+                    onPress={() => void doReset()}
+                    style={styles.primaryButton}
+                    testID={testIds.loginResetButton}
+                  >
+                    <Text style={styles.primaryButtonLabel}>Send reset link</Text>
+                  </Pressable>
+                </>
+              ) : null}
+            </ScrollView>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </View>
     </Modal>
   );
@@ -620,7 +661,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flex: 1,
     justifyContent: "center",
-    padding: 20,
+    paddingHorizontal: 20,
   },
   closeButton: {
     alignItems: "center",
@@ -713,11 +754,13 @@ const styles = StyleSheet.create({
   sheet: {
     backgroundColor: mobileWeb.colors.white,
     borderRadius: 20,
-    gap: 12,
-    maxHeight: "88%",
     maxWidth: 420,
-    padding: 18,
+    overflow: "hidden",
     width: "100%",
+  },
+  sheetContent: {
+    gap: 12,
+    padding: 18,
   },
   sheetLifted: {
     marginBottom: 12,

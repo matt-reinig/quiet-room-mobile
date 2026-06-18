@@ -4,13 +4,13 @@ import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Dimensions,
   ScrollView,
   Keyboard,
   Image,
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
@@ -20,6 +20,7 @@ import {
   type NativeSyntheticEvent,
   type TextInputContentSizeChangeEventData,
 } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AboutModal from "../components/AboutModal";
 import ConversationsModal from "../components/ConversationsModal";
 import LoginModal from "../components/LoginModal";
@@ -31,9 +32,10 @@ import { useAuth } from "../contexts/AuthContext";
 import { useFeatureFlag } from "../contexts/FeatureFlagsContext";
 import { useChatController } from "../hooks/useChatController";
 import { getAiConsentAccepted, setAiConsentAccepted } from "../lib/aiConsent";
-import { MODEL_LABELS } from "../lib/chatModels";
+import { labelForChatModel } from "../lib/chatModels";
 import {
   submitResponseReport,
+  type ReportResponseContextScope,
   type ReportResponseReason,
 } from "../lib/reportResponse";
 import { mobileWeb } from "../theme/mobileWeb";
@@ -43,11 +45,19 @@ import type { ChatMessage } from "../types/chat";
 const VOICE_MODE_STORAGE_KEY = "gabriel.voiceModeEnabled";
 const USER_ANCHOR_TOP_OFFSET = 6;
 const MESSAGE_LIST_PADDING_TOP = 0;
-const MESSAGE_LIST_PADDING_BOTTOM = 12;
+const MESSAGE_LIST_PADDING_BOTTOM = 104;
 const COMPOSER_ROW_PADDING_TOP = 12;
 const COMPOSER_ROW_PADDING_BOTTOM = 16;
+const COMPOSER_META_ROW_HEIGHT = 32;
+const COMPOSER_META_ROW_GAP = 8;
+const COMPOSER_RESTING_BOTTOM_PADDING = COMPOSER_ROW_PADDING_TOP + COMPOSER_META_ROW_HEIGHT + COMPOSER_META_ROW_GAP;
 const OPENING_MESSAGE_TOP_OFFSET = 16;
-const ANDROID_KEYBOARD_CLEARANCE = 20;
+const ANDROID_KEYBOARD_INPUT_CLEARANCE = 4;
+const ANDROID_KEYBOARD_FALLBACK_SCREEN_RATIO = 0.35;
+
+function androidRestingComposerBottomPadding(bottomInset: number): number {
+  return Math.max(0, COMPOSER_RESTING_BOTTOM_PADDING - bottomInset);
+}
 
 const QUIET_ROOM_OPENING_GREETING = `Welcome to Quiet Room.
 
@@ -76,24 +86,37 @@ type ReportResponseTarget = {
 };
 
 function headerTopPadding(): number {
-  return Platform.OS === "ios" ? 84 : 100;
+  return Platform.OS === "ios" ? 84 : 12;
 }
 
 function headerControlsTop(): number {
-  return Platform.OS === "ios" ? 16 : 44;
+  return Platform.OS === "ios" ? 16 : 8;
 }
 
 function headerTitleTop(): number {
-  return Platform.OS === "ios" ? 24 : 52;
+  return Platform.OS === "ios" ? 24 : 12;
 }
 
 function crucifixTopMargin(): number {
-  return Platform.OS === "ios" ? 0 : 12;
+  return Platform.OS === "ios" ? 0 : 76;
+}
+
+function keyboardInsetFromScreenY(height: number | undefined, screenY: number | undefined): number {
+  const measuredScreenY = screenY && screenY > 0
+    ? Math.max(0, Dimensions.get("screen").height - screenY)
+    : 0;
+
+  if (measuredScreenY > 0) {
+    return measuredScreenY;
+  }
+
+  return height && height > 0 ? height : 0;
 }
 
 export default function QuietRoomScreen() {
   const { deleteAccount, isAnon, logout, user } = useAuth();
   const voiceModeAvailable = useFeatureFlag("voice_mode", false);
+  const insets = useSafeAreaInsets();
 
   const {
     chatLoading,
@@ -122,7 +145,7 @@ export default function QuietRoomScreen() {
   const showModelSection = modelOptions.length > 1;
   const showChatOptionsButton = voiceModeAvailable || showModelSection;
   const composerModelLabel = showChatOptionsButton
-    ? MODEL_LABELS[currentModel] || currentModel || ""
+    ? labelForChatModel(currentModel, modelOptions)
     : "";
 
   const [showAbout, setShowAbout] = useState(false);
@@ -175,6 +198,7 @@ export default function QuietRoomScreen() {
   const listContentHeightRef = useRef(0);
   const anchorContentMinHeightRef = useRef(0);
   const newestButtonTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const keyboardFocusFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -198,7 +222,10 @@ export default function QuietRoomScreen() {
 
     const showSubscription = Keyboard.addListener(showEvent, (event) => {
       setIsKeyboardVisible(true);
-      setKeyboardInset(event.endCoordinates.height);
+      setKeyboardInset(keyboardInsetFromScreenY(
+        event.endCoordinates.height,
+        event.endCoordinates.screenY,
+      ));
       maybeKeepLatestVisible();
     });
     const hideSubscription = Keyboard.addListener(hideEvent, () => {
@@ -216,6 +243,10 @@ export default function QuietRoomScreen() {
     return () => {
       if (newestButtonTimeoutRef.current) {
         clearTimeout(newestButtonTimeoutRef.current);
+      }
+
+      if (keyboardFocusFallbackTimeoutRef.current) {
+        clearTimeout(keyboardFocusFallbackTimeoutRef.current);
       }
     };
   }, []);
@@ -304,7 +335,11 @@ export default function QuietRoomScreen() {
   );
 
   const submitReportResponse = useCallback(
-    async (reason: ReportResponseReason, note: string) => {
+    async (
+      reason: ReportResponseReason,
+      note: string,
+      contextScope: ReportResponseContextScope
+    ) => {
       if (!user || !reportResponseTarget || reportResponsePending) {
         return;
       }
@@ -315,6 +350,7 @@ export default function QuietRoomScreen() {
       try {
         await submitResponseReport({
           ...reportResponseTarget,
+          contextScope,
           note,
           reason,
           user,
@@ -469,7 +505,8 @@ export default function QuietRoomScreen() {
     return [opening, ...mapped];
   }, [currentId, messages, voiceAutoPlayTarget, voiceModeAvailable, voiceModeEnabled]);
 
-  const showPromptCues = Boolean(isNewChat) && !chatLoading && messages.length === 0;
+  const showPromptCues =
+    Boolean(isNewChat) && !chatLoading && messages.length === 0 && !isKeyboardVisible;
 
   const hideNewestButton = useCallback(() => {
     if (newestButtonTimeoutRef.current) {
@@ -702,6 +739,15 @@ export default function QuietRoomScreen() {
   const handleInputChange = useCallback((value: string) => {
     inputValueRef.current = value;
     setInput(value);
+    if (Platform.OS === "android") {
+      setIsKeyboardVisible(true);
+      const metrics = Keyboard.metrics();
+      setKeyboardInset(
+        metrics?.height && metrics.height > 0
+          ? keyboardInsetFromScreenY(metrics.height, metrics.screenY)
+          : Math.round(Dimensions.get("screen").height * ANDROID_KEYBOARD_FALLBACK_SCREEN_RATIO),
+      );
+    }
   }, [setInput]);
 
   const handleMessagesWrapLayout = useCallback((event: LayoutChangeEvent) => {
@@ -806,6 +852,52 @@ export default function QuietRoomScreen() {
   const dismissKeyboard = useCallback(() => {
     composerInputRef.current?.blur();
     Keyboard.dismiss();
+  }, []);
+
+  const syncAndroidKeyboardMetrics = useCallback(() => {
+    if (Platform.OS !== "android") {
+      return;
+    }
+
+    const metrics = Keyboard.metrics();
+
+    if (metrics?.height && metrics.height > 0) {
+      setKeyboardInset(keyboardInsetFromScreenY(metrics.height, metrics.screenY));
+      return;
+    }
+
+    setKeyboardInset(Math.round(Dimensions.get("screen").height * ANDROID_KEYBOARD_FALLBACK_SCREEN_RATIO));
+  }, []);
+
+  const handleComposerFocus = useCallback(() => {
+    if (Platform.OS !== "android") {
+      return;
+    }
+
+    setIsKeyboardVisible(true);
+    syncAndroidKeyboardMetrics();
+
+    if (keyboardFocusFallbackTimeoutRef.current) {
+      clearTimeout(keyboardFocusFallbackTimeoutRef.current);
+    }
+
+    keyboardFocusFallbackTimeoutRef.current = setTimeout(() => {
+      syncAndroidKeyboardMetrics();
+    }, 300);
+  }, [syncAndroidKeyboardMetrics]);
+
+  const handleComposerBlur = useCallback(() => {
+    if (Platform.OS !== "android") {
+      return;
+    }
+
+    if (keyboardFocusFallbackTimeoutRef.current) {
+      clearTimeout(keyboardFocusFallbackTimeoutRef.current);
+      keyboardFocusFallbackTimeoutRef.current = null;
+    }
+
+    setIsKeyboardVisible(false);
+    setKeyboardInset(0);
   }, []);
 
   const requestSendWithConsent = useCallback(
@@ -954,10 +1046,40 @@ export default function QuietRoomScreen() {
     !showComposerFullscreen;
 
   const scrollButtonsBottom = 16;
+  const composerBottomPadding = useMemo(() => {
+    if (Platform.OS === "ios" && keyboardInset > 0) {
+      return COMPOSER_ROW_PADDING_BOTTOM + keyboardInset;
+    }
+
+    if (Platform.OS === "ios") {
+      return COMPOSER_RESTING_BOTTOM_PADDING;
+    }
+
+    if (Platform.OS === "android") {
+      return isKeyboardVisible
+        ? COMPOSER_ROW_PADDING_BOTTOM + ANDROID_KEYBOARD_INPUT_CLEARANCE
+        : androidRestingComposerBottomPadding(insets.bottom);
+    }
+
+    return COMPOSER_ROW_PADDING_BOTTOM;
+  }, [insets.bottom, isKeyboardVisible, keyboardInset]);
+  const composerKeyboardOffset = useMemo(() => {
+    if (Platform.OS !== "android" || !isKeyboardVisible) {
+      return 0;
+    }
+
+    // Android keyboard height includes the bottom system inset on both gesture
+    // and 3-button nav; subtract it once so the footer does not drift by device.
+    return Math.max(0, keyboardInset - insets.bottom);
+  }, [insets.bottom, isKeyboardVisible, keyboardInset]);
 
   if (shouldBlockForConversations) {
     return (
-      <SafeAreaView style={styles.safeArea} testID={testIds.screen}>
+      <SafeAreaView
+        edges={Platform.OS === "ios" ? ["top"] : undefined}
+        style={styles.safeArea}
+        testID={testIds.screen}
+      >
         <View style={styles.centeredWrap}>
           <Spinner label="Preparing messages..." size="lg" tone="accent" />
         </View>
@@ -966,7 +1088,11 @@ export default function QuietRoomScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} testID={testIds.screen}>
+    <SafeAreaView
+      edges={Platform.OS === "ios" ? ["top"] : undefined}
+      style={styles.safeArea}
+      testID={testIds.screen}
+    >
       <StatusBar style="dark" />
 
       <View style={styles.root}>
@@ -980,7 +1106,14 @@ export default function QuietRoomScreen() {
           />
         ) : null}
 
-        <Pressable onPress={dismissKeyboard} style={styles.header} testID={testIds.header}>
+        <Pressable
+          onPress={dismissKeyboard}
+          style={[
+            styles.header,
+            isKeyboardVisible && Platform.OS === "android" ? styles.headerKeyboardActiveAndroid : null,
+          ]}
+          testID={testIds.header}
+        >
           <View pointerEvents="none" style={styles.headerTitleWrap}>
             <Text style={styles.headerTitle}>Quiet Room</Text>
           </View>
@@ -1245,12 +1378,10 @@ export default function QuietRoomScreen() {
         <View
           style={[
             styles.inputRow,
-            Platform.OS === "ios" && keyboardInset > 0
-              ? { paddingBottom: COMPOSER_ROW_PADDING_BOTTOM + keyboardInset }
-              : null,
-            Platform.OS === "android" && keyboardInset > 0
-              ? { paddingBottom: COMPOSER_ROW_PADDING_BOTTOM + keyboardInset + ANDROID_KEYBOARD_CLEARANCE }
-              : null,
+            {
+              marginBottom: composerKeyboardOffset,
+              paddingBottom: composerBottomPadding,
+            },
           ]}
         >
             {showChatOptionsButton ? (
@@ -1319,20 +1450,20 @@ export default function QuietRoomScreen() {
                         <Text style={styles.modelMenuSectionLabel}>MODEL</Text>
 
                         {modelOptions.map((option) => {
-                          const active = option === currentModel;
+                          const active = option.key === currentModel;
 
                           return (
                             <Pressable
-                              key={option}
+                              key={option.key}
                               onPress={() => {
-                                setCurrentModel(option);
+                                setCurrentModel(option.key);
                                 setShowChatOptions(false);
                               }}
                               style={[
                                 styles.modelMenuOption,
                                 active && styles.modelMenuOptionActive,
                               ]}
-                              testID={modelOptionTestId(option)}
+                              testID={modelOptionTestId(option.key)}
                             >
                               <Text
                                 style={[
@@ -1340,7 +1471,7 @@ export default function QuietRoomScreen() {
                                   active && styles.modelMenuOptionLabelActive,
                                 ]}
                               >
-                                {MODEL_LABELS[option] || option}
+                                {option.shortLabel || option.label}
                               </Text>
                               {active ? <Text style={styles.modelMenuOptionBadge}>Active</Text> : null}
                             </Pressable>
@@ -1354,57 +1485,58 @@ export default function QuietRoomScreen() {
             ) : null}
 
             <View style={styles.composerWrap} testID={testIds.composerWrapper}>
-              {(voiceModeAvailable || (!showComposerFullscreen && composerVisibleLines > 3)) ? (
-                <View style={styles.composerMetaRow}>
-                  {voiceModeAvailable ? (
-                    <View style={styles.voiceModeBadgeSlot}>
-                      {voiceModeEnabled ? (
-                        <Pressable
-                          accessibilityLabel="Turn off voice mode"
-                          hitSlop={6}
-                          onPress={() => setVoiceModeEnabled(false)}
-                          style={({ pressed }) => [
-                            styles.voiceModeBadge,
-                            pressed && styles.voiceModeBadgePressed,
-                          ]}
-                          testID={testIds.voiceModeIndicator}
-                        >
-                          <Text style={styles.voiceModeBadgeLabel}>Voice</Text>
-                          <View style={styles.voiceModeBadgeClose}>
-                            <Text aria-hidden style={styles.voiceModeBadgeCloseLabel}>X</Text>
-                          </View>
-                        </Pressable>
-                      ) : null}
-                    </View>
-                  ) : (
-                    <View style={styles.composerMetaSpacer} />
-                  )}
+              <View style={styles.composerMetaRow}>
+                {voiceModeAvailable ? (
+                  <View style={styles.voiceModeBadgeSlot}>
+                    {voiceModeEnabled ? (
+                      <Pressable
+                        accessibilityLabel="Turn off voice mode"
+                        hitSlop={6}
+                        onPress={() => setVoiceModeEnabled(false)}
+                        style={({ pressed }) => [
+                          styles.voiceModeBadge,
+                          pressed && styles.voiceModeBadgePressed,
+                        ]}
+                        testID={testIds.voiceModeIndicator}
+                      >
+                        <Text style={styles.voiceModeBadgeLabel}>Voice</Text>
+                        <View style={styles.voiceModeBadgeClose}>
+                          <Text aria-hidden style={styles.voiceModeBadgeCloseLabel}>X</Text>
+                        </View>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : (
+                  <View style={styles.composerMetaSpacer} />
+                )}
 
-                  {!showComposerFullscreen && composerVisibleLines > 3 ? (
-                    <Pressable
-                      accessibilityLabel="Open fullscreen composer"
-                      disabled={loading}
-                      onPress={() => setShowComposerFullscreen(true)}
-                      style={({ pressed }) => [
-                        styles.composerFullscreenTrigger,
-                        pressed && !loading && styles.composerFullscreenTriggerPressed,
-                        loading && styles.composerFullscreenTriggerDisabled,
-                      ]}
-                      testID={testIds.composerExpand}
-                    >
-                      <Ionicons name="expand-outline" size={18} color={mobileWeb.colors.gray700} />
-                    </Pressable>
-                  ) : (
-                    <View pointerEvents="none" style={styles.composerFullscreenTriggerPlaceholder} />
-                  )}
-                </View>
-              ) : null}
+                {!showComposerFullscreen && composerVisibleLines > 3 ? (
+                  <Pressable
+                    accessibilityLabel="Open fullscreen composer"
+                    disabled={loading}
+                    onPress={() => setShowComposerFullscreen(true)}
+                    style={({ pressed }) => [
+                      styles.composerFullscreenTrigger,
+                      pressed && !loading && styles.composerFullscreenTriggerPressed,
+                      loading && styles.composerFullscreenTriggerDisabled,
+                    ]}
+                    testID={testIds.composerExpand}
+                  >
+                    <Ionicons name="expand-outline" size={18} color={mobileWeb.colors.gray700} />
+                  </Pressable>
+                ) : (
+                  <View pointerEvents="none" style={styles.composerFullscreenTriggerPlaceholder} />
+                )}
+              </View>
 
               <TextInput
                 editable={!loading}
                 multiline
                 onChangeText={handleInputChange}
                 onContentSizeChange={handleComposerSizeChange}
+                onBlur={handleComposerBlur}
+                onFocus={handleComposerFocus}
+                onPressIn={handleComposerFocus}
                 placeholder="Share what is present..."
                 placeholderTextColor={mobileWeb.colors.gray500}
                 selectionColor={mobileWeb.colors.blue600}
@@ -1434,7 +1566,13 @@ export default function QuietRoomScreen() {
           visible={showComposerFullscreen}
           onRequestClose={() => setShowComposerFullscreen(false)}
         >
-          <SafeAreaView style={styles.fullscreenSafeArea}>
+          <SafeAreaView
+            edges={["left", "right"]}
+            style={[
+              styles.fullscreenSafeArea,
+              { paddingBottom: insets.bottom, paddingTop: insets.top },
+            ]}
+          >
             <View style={styles.fullscreenHeader}>
               <Text style={styles.fullscreenHeaderTitle}>Compose</Text>
               <Pressable onPress={() => setShowComposerFullscreen(false)} style={styles.fullscreenHeaderButton} testID={testIds.composerFullscreenClose}>
@@ -1595,7 +1733,14 @@ export default function QuietRoomScreen() {
           visible={showCrucifix}
           onRequestClose={() => setShowCrucifix(false)}
         >
-          <SafeAreaView style={styles.crucifixModalScreen} testID={testIds.crucifixModal}>
+          <SafeAreaView
+            edges={["left", "right"]}
+            style={[
+              styles.crucifixModalScreen,
+              { paddingBottom: insets.bottom, paddingTop: insets.top },
+            ]}
+            testID={testIds.crucifixModal}
+          >
             <View style={styles.crucifixModalHeader}>
               <Pressable
                 accessibilityLabel="Close crucifix"
@@ -1683,18 +1828,18 @@ const styles = StyleSheet.create({
   },
   composerWrap: {
     flex: 1,
-    gap: 8,
+    gap: COMPOSER_META_ROW_GAP,
     position: "relative",
   },
   composerMetaRow: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    minHeight: 28,
+    minHeight: COMPOSER_META_ROW_HEIGHT,
   },
   composerMetaSpacer: {
     flex: 1,
-    minHeight: 28,
+    minHeight: COMPOSER_META_ROW_HEIGHT,
   },
   composerFullscreenTrigger: {
     alignItems: "center",
@@ -1854,6 +1999,9 @@ const styles = StyleSheet.create({
     paddingTop: headerTopPadding(),
     position: "relative",
     zIndex: 25,
+  },
+  headerKeyboardActiveAndroid: {
+    minHeight: 48,
   },
   headerIconButton: {
     alignItems: "center",
@@ -2031,7 +2179,7 @@ const styles = StyleSheet.create({
   },
   voiceModeBadgeSlot: {
     justifyContent: "center",
-    minHeight: 28,
+    minHeight: COMPOSER_META_ROW_HEIGHT,
   },
   voiceModeBadgeClose: {
     alignItems: "center",
@@ -2395,7 +2543,7 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   safeArea: {
-    backgroundColor: mobileWeb.colors.bg,
+    backgroundColor: mobileWeb.colors.white,
     flex: 1,
   },
   sendButton: {

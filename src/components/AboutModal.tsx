@@ -114,8 +114,8 @@ export default function AboutModal({ isAnon, onClose, visible }: AboutModalProps
 
             <Text style={styles.paragraph}>
               If you have ideas, questions, or would like to share how Quiet Room
-              has been part of your reflection or prayer, I would love to hear
-              from you.
+              has been part of your reflection or prayer, contact Quiet Room by
+              email.
             </Text>
 
             <Text style={styles.email}>Email: {CONTACT_EMAIL}</Text>

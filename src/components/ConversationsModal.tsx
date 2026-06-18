@@ -100,16 +100,21 @@ export default function ConversationsModal({
   const [renameBusy, setRenameBusy] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
 
-  const closePanel = () => {
-    setOpenMenu(null);
-    onClose();
-  };
-
-  const closeRename = () => {
+  const resetRenameState = () => {
     setRenameTargetId(null);
     setRenameValue("");
     setRenameBusy(false);
     setRenameError(null);
+  };
+
+  const closePanel = () => {
+    setOpenMenu(null);
+    resetRenameState();
+    onClose();
+  };
+
+  const closeRename = () => {
+    resetRenameState();
   };
 
   const openRename = (conversation: Conversation) => {
@@ -231,7 +236,12 @@ export default function ConversationsModal({
 
   return (
     <>
-      <Modal animationType="fade" onRequestClose={closePanel} transparent visible={visible}>
+      <Modal
+        animationType="fade"
+        onRequestClose={renameTargetId ? closeRename : closePanel}
+        transparent
+        visible={visible}
+      >
         <View style={styles.backdrop}>
           <Pressable onPress={closePanel} style={StyleSheet.absoluteFill} />
           <SafeAreaView
@@ -426,54 +436,49 @@ export default function ConversationsModal({
               </View>
             </View>
           ) : null}
-        </View>
-      </Modal>
 
-      <Modal
-        animationType="fade"
-        onRequestClose={closeRename}
-        transparent
-        visible={Boolean(renameTargetId)}
-      >
-        <View style={styles.renameBackdrop}>
-          <Pressable onPress={closeRename} style={StyleSheet.absoluteFill} />
+          {renameTargetId ? (
+            <View style={styles.renameBackdrop}>
+              <Pressable onPress={closeRename} style={StyleSheet.absoluteFill} />
 
-          <View style={styles.renamePanel}>
-            <Text style={styles.renameTitle}>Rename conversation</Text>
+              <View style={styles.renamePanel}>
+                <Text style={styles.renameTitle}>Rename conversation</Text>
 
-            <TextInput
-              editable={!renameBusy}
-              onChangeText={setRenameValue}
-              placeholder="Conversation title"
-              style={styles.renameInput}
-              testID="quiet-room.conversations.rename.input"
-              value={renameValue}
-            />
+                <TextInput
+                  editable={!renameBusy}
+                  onChangeText={setRenameValue}
+                  placeholder="Conversation title"
+                  style={styles.renameInput}
+                  testID={testIds.conversationsRenameInput}
+                  value={renameValue}
+                />
 
-            {renameError ? <Text style={styles.renameError}>{renameError}</Text> : null}
+                {renameError ? <Text style={styles.renameError}>{renameError}</Text> : null}
 
-            <View style={styles.renameActions}>
-              <Pressable
-                disabled={renameBusy}
-                onPress={closeRename}
-                style={styles.renameCancelButton}
-                testID="quiet-room.conversations.rename.cancel"
-              >
-                <Text style={styles.renameCancelLabel}>Cancel</Text>
-              </Pressable>
+                <View style={styles.renameActions}>
+                  <Pressable
+                    disabled={renameBusy}
+                    onPress={closeRename}
+                    style={styles.renameCancelButton}
+                    testID={testIds.conversationsRenameCancel}
+                  >
+                    <Text style={styles.renameCancelLabel}>Cancel</Text>
+                  </Pressable>
 
-              <Pressable
-                disabled={renameBusy}
-                onPress={() => {
-                  void submitRename();
-                }}
-                style={styles.renameSaveButton}
-                testID="quiet-room.conversations.rename.save"
-              >
-                <Text style={styles.renameSaveLabel}>{renameBusy ? "Saving..." : "Save"}</Text>
-              </Pressable>
+                  <Pressable
+                    disabled={renameBusy}
+                    onPress={() => {
+                      void submitRename();
+                    }}
+                    style={styles.renameSaveButton}
+                    testID={testIds.conversationsRenameSave}
+                  >
+                    <Text style={styles.renameSaveLabel}>{renameBusy ? "Saving..." : "Save"}</Text>
+                  </Pressable>
+                </View>
+              </View>
             </View>
-          </View>
+          ) : null}
         </View>
       </Modal>
     </>
@@ -666,11 +671,13 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   renameBackdrop: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     backgroundColor: "rgba(17, 24, 39, 0.35)",
-    flex: 1,
+    elevation: 120,
     justifyContent: "center",
     padding: 20,
+    zIndex: 200,
   },
   renameCancelButton: {
     alignItems: "center",
@@ -703,8 +710,11 @@ const styles = StyleSheet.create({
   renamePanel: {
     backgroundColor: mobileWeb.colors.white,
     borderRadius: 18,
+    elevation: 121,
+    maxWidth: 360,
     padding: 18,
     width: "100%",
+    zIndex: 201,
   },
   renameSaveButton: {
     alignItems: "center",

@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Audio, type AVPlaybackSource, type AVPlaybackStatus } from "expo-av";
+import {
+  createAudioPlayer,
+  setAudioModeAsync,
+  type AudioPlayer,
+  type AudioSource,
+} from "expo-audio";
 import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import { fromByteArray } from "base64-js";
@@ -28,13 +33,12 @@ function uniqueVoiceId(): string {
 }
 
 async function setAudioMode() {
-  await Audio.setAudioModeAsync({
-    allowsRecordingIOS: false,
-    interruptionModeAndroid: 1,
-    interruptionModeIOS: 1,
-    playsInSilentModeIOS: true,
-    shouldDuckAndroid: true,
-    staysActiveInBackground: false,
+  await setAudioModeAsync({
+    allowsRecording: false,
+    interruptionMode: "duckOthers",
+    playsInSilentMode: true,
+    shouldPlayInBackground: false,
+    shouldRouteThroughEarpiece: false,
   });
 }
 
@@ -77,7 +81,8 @@ export default function MessageVoiceButton({
   const [status, setStatus] = useState<VoiceStatus>("idle");
 
   const abortControllerRef = useRef<AbortController | null>(null);
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const playerRef = useRef<AudioPlayer | null>(null);
+  const statusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileUriRef = useRef<string | null>(null);
   const instanceIdRef = useRef(uniqueVoiceId());
 
@@ -100,21 +105,25 @@ export default function MessageVoiceButton({
       abortControllerRef.current = null;
     }
 
-    if (soundRef.current) {
+    if (statusIntervalRef.current) {
+      clearInterval(statusIntervalRef.current);
+      statusIntervalRef.current = null;
+    }
+
+    if (playerRef.current) {
       try {
-        await soundRef.current.stopAsync();
+        playerRef.current.pause();
       } catch {
         // Intentionally ignored.
       }
 
       try {
-        await soundRef.current.unloadAsync();
+        playerRef.current.remove();
       } catch {
         // Intentionally ignored.
       }
 
-      soundRef.current.setOnPlaybackStatusUpdate(null);
-      soundRef.current = null;
+      playerRef.current = null;
     }
 
     if (fileUriRef.current) {
@@ -134,9 +143,9 @@ export default function MessageVoiceButton({
       abortControllerRef.current = null;
     }
 
-    if (soundRef.current) {
+    if (playerRef.current) {
       try {
-        await soundRef.current.pauseAsync();
+        playerRef.current.pause();
       } catch {
         // Intentionally ignored.
       }
@@ -146,34 +155,31 @@ export default function MessageVoiceButton({
   }, []);
 
   const loadAndPlayFromSource = useCallback(
-    async (source: AVPlaybackSource) => {
+    async (source: AudioSource) => {
       await setAudioMode();
 
-      const { sound } = await Audio.Sound.createAsync(
-        source,
-        { shouldPlay: true },
-        undefined,
-        false
-      );
+      if (statusIntervalRef.current) {
+        clearInterval(statusIntervalRef.current);
+        statusIntervalRef.current = null;
+      }
 
-      sound.setOnPlaybackStatusUpdate((playbackStatus: AVPlaybackStatus) => {
-        if (!playbackStatus.isLoaded) {
-          if (playbackStatus.error) {
-            setStatus("error");
-            setError("Voice playback failed.");
-          }
-          return;
-        }
-
-        if (playbackStatus.didJustFinish) {
-          setStatus("idle");
-        }
+      const player = createAudioPlayer(source, {
+        updateInterval: 1000,
       });
 
-      soundRef.current = sound;
+      statusIntervalRef.current = setInterval(() => {
+        const playbackStatus = player.currentStatus;
+        if (playbackStatus.didJustFinish) {
+          setStatus("idle");
+          void cleanup();
+        }
+      }, 1000);
+
+      player.play();
+      playerRef.current = player;
       setStatus("playing");
     },
-    []
+    [cleanup]
   );
 
   const resolveAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
@@ -199,7 +205,6 @@ export default function MessageVoiceButton({
 
       await loadAndPlayFromSource({
         headers: authHeaders,
-        overrideFileExtensionAndroid: "mp3",
         uri: remoteUri,
       });
 
@@ -215,9 +220,9 @@ export default function MessageVoiceButton({
 
     publishVoicePlayback(instanceIdRef.current);
 
-    if (soundRef.current) {
+    if (playerRef.current) {
       try {
-        await soundRef.current.playAsync();
+        playerRef.current.play();
         setStatus("playing");
         setError("");
         return;
@@ -466,7 +471,6 @@ const styles = StyleSheet.create({
     maxWidth: 180,
   },
 });
-
 
 
 

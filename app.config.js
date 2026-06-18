@@ -82,6 +82,14 @@ if (!plugins.includes("./plugins/withHermesDsymPhase")) {
   plugins.push("./plugins/withHermesDsymPhase");
 }
 
+if (!plugins.includes("expo-audio")) {
+  plugins.push("expo-audio");
+}
+
+if (!plugins.includes("expo-asset")) {
+  plugins.push("expo-asset");
+}
+
 if (resolvedAndroidGoogleServicesFile && fs.existsSync(resolvedAndroidGoogleServicesFile)) {
   androidConfig.googleServicesFile = androidGoogleServicesFile;
 } else {

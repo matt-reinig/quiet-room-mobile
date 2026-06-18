@@ -20,6 +20,8 @@ module.exports = {
   reportResponseNote: 'quiet-room.report-response.note',
   reportResponseSubmit: 'quiet-room.report-response.submit',
   reportResponseReason: 'quiet-room.report-response.reason',
+  reportResponseContextScope: 'quiet-room.report-response.context-scope',
+  reportResponseForm: 'quiet-room.report-response.form',
   messageList: 'quiet-room.messages.list',
   openingMessage: 'quiet-room.message.opening',
   modelPickerContainer: 'quiet-room.model.picker',
@@ -43,12 +45,16 @@ module.exports = {
   conversationsList: 'quiet-room.conversations.list',
   conversationsNew: 'quiet-room.conversations.new',
   conversationsLoadingMore: 'quiet-room.conversations.loading-more',
+  conversationsRenameInput: 'quiet-room.conversations.rename.input',
+  conversationsRenameCancel: 'quiet-room.conversations.rename.cancel',
+  conversationsRenameSave: 'quiet-room.conversations.rename.save',
   crucifixWrapper: 'quiet-room.crucifix.wrapper',
   crucifixButton: 'quiet-room.crucifix.open',
   crucifixModal: 'quiet-room.crucifix.modal',
   crucifixClose: 'quiet-room.crucifix.close',
   crucifixImage: 'quiet-room.crucifix.image',
   loginModal: 'quiet-room.login.modal',
+  loginClose: 'quiet-room.login.close',
   loginAppleButton: 'quiet-room.login.apple',
   loginGoogleButton: 'quiet-room.login.google',
   loginEmailInput: 'quiet-room.login.email',
@@ -73,6 +79,9 @@ module.exports = {
   conversation: {
     row(id) {
       return `quiet-room.conversation.${id}.row`;
+    },
+    rename(id) {
+      return `quiet-room.conversation.${id}.rename`;
     },
   },
   modelOption(model) {
