@@ -31,7 +31,7 @@ Commit inventory for the pre-rollout review lives in `docs/qr-mob-027-production
 
 - QA/release-development branch: `origin/develop`
 - Production branch: `origin/master`
-- `origin/develop` is 87 commits ahead of `origin/master`.
+- `origin/develop` is 90 commits ahead of `origin/master`.
 - `origin/master` is 4 commits ahead of `origin/develop`.
 - Shared merge base: `8ed6056`.
 - Rehearsal merge of `origin/develop` into `origin/master` hit two documentation conflicts:
@@ -44,6 +44,42 @@ Important mobile version difference:
 - `origin/develop`: iOS build `28`, Android `versionCode 21`.
 
 Important mobile behavior differences in `develop` include model-catalog picker support, report consent, modal/safe-area fixes, keyboard fixes, selectable message text, and the `expo-audio` voice playback switch.
+
+## Execution Status
+
+Updated on 2026-06-18.
+
+### Completed Without Approval-Gated Production Changes
+
+- Reconfirmed backend promotion source: `origin/main` at `34f95ec`, `origin/develop-from-main` at `a70292e`.
+- Verified the existing backend merge rehearsal in `../worktrees/Gabriel-qr-mob-025-prod-main-rollout`:
+  - `git diff --cached --check`
+  - `.venv/bin/python -m pytest tests/test_chat_models.py tests/test_model_broker.py tests/test_model_catalog.py tests/test_profile_builder_provider_routing.py tests/test_profile_builder_split_memory.py tests/test_chat_stream_prompt.py`
+  - `.venv/bin/python -m pytest --ignore=tests/test_lambda_entrypoint.py`
+- Created the mobile production promotion candidate in `../worktrees/quiet-room-mobile-prod-master-rollout` on branch `codex/quiet-room-mobile-prod-master-rollout`.
+- Merged current `origin/develop` at `74375fa` into the production branch candidate based on `origin/master` at `1cab1e6`.
+- Resolved the two expected documentation conflicts by preserving the newer develop notes and the existing production/TestFlight history.
+- Committed the local mobile merge as `33b0779` (`Merge develop into production rollout branch`).
+- Reused ignored local prod env, Firebase, and Android signing files from the main mobile checkout for verification only.
+- Ran mobile production verification:
+  - `npm ci`
+  - `npm run typecheck`
+  - `npm run mobile:verify:prod`
+  - `npm run native:sync:prod`
+  - `bash ./scripts/prepare-ios-testflight.sh --version 1.0.0 --build-number 28`
+  - `npm run ios:testflight:status:prod`
+  - `npm run ios:testflight:preflight:prod`
+  - `npm run android:play:status:prod`
+  - `npm run android:play:preflight:prod`
+
+### Still Approval-Gated
+
+- Prod Lambda env mutation has not been run.
+- Prod backend deploy has not been run.
+- Prod feature flag upserts have not been run.
+- Mobile `master` has not been pushed.
+- App Store Connect upload has not been run.
+- Google Play upload has not been run.
 
 ## Rollout Scope
 

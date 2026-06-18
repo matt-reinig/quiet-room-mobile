@@ -17,9 +17,9 @@ Captured on 2026-06-18.
 ### Quiet Room Mobile
 
 - Production branch: `origin/master` at `1cab1e6`
-- QA/development branch to promote: `origin/develop` at `d69b095`
+- QA/development branch to promote: `origin/develop` at `74375fa`
 - Shared merge base: `8ed6056`
-- New mobile commits queued for prod from `develop`: 88
+- New mobile commits queued for prod from `develop`: 90
 - Mobile production-branch-only commits to preserve during merge: 4
 
 ## Gabriel Commits Queued For Prod
@@ -137,6 +137,8 @@ These are the commits in `origin/master..origin/develop`.
 | `237869e` | 2026-06-14 | Adds web model catalog tracker item. |
 | `d450dae` | 2026-06-18 | Updates QR-MOB-025 rollout readiness evidence. |
 | `d69b095` | 2026-06-18 | Adds QR-MOB-027 production rollout plan. |
+| `d835957` | 2026-06-18 | Adds the QR-MOB-027 production commit inventory. |
+| `74375fa` | 2026-06-18 | Sets the QR-MOB-027 production smoke user. |
 
 ## Quiet Room Mobile Production-Branch Commits To Preserve
 
