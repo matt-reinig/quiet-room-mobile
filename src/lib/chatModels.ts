@@ -1,4 +1,4 @@
-export const DEFAULT_CHAT_MODEL = "gpt-5.1-chat-latest";
+export const DEFAULT_CHAT_MODEL = "claude-sonnet-4-6";
 
 export type ChatModelOption = {
   description?: string;
@@ -28,16 +28,18 @@ type RawModelCatalog = {
 };
 
 export const CHAT_MODEL_FLAG_TO_MODEL = [
-  ["chat_model_gpt_5_1", "gpt-5.1-chat-latest"],
   ["chat_model_gpt_5_3", "gpt-5.3-chat-latest"],
   ["chat_model_gpt_5_5_reasoning_none", "gpt-5.5"],
+  ["chat_model_anthropic_fast_chat", "claude-sonnet-4-6"],
 ] as const;
 
 const LEGACY_MODEL_LABELS: Record<string, string> = {
-  "gpt-5.1-chat-latest": "GPT-5.1",
+  "claude-sonnet-4-6": "Sonnet 4.6",
   "gpt-5.3-chat-latest": "GPT-5.3",
   "gpt-5.5": "GPT-5.5",
 };
+
+const DEPRECATED_CHAT_PROVIDER_MODEL_IDS = new Set(["gpt-5.1-chat-latest"]);
 
 const CHAT_MODEL_ORDER = CHAT_MODEL_FLAG_TO_MODEL.map(([, model]) => model);
 
@@ -179,6 +181,15 @@ export function parseChatModelCatalog(payload: unknown): ChatModelOption[] {
           : typeof item.providerModelId === "string"
             ? item.providerModelId
             : undefined;
+
+      if (
+        DEPRECATED_CHAT_PROVIDER_MODEL_IDS.has(legacyModelId || "") ||
+        DEPRECATED_CHAT_PROVIDER_MODEL_IDS.has(
+          typeof item.providerModelId === "string" ? item.providerModelId : "",
+        )
+      ) {
+        return null;
+      }
 
       return {
         description:

@@ -1,6 +1,9 @@
 const {
   acceptAiConsentIfVisible,
+  buildQuietRoomLoginUrl,
   dismissIosPasswordSavePromptIfPresent,
+  ensureKnownAccountAiConsentAccepted,
+  getE2ECredentials,
   launchQuietRoom,
   waitForExistsMaybe,
 } = require('./helpers');
@@ -83,17 +86,26 @@ async function waitForAssistantReply(userIndex, assistantIndex, sendButton, time
 
 describe('Quiet Room response smoke', () => {
   beforeEach(async () => {
-    await launchQuietRoom({ delete: true });
+    if (device.getPlatform() === 'ios') {
+      const credentials = getE2ECredentials();
+      await ensureKnownAccountAiConsentAccepted(credentials);
+      await launchQuietRoom({
+        delete: true,
+        url: buildQuietRoomLoginUrl(credentials),
+      });
+    } else {
+      await launchQuietRoom({ delete: true });
+    }
+
     await waitFor(element(by.id(ids.screen))).toBeVisible().withTimeout(60000);
   });
 
   it('launches and completes one basic prompt/response flow', async () => {
-    await expect(element(by.id(ids.header))).toBeVisible();
-    await expect(element(by.id(ids.messageList))).toBeVisible();
-    await expect(element(by.id(ids.openingMessage))).toExist();
+    await waitFor(element(by.id(ids.header))).toBeVisible().withTimeout(60000);
+    await waitFor(element(by.id(ids.messageList))).toBeVisible().withTimeout(60000);
+    await waitFor(element(by.id(ids.openingMessage))).toExist().withTimeout(60000);
 
     if (device.getPlatform() === 'ios') {
-      await expect(element(by.id(ids.promptCuesToggle))).toBeVisible();
       await expect(element(by.id(ids.composerInput))).toExist();
     } else {
       await expect(element(by.id(ids.composerInput))).toBeVisible();

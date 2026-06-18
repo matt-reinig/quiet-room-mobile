@@ -78,7 +78,7 @@ describe('Quiet Room model gating', () => {
     await expect(element(by.id(ids.modelMenuButton))).toBeVisible();
 
     const selectedLabel = await readText(element(by.id(ids.modelSelectedLabel)));
-    jestExpect(selectedLabel).toBe('GPT-5.1');
+    jestExpect(selectedLabel).toBe('Sonnet 4.6');
 
     await openChatOptions();
     await expect(element(by.id(ids.modelMenuVoiceToggle))).toBeVisible();
@@ -115,7 +115,12 @@ describe('Quiet Room model gating', () => {
     );
     jestExpect(hasVoiceToggle).toBe(false);
 
-    await expect(element(by.id(ids.modelOption('gpt-5.1-chat-latest')))).toBeVisible();
+    const hasDeprecatedModelOption = await waitForExistsMaybe(
+      element(by.id(ids.modelOption('gpt-5.1-chat-latest'))),
+      1000,
+    );
+    jestExpect(hasDeprecatedModelOption).toBe(false);
+
     await expect(element(by.id(ids.modelOption('gpt-5.3-chat-latest')))).toBeVisible();
     await expect(element(by.id(ids.modelOption('gpt-5.5')))).toBeVisible();
 
@@ -128,22 +133,22 @@ describe('Quiet Room model gating', () => {
 
   it('falls back and refreshes chrome when the selected model is disabled during the session', async () => {
     await launchQuietRoomWithFlags({
-      chat_model_gpt_5_1: true,
       chat_model_gpt_5_3: true,
+      chat_model_gpt_5_5_reasoning_none: true,
       voice_mode: false,
     });
 
     await openChatOptions();
-    await element(by.id(ids.modelOption('gpt-5.3-chat-latest'))).tap();
+    await element(by.id(ids.modelOption('gpt-5.5'))).tap();
     await waitFor(element(by.id(ids.modelMenu))).not.toExist().withTimeout(5000);
-    await waitForText(element(by.id(ids.modelSelectedLabel)), 'GPT-5.3');
+    await waitForText(element(by.id(ids.modelSelectedLabel)), 'GPT-5.5');
 
     await updateQuietRoomFeatureFlags({
-      chat_model_gpt_5_1: true,
+      chat_model_anthropic_fast_chat: true,
       voice_mode: true,
     });
 
-    await waitForText(element(by.id(ids.modelSelectedLabel)), 'GPT-5.1');
+    await waitForText(element(by.id(ids.modelSelectedLabel)), 'Sonnet 4.6');
     await openChatOptions();
     await expect(element(by.id(ids.modelMenuVoiceToggle))).toBeVisible();
 

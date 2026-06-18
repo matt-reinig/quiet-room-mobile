@@ -4,7 +4,9 @@ const ids = require('./testIds');
 
 let cachedCreds = null;
 let cachedBackendConfig = null;
-const DEFAULT_E2E_APP_SCHEME = process.env.E2E_APP_SCHEME || 'quietroommobileqa';
+const DEFAULT_E2E_APP_SCHEME =
+  process.env.E2E_APP_SCHEME ||
+  (process.env.EXPO_PUBLIC_APP_VARIANT === 'prod' ? 'quietroommobile' : 'quietroommobileqa');
 
 function parseEnvFile(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -87,6 +89,22 @@ function getBackendConfig() {
   return cachedBackendConfig;
 }
 
+function getFirebaseApiKey() {
+  const appEnv = parseEnvFile(path.resolve(__dirname, '../.env'));
+  const prodEnv = parseEnvFile(path.resolve(__dirname, '../.env.prod'));
+  const qaEnv = parseEnvFile(path.resolve(__dirname, '../.env.qa'));
+  const localQaEnv = parseEnvFile(path.resolve(__dirname, '../.env.local.qa'));
+
+  return (
+    process.env.EXPO_PUBLIC_FB_API_KEY ||
+    prodEnv.EXPO_PUBLIC_FB_API_KEY ||
+    qaEnv.EXPO_PUBLIC_FB_API_KEY ||
+    localQaEnv.EXPO_PUBLIC_FB_API_KEY ||
+    appEnv.EXPO_PUBLIC_FB_API_KEY ||
+    ''
+  );
+}
+
 async function backendRequest(pathname, options = {}) {
   const config = getBackendConfig();
   const headers = {
@@ -148,6 +166,14 @@ async function launchQuietRoom(options = {}) {
 
 function buildQuietRoomFeatureFlagsUrl(featureFlags, appScheme = DEFAULT_E2E_APP_SCHEME) {
   return `${appScheme}://quiet-room?ff=${encodeURIComponent(JSON.stringify(featureFlags))}`;
+}
+
+function buildQuietRoomLoginUrl(credentials, appScheme = DEFAULT_E2E_APP_SCHEME) {
+  const params = new URLSearchParams({
+    e2eLoginEmail: credentials.email,
+    e2eLoginPassword: credentials.password,
+  });
+  return `${appScheme}://quiet-room?${params.toString()}`;
 }
 
 async function updateQuietRoomFeatureFlags(featureFlags, options = {}) {
@@ -261,6 +287,57 @@ async function loginWithKnownAccount() {
   return credentials;
 }
 
+async function ensureKnownAccountAiConsentAccepted(credentials = getE2ECredentials()) {
+  const apiKey = getFirebaseApiKey();
+
+  if (!apiKey) {
+    throw new Error('Missing EXPO_PUBLIC_FB_API_KEY for known-account AI consent setup');
+  }
+
+  const signInResponse = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: credentials.email,
+        password: credentials.password,
+        returnSecureToken: true,
+      }),
+    },
+  );
+
+  const signInPayload = await signInResponse.json().catch(() => ({}));
+
+  if (!signInResponse.ok || !signInPayload.idToken) {
+    throw new Error(`Known-account sign-in failed for AI consent setup: ${signInResponse.status}`);
+  }
+
+  const config = getBackendConfig();
+  const response = await fetch(`${config.apiBase.replace(/\/+$/, '')}/api/account/ai-consent`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${signInPayload.idToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      aiSharingAccepted: true,
+      source: 'quiet-room-mobile-e2e',
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Known-account AI consent setup failed: ${response.status}`);
+  }
+
+  return {
+    idToken: signInPayload.idToken,
+    uid: signInPayload.localId,
+  };
+}
+
 async function loginWithEmailCredentials(credentials) {
   await openLoginModal();
   await element(by.id(ids.loginEmailInput)).replaceText(credentials.email);
@@ -357,9 +434,11 @@ async function configureAiConsent({ uid, aiSharingAccepted, source }) {
 module.exports = {
   acceptAiConsentIfVisible,
   buildQuietRoomFeatureFlagsUrl,
+  buildQuietRoomLoginUrl,
   configureAiConsent,
   configureAccountDeletionMode,
   createDisposableTestUser,
+  ensureKnownAccountAiConsentAccepted,
   fetchReports,
   fetchUserData,
   dismissIosPasswordSavePromptIfPresent,

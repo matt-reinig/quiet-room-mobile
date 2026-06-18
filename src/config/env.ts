@@ -92,13 +92,13 @@ export const ACCOUNT_DELETION_URL =
   "https://quiet-room-privacy-policy.vercel.app/account-deletion";
 
 export const DEFAULT_MODEL =
-  process.env.EXPO_PUBLIC_DEFAULT_MODEL || "gpt-5.1-chat-latest";
+  process.env.EXPO_PUBLIC_DEFAULT_MODEL || "claude-sonnet-4-6";
 
 export const MODEL_OPTIONS =
   modelOptionsRaw
     ?.split(",")
     .map((value: string) => value.trim())
-    .filter(Boolean) || ["gpt-5.1-chat-latest", "gpt-5.3-chat-latest"];
+    .filter(Boolean) || ["claude-sonnet-4-6"];
 
 export const RENDER_MODE: RenderMode =
   renderModeRaw.toLowerCase() === "webview" ? "webview" : "native";
