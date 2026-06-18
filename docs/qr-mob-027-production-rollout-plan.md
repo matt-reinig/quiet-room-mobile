@@ -15,6 +15,8 @@ This task intentionally sits above QR-MOB-025. QR-MOB-025 remains the backend de
 
 Captured on 2026-06-18.
 
+Commit inventory for the pre-rollout review lives in `docs/qr-mob-027-production-commit-inventory.md`.
+
 ### Gabriel Backend
 
 - QA branch: `origin/develop-from-main`
