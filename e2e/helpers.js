@@ -168,13 +168,19 @@ async function waitForExistsMaybe(elementHandle, timeoutMs) {
 
 async function acceptAiConsentIfVisible(timeoutMs = 4000) {
   const consentModal = element(by.id(ids.aiConsentModal));
+  const acceptButton = element(by.id(ids.aiConsentAcceptButton));
   const consentVisible = await waitForExistsMaybe(consentModal, timeoutMs);
 
   if (!consentVisible) {
     return false;
   }
 
-  await element(by.id(ids.aiConsentAcceptButton)).tap();
+  await waitFor(acceptButton).toBeVisible().withTimeout(10000);
+  if (device.getPlatform() === 'ios') {
+    await element(by.text('I Consent')).tap();
+  } else {
+    await acceptButton.tap();
+  }
   await waitFor(consentModal).not.toExist().withTimeout(15000);
   return true;
 }

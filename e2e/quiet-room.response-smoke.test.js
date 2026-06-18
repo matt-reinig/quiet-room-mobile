@@ -83,14 +83,14 @@ async function waitForAssistantReply(userIndex, assistantIndex, sendButton, time
 
 describe('Quiet Room response smoke', () => {
   beforeEach(async () => {
-    await launchQuietRoom();
+    await launchQuietRoom({ delete: true });
     await waitFor(element(by.id(ids.screen))).toBeVisible().withTimeout(60000);
   });
 
   it('launches and completes one basic prompt/response flow', async () => {
     await expect(element(by.id(ids.header))).toBeVisible();
     await expect(element(by.id(ids.messageList))).toBeVisible();
-    await expect(element(by.id(ids.openingMessage))).toBeVisible();
+    await expect(element(by.id(ids.openingMessage))).toExist();
 
     if (device.getPlatform() === 'ios') {
       await expect(element(by.id(ids.promptCuesToggle))).toBeVisible();

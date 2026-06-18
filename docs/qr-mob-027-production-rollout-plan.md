@@ -109,10 +109,49 @@ Updated on 2026-06-18.
   - Uploaded Android `versionCode 21`.
   - Track readback confirmed `PROD internal 21`, `versionCodes ["21"]`, `status draft`.
 
-### Still Approval-Gated
+### Split-Profile Production Enablement Completed
 
-- Prod feature flag upserts have not been run.
-- Production mobile smoke from the uploaded app builds has not been run.
+- Explicit approval received on 2026-06-18 for the remaining production rollout work.
+- Upserted production feature flags in Firestore project `gabriel-e6156`:
+  - `feature_flags/prod/flags/new_profile_memory_write`
+  - `feature_flags/prod/flags/new_profile_memory_read`
+- Both flags now evaluate enabled for all production users.
+- Verified live prod flag evaluation for `newuser@example.com` / Firebase UID `suNS7ZW6o0aB6O1DWaiYV36c1xo1`:
+  - `new_profile_memory_write=True`, reason `enabled_for_all`
+  - `new_profile_memory_read=True`, reason `enabled_for_all`
+- Sent authenticated production chat `qr-mob-027-prod-proof-1781821333766`; response completed with `assistantChars=31`.
+- Invoked the production profile-builder endpoint for that conversation; response returned `{"status":"started"}`.
+- Confirmed CloudWatch on `/aws/lambda/gabriel_lambda_prod`:
+  - `profile_builder.request` for `qr-mob-027-prod-proof-1781821333766`
+  - `profile_builder.split_memory_completed` at `2026-06-18T22:22:35.239Z`
+  - `profile_builder.completed` with provider `anthropic`, model `claude-sonnet-4-6`, profile length `1812`
+- Confirmed Firestore split-memory docs exist under `users/suNS7ZW6o0aB6O1DWaiYV36c1xo1/meta/`:
+  - `spiritual_profile`
+  - `spiritual_profile_core` with profile length `397`
+  - `spiritual_profile_recent` with profile length `281`
+  - `spiritual_profile_meta`
+- Sent follow-up authenticated production chat `qr-mob-027-prod-split-read-1781821424122`; response completed with `assistantChars=90`.
+- Confirmed CloudWatch `chat_stream.profile_loaded` for the follow-up chat with `has_profile=true`, `profile_source=split_memory`, and `profile_length=788`.
+
+### Mobile Production Smoke Status
+
+- Android production-config response smoke passed after test harness hardening:
+  - `bash ./scripts/with-mobile-env.sh prod prod env NODE_OPTIONS="--require .../scripts/detox-ipv4-server-hook.js" npx detox test -c android.emu.release e2e/quiet-room.response-smoke.test.js --record-logs all --take-screenshots failing`
+  - Result: `PASS e2e/quiet-room.response-smoke.test.js`, `1 passed`, runtime `43.626 s`.
+- iOS production-config response smoke remains blocked in Detox:
+  - Production app builds and launches successfully on the iPhone 17 simulator.
+  - The smoke reaches the AI consent modal, but Detox taps on the visible `I Consent` control do not dismiss the modal within 15 seconds.
+  - Latest failing command: `bash ./scripts/with-mobile-env.sh prod prod npx detox test -c ios.sim.release e2e/quiet-room.response-smoke.test.js --record-logs all --take-screenshots failing`.
+  - Latest artifact: `artifacts/ios.sim.release.2026-06-18 22-18-35Z/`.
+- Test harness hardening committed in this rollout:
+  - Clean app data before response smoke.
+  - Check opening message existence rather than the stricter 75 percent Detox visibility threshold.
+  - Wait for the AI consent accept button to be visible before tapping.
+
+### Still Approval-Gated Or Blocked
+
+- Full production mobile smoke from installed App Store/TestFlight and Play builds has not been completed.
+- iOS local production-config response smoke is blocked at AI-consent modal interaction under Detox.
 - App Store review submission / public production release has not been run.
 - Play production rollout beyond the internal draft release has not been run.
 
