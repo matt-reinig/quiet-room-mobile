@@ -108,6 +108,16 @@ Updated on 2026-06-18.
   - Uploaded to Google Play package `com.quietroom.mobile` internal track through Play edit `04628924593668462994`.
   - Uploaded Android `versionCode 21`.
   - Track readback confirmed `PROD internal 21`, `versionCodes ["21"]`, `status draft`.
+- Corrective mobile production deploy for the model-picker/default-model issue completed on 2026-06-18:
+  - Mobile code fix commit: `408b35d` (`Remove stale GPT model option`).
+  - Removed stale GPT-5.1 mobile chat option handling, defaulted mobile fallbacks to `claude-sonnet-4-6`, and filtered deprecated `gpt-5.1-chat-latest` catalog entries so a one-model Sonnet catalog hides the picker.
+  - Improved iOS production-config response smoke by pre-accepting AI consent for the known E2E account and launching through the prod app scheme.
+  - Verified `npm run typecheck`, `npm run mobile:verify:prod`, `npm run ios:testflight:preflight:prod`, `npm run android:play:preflight:prod`, iOS production-config Detox response smoke, and Android production-config Detox response smoke.
+  - Uploaded Quiet Room iOS build `29` to App Store Connect/TestFlight with `Uploaded QuietRoom` and `** EXPORT SUCCEEDED **`; archive path `build/ios-prod-b29.xcarchive`, `testFlightInternalTestingOnly: false`.
+  - Built Android production `versionCode 22` signed AAB `android/app/build/outputs/bundle/release/app-release.aab`.
+  - AAB SHA256: `83a90c97118a78e8550dc964829753ccde15b86be3e09caa62d90a4ab73bf85e`.
+  - Uploaded to Google Play package `com.quietroom.mobile` internal track through Play edit `16929609920968898644`.
+  - Track readback confirmed `PROD internal 22`, `versionCodes ["22"]`, `status draft`.
 
 ### Split-Profile Production Enablement Completed
 
@@ -151,7 +161,6 @@ Updated on 2026-06-18.
 ### Still Approval-Gated Or Blocked
 
 - Full production mobile smoke from installed App Store/TestFlight and Play builds has not been completed.
-- iOS local production-config response smoke is blocked at AI-consent modal interaction under Detox.
 - App Store review submission / public production release has not been run.
 - Play production rollout beyond the internal draft release has not been run.
 
