@@ -118,6 +118,18 @@ Updated on 2026-06-18.
   - AAB SHA256: `83a90c97118a78e8550dc964829753ccde15b86be3e09caa62d90a4ab73bf85e`.
   - Uploaded to Google Play package `com.quietroom.mobile` internal track through Play edit `16929609920968898644`.
   - Track readback confirmed `PROD internal 22`, `versionCodes ["22"]`, `status draft`.
+- Corrective mobile production deploy for the model-switch persistence issue completed on 2026-06-18:
+  - Mobile code fix commit: `613c294` (`Fix model switch state sync`).
+  - Build-counter commit: `1d6212d` (`Bump production hotfix build counters`).
+  - Root cause: model-picker changes updated `conversation.currentModel`, but stale `conversation.logicalModelKey` still drove the active conversation sync path and snapped the picker back to the previous logical route, such as GPT-5.3 or Sonnet 4.6.
+  - The picker now updates `logicalModelKey` together with `currentModel`, and clears stale logical keys when the selected concrete model does not map to an enabled logical catalog option.
+  - Verified live prod feature-flag/catalog state: ordinary production users resolve enabled routes for `primary_chat` / `gpt-5.1-chat-latest` and `anthropic_fast_chat` / `claude-sonnet-4-6`; this confirmed the stuck picker was mobile state sync, not backend model availability.
+  - Verified `npm run typecheck`, `npm run mobile:verify:prod`, `npm run ios:testflight:status:prod`, `npm run android:play:status:prod`, `npm run ios:testflight:preflight:prod`, and `npm run android:play:preflight:prod`.
+  - Uploaded Quiet Room iOS build `30` to App Store Connect/TestFlight with `Uploaded QuietRoom` and `** EXPORT SUCCEEDED **`; archive path `build/ios-prod-b30.xcarchive`, `testFlightInternalTestingOnly: false`.
+  - Built Android production `versionCode 23` signed AAB `android/app/build/outputs/bundle/release/app-release.aab`.
+  - AAB SHA256: `21ac580d8e358fd61a22bff7c85478364db8be5e33b60df81e83976f05354dbe`.
+  - Uploaded to Google Play package `com.quietroom.mobile` internal track through Play edit `16564828441927027838`.
+  - Track readback confirmed `PROD internal 23`, `versionCodes ["23"]`, `status draft`.
 
 ### Split-Profile Production Enablement Completed
 
