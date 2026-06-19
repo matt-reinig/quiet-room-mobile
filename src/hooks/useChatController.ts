@@ -555,6 +555,7 @@ export function useChatController({
   const setCurrentModel = useCallback(
     (model: string) => {
       const nextModel = normalizeChatModelKey(model, modelOptions);
+      const nextLogicalModelKey = logicalKeyForChatModel(nextModel, modelOptions);
 
       setCurrentModelState((previous: string) => {
         if (previous === nextModel) {
@@ -572,7 +573,11 @@ export function useChatController({
 
         const conversation = previous[conversationId];
 
-        if (!conversation || conversation.currentModel === nextModel) {
+        if (
+          !conversation ||
+          (conversation.currentModel === nextModel &&
+            conversation.logicalModelKey === nextLogicalModelKey)
+        ) {
           return previous;
         }
 
@@ -581,6 +586,7 @@ export function useChatController({
           [conversationId]: {
             ...conversation,
             currentModel: nextModel,
+            logicalModelKey: nextLogicalModelKey,
           },
         };
       });
