@@ -44,6 +44,8 @@
     "ios:appstore:screenshots:status": "node ./scripts/upload-app-store-screenshots.mjs --status",
     "ios:appstore:screenshots:dry-run": "node ./scripts/upload-app-store-screenshots.mjs --dry-run",
     "ios:appstore:screenshots:upload": "node ./scripts/upload-app-store-screenshots.mjs",
+    "ios:appstore:readiness:status": "node ./scripts/update-app-store-readiness.mjs",
+    "ios:appstore:readiness:apply": "node ./scripts/update-app-store-readiness.mjs --apply",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "mobile:configure:5556": "powershell -ExecutionPolicy Bypass -File .\\scripts\\configure-emulator-5556.ps1",

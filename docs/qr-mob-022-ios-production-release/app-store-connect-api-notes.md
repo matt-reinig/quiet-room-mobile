@@ -94,18 +94,79 @@ Notes:
 
 ## Upload result
 
-On 2026-06-19 at 21:53 CDT, the uploader completed successfully against App Store Connect display type `APP_IPHONE_67`.
+On 2026-06-19 at 21:53 CDT, the uploader completed successfully against App Store Connect display type `APP_IPHONE_67`. The screenshot set was refreshed again at 22:45 CDT with a normal post-consent conversation screenshot and conversations/history pane screenshot.
 
-Readback:
+Readback after the iPhone refresh:
 
 ```text
 Resolved app id: 6761866347
 Resolved version id: 36f439ae-f2f6-4140-babd-14cdc6ac48ea (state: PREPARE_FOR_SUBMISSION)
 Resolved localization id: b1396952-779e-4893-9e63-d4f81ffd177e
-Screenshot sets in localization: 1
+Screenshot sets in localization: 2
   APP_IPHONE_67: set ba57c157-f59b-4a9b-b14f-482b28d39bc7, screenshots 5
+  APP_IPAD_PRO_3GEN_129: set ad33cf8c-c159-4a33-9874-ae60fb0890cd, screenshots 1
 Target display type APP_IPHONE_67: present
 Status only. No App Store Connect changes were made.
 ```
 
+On 2026-06-19 at 23:00 CDT, the required 13-inch iPad screenshot blocker was cleared with a production release-simulator capture from an iPad Pro 13-inch simulator. The uploaded file is `store-assets/ipad-pro-13/01-ipad-opening.png`, verified locally at `2064x2752`, and App Store Connect readback reports display type `APP_IPAD_PRO_3GEN_129`, set `ad33cf8c-c159-4a33-9874-ae60fb0890cd`, screenshot id `cc461676-5f5c-446f-9fc0-adfd69d2bdfe`, screenshot count `1`.
+
 No App Review submission was attempted.
+
+## Submission-readiness helper
+
+A no-submit metadata/readiness helper now exists at `scripts/update-app-store-readiness.mjs`. It uses the App Store Connect API to read or update editable setup fields for the existing App Store version, but it does not call App Review submission endpoints.
+
+Read-only status:
+
+```sh
+npm run ios:appstore:readiness:status
+```
+
+Apply editable fields:
+
+```sh
+npm run ios:appstore:readiness:apply
+```
+
+Final App Review contact unblock, if the reviewer phone number needs to be applied through the API instead of the App Store Connect UI:
+
+```sh
+npm run ios:appstore:readiness:apply -- --review-phone '+1 ...'
+```
+
+Current 2026-06-19 readback after the App Review contact fields were filled in App Store Connect:
+
+```text
+Version state: PREPARE_FOR_SUBMISSION
+Attached build: 30 (6dcf703d-72fc-4011-a9d2-374eaeec0a8f)
+Copyright: 2026 Quiet Room
+Uses IDFA: false
+Localization fields: set
+Review contact fields: set
+Primary category: LIFESTYLE
+Age rating null fields: kidsAgeBand, developerAgeRatingInfoUrl
+Submission object: not found
+Readiness gaps: none
+```
+
+Apple rejected `whatsNew` edits for this first version, so the helper omits `whatsNew` during apply.
+
+## Remaining Add-for-Review blockers found later
+
+After App Store Connect surfaced an `Unable to Add for Review` checklist, the API-settable items were cleared on 2026-06-19 at 23:16 CDT:
+
+- Content Rights Information: `PATCH /v1/apps/6761866347` set `contentRightsDeclaration` to `USES_THIRD_PARTY_CONTENT`.
+- Pricing: `POST /v1/appPriceSchedules` set base territory `USA` and one manual free price using USA price point `eyJzIjoiNjc2MTg2NjM0NyIsInQiOiJVU0EiLCJwIjoiMTAwMDAifQ`.
+- Verification readback: `contentRightsDeclaration: USES_THIRD_PARTY_CONTENT`; `baseTerritory: USA USD`; one manual price with `startDate=null`, `endDate=null`, `manual=true`; first USA price point customer price `0.0`.
+
+The remaining blocker was App Privacy. Apple's official App Store Connect API key flow does not expose the App Privacy questionnaire, and App Store Connect reported that an Admin must provide the privacy-practices information in the App Privacy section. `docs/privacy/store-console-disclosure-worksheet.md` was used as the source of truth for that Admin UI pass.
+
+After the App Store owner completed/published App Privacy and submitted for review, readback on 2026-06-19 at 23:32 CDT reported:
+
+```text
+Version state: WAITING_FOR_REVIEW
+Attached build: 30 (6dcf703d-72fc-4011-a9d2-374eaeec0a8f)
+Submission object: present
+Readiness gaps: none
+```

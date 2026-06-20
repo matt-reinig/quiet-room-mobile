@@ -16,6 +16,8 @@ AI consent: Quiet Room shows an AI-sharing consent prompt before the first messa
 
 iOS login: Sign in with Apple is available on iOS alongside email/password and any configured provider sign-in options.
 
+A guest flow is available, but use the demo account to test signed-in features such as conversation history and account deletion.
+
 In-app policy links: open the About screen to access Privacy Policy, Support, and Account Deletion links.
 
 ## Notes for submission

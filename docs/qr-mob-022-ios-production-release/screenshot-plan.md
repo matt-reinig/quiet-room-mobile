@@ -55,5 +55,15 @@ Recommended refreshed set:
 ## Current status
 
 - Screenshot upload is complete and no longer blocks App Store Connect setup work.
-- The current uploaded set should be treated as a temporary first-pass set.
-- Before final submission, refresh the public screenshot set to include a normal post-consent app flow and the conversations pane/history view.
+- The App Store Connect `APP_IPHONE_67` set was refreshed on 2026-06-19 with five `1290x2796` screenshots:
+  - `01-landing.png`
+  - `02-conversation.png`
+  - `03-conversations-history.png`
+  - `04-atmosphere.png`
+  - `05-report-response.png`
+- The refreshed set includes the required normal post-consent conversation flow and conversations pane/history view.
+- Readback with `npm run ios:appstore:screenshots:status` confirms screenshot set `ba57c157-f59b-4a9b-b14f-482b28d39bc7` contains `5` screenshots for `APP_IPHONE_67`.
+- App Store Connect later required a 13-inch iPad screenshot before Add for Review. A production release-simulator screenshot was captured from an iPad Pro 13-inch simulator and uploaded as display type `APP_IPAD_PRO_3GEN_129`.
+- Local iPad file: `store-assets/ipad-pro-13/01-ipad-opening.png`.
+- Local size verification: `2064x2752`.
+- App Store Connect readback confirms screenshot set `ad33cf8c-c159-4a33-9874-ae60fb0890cd` contains `1` screenshot for `APP_IPAD_PRO_3GEN_129`; uploaded screenshot id `cc461676-5f5c-446f-9fc0-adfd69d2bdfe`.

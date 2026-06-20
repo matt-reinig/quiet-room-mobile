@@ -316,7 +316,10 @@ async function findScreenshotSet(token, localizationId, displayType) {
     "GET",
     `/appStoreVersionLocalizations/${localizationId}/appScreenshotSets?filter[screenshotDisplayType]=${encodeURIComponent(displayType)}`,
   );
-  return response.data?.[0] || null;
+  return (
+    response.data?.find((set) => set.attributes?.screenshotDisplayType === displayType) ||
+    null
+  );
 }
 
 async function findOrCreateScreenshotSet(token, localizationId, displayType) {
