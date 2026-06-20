@@ -21,18 +21,18 @@ Contents:
 - `feature-graphic.png`
 - `listing-metadata.md`
 
-The bundle README says the conversation screenshot is a real QA capture and notes that it was a first-pass asset, but the current pack is good enough to serve as the handoff set without mandatory recapture.
+The bundle README says the conversation screenshot is a real QA capture and notes that it was a first-pass asset. The current uploaded pack is acceptable as a temporary handoff set, but it should be refreshed before final App Review submission if time allows.
 
 ## Screenshot set
 
-Recommended first pass:
+Recommended refreshed set:
 
-1. Home screen
-2. About modal with privacy/support/account-deletion links
-3. AI consent modal
-4. iOS sign-in sheet with Sign in with Apple visible
-5. Report response modal
-6. Delete account confirmation modal
+1. Home or opening screen with production branding
+2. Normal conversation flow after AI consent has already been accepted
+3. Conversations pane/history view
+4. Atmosphere or reflection controls
+5. Report response or support/safety affordance
+6. Sign-in/account screen if a sixth screenshot is useful
 
 ## Capture rules
 
@@ -40,18 +40,20 @@ Recommended first pass:
 - Keep the screenshots free of build/debug details.
 - Prefer the production branding and the real app UI over any marketing mockup.
 - Capture the modal or screen in a settled state before taking the shot.
+- Do not make the AI consent modal a primary public listing screenshot; keep that proof in reviewer notes unless Apple specifically asks for it.
 - Name captures consistently with the QR-MOB-022 task so they are easy to sort later.
 
 ## Suggested filenames
 
 - `qr-mob-022-prod-home`
-- `qr-mob-022-prod-about-links`
-- `qr-mob-022-prod-ai-consent`
-- `qr-mob-022-prod-ios-login`
+- `qr-mob-022-prod-normal-conversation`
+- `qr-mob-022-prod-conversations-pane`
+- `qr-mob-022-prod-atmosphere`
 - `qr-mob-022-prod-report-response`
-- `qr-mob-022-prod-delete-account`
+- `qr-mob-022-prod-sign-in`
 
 ## Current status
 
-- Screenshot capture is no longer a blocker.
-- The current release candidate, reviewer notes, and the existing `store-assets` bundle form the handoff set for the final store package.
+- Screenshot upload is complete and no longer blocks App Store Connect setup work.
+- The current uploaded set should be treated as a temporary first-pass set.
+- Before final submission, refresh the public screenshot set to include a normal post-consent app flow and the conversations pane/history view.
