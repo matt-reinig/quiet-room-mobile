@@ -43,6 +43,68 @@ What this means:
 
 ## What This Repo Now Supports
 
+### Google Play release helper
+
+`scripts/google-play-release.mjs` replaces the copy/paste Ruby upload snippet
+with a local-env-backed API helper that mirrors the App Store Connect helpers.
+It uses only the Android Publisher API; the service-account JSON remains
+outside the repository.
+
+Create `/Users/mjreinig/projects/Gabriel_App/.local/google-play-publisher.env`
+from `.env.google-play-publisher.example` and set the absolute path to the
+already-authorized service-account JSON:
+
+```sh
+GOOGLE_PLAY_SERVICE_ACCOUNT_JSON=/absolute/path/to/service-account.json
+```
+
+Read only (it opens and abandons a temporary edit, never commits one):
+
+```sh
+npm run android:play:api:status:qa
+npm run android:play:api:status:prod
+```
+
+Validate an artifact without contacting Play:
+
+```sh
+npm run android:play:api:dry-run:qa -- --aab android/app/build/outputs/bundle/release/app-release.aab
+```
+
+Upload a new bundle as a **draft** internal release after dry-run review:
+
+```sh
+node scripts/google-play-release.mjs --upload --apply --lane qa \
+  --aab android/app/build/outputs/bundle/release/app-release.aab \
+  --release-notes 'QA internal testing build.'
+```
+
+For the normal QA path, the same commit can make the release available to
+internal testers. `--complete` and `--confirm-publish` deliberately make that
+effect explicit. The equivalent prod command additionally requires
+`--allow-prod`.
+
+```sh
+node scripts/google-play-release.mjs --upload --apply --complete --confirm-publish --lane qa \
+  --aab android/app/build/outputs/bundle/release/app-release.aab \
+  --release-notes 'QA internal testing build.'
+```
+
+Promote an already-uploaded draft release to `completed` only with explicit
+confirmation:
+
+```sh
+node scripts/google-play-release.mjs --promote 21 --confirm-publish --lane qa
+node scripts/google-play-release.mjs --promote 31 --confirm-publish --allow-prod --lane prod
+```
+
+The 2026-06-20 API readback shows both current internal releases are already
+`completed` (QA versionCode `21`; prod versionCode `23`), so normal internal
+release promotion is now API-automatable. If Google ever responds `Only
+releases with status draft may be created on draft app`, that app record needs
+its one-time initial publication/legal-consent step completed in Play Console.
+The Android Publisher API cannot perform that initial transition.
+
 From `quiet-room-mobile`:
 
 ```bash
@@ -211,9 +273,9 @@ android/app/build/outputs/bundle/release/app-release.aab
 BUILD SUCCESSFUL
 ```
 
-Upload to Play through the Android Publisher API as a draft internal release. The service-account JSON is local-only and must not be committed. The April 21 upload used the local service-account file from the store-distribution worktree and the package id `com.quietroom.mobile.qa`.
+Upload with the `google-play-release.mjs` helper documented above. The service-account JSON is local-only and must not be committed. The April 21 upload used the local service-account file from the store-distribution worktree and the package id `com.quietroom.mobile.qa`.
 
-Use this Ruby script pattern from the repo root, replacing only the local service-account path if yours differs:
+The Ruby script below is retained only as historical evidence for the April 2026 upload; do not use it for new releases.
 
 ```bash
 ruby <<'RUBY'
@@ -333,12 +395,12 @@ Updated internal track as draft release
 Committed Play edit 06857986117556258785
 ```
 
-Why the release uses `status: draft`:
+Why that historical release used `status: draft`:
 
 - These app records can still behave like draft apps in Play Console.
 - Draft app records reject API-created `completed` internal releases.
 - Uploading the AAB and attaching it to the internal track as `draft` creates the build record safely.
-- The remaining review/rollout action may still need to be completed in Play Console.
+- This is no longer the normal state: 2026-06-20 API readback reports both current internal releases as `completed`.
 
 After upload, verify local state:
 
@@ -394,7 +456,7 @@ android/app/build/outputs/bundle/release/app-release.aab
 BUILD SUCCESSFUL
 ```
 
-Upload through the Android Publisher API using the same script pattern as QA, changing only:
+For new prod uploads, use the helper documented above with `--allow-prod`; the Ruby values below are historical reference only:
 
 ```ruby
 package_name = 'com.quietroom.mobile'
@@ -403,7 +465,7 @@ release_name = 'PROD internal 6'
 release_notes = 'prod/prod internal testing build versionCode 6; paired with iOS prod build 13.'
 ```
 
-Keep `status: 'draft'` while the prod app record still behaves like a draft Play app.
+The historical upload used `status: 'draft'` because the prod app then behaved as draft-only. Current API readback reports the prod internal release as `completed`.
 
 Expected output for the April 24 upload:
 
