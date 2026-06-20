@@ -7,7 +7,8 @@ APP_JSON="$ROOT_DIR/app.json"
 APP_CONFIG_JS="$ROOT_DIR/app.config.js"
 ANDROID_DIR="$ROOT_DIR/android"
 APP_BUILD_GRADLE="$ANDROID_DIR/app/build.gradle"
-SIGNING_ENV_FILE="$ROOT_DIR/.env.android.signing"
+SIGNING_ENV_FILE="${MOBILE_ANDROID_SIGNING_ENV_FILE:-$ROOT_DIR/.env.android.signing}"
+SIGNING_ENV_ROOT="$(dirname "$SIGNING_ENV_FILE")"
 
 load_env_file() {
   local file_path="$1"
@@ -35,7 +36,7 @@ resolve_repo_relative_path() {
     return 0
   fi
 
-  printf '%s/%s\n' "$ROOT_DIR" "$value"
+  printf '%s/%s\n' "$SIGNING_ENV_ROOT" "$value"
 }
 
 if [[ ! -f "$APP_JSON" || ! -f "$APP_CONFIG_JS" ]]; then

@@ -27,6 +27,18 @@ Observed on April 24, 2026:
 - Internal track readback showed `PROD internal 6`, `versionCodes: ["6"]`, `status: draft`.
 - The uploaded AAB SHA256 was `514818e8d18b729ac834dfea06393cf81a9597925f9a106e16ddc21aedaf2e0c`.
 
+Observed on June 20, 2026:
+
+- Android Publisher API readback reports QA internal `versionCode 21` and prod
+  internal `versionCode 23` as `completed`; normal internal-track promotion no
+  longer needs a Play Console click.
+- `npm run android:play:deploy:<qa|prod>` now combines the existing preflight,
+  signed AAB build, and guarded API action. The QA dry-run path was verified in
+  an isolated worktree with sibling local env/signing/Firebase files and built
+  a fresh signed bundle without contacting Play.
+- `--apply` is required to upload; `--complete --confirm-publish` is required
+  to make a build available to testers; prod also remains opt-in.
+
 ## Previously Observed Privacy-Policy Gate
 
 Observed on April 11, 2026:
@@ -39,7 +51,8 @@ What this means:
 - internal testing does not bypass Play privacy-policy requirements for this app
 - complete the privacy-policy and store-metadata baseline before retrying the upload
 - track the broader metadata work in `docs/mobile-store-compliance-readiness-effort.md`
-- expect some final release-promotion steps to remain console-owned while the app records are still in Play's draft-app state
+- historical note: when an app record remains draft-only, final promotion is
+  console-owned until its one-time initial publication/legal-consent step is complete
 
 ## What This Repo Now Supports
 
@@ -70,6 +83,44 @@ Validate an artifact without contacting Play:
 ```sh
 npm run android:play:api:dry-run:qa -- --aab android/app/build/outputs/bundle/release/app-release.aab
 ```
+
+For the normal release flow, use the lane wrapper instead of manually chaining
+preflight, Gradle, and the API helper. It runs preflight first, builds a signed
+AAB unless an explicit `--aab` is supplied, then either dry-runs or uploads it.
+Prepare and commit the next Android `versionCode` before invoking it.
+
+```sh
+npm run android:play:deploy:qa -- --dry-run
+npm run android:play:deploy:qa -- --apply --complete --confirm-publish \
+  --release-notes 'QA internal testing build.'
+
+npm run android:play:deploy:prod -- --dry-run
+npm run android:play:deploy:prod -- --apply --complete --confirm-publish \
+  --release-notes 'Production-candidate internal build.'
+```
+
+`--dry-run` never contacts Google Play. `--apply` makes the upload mutation;
+`--complete --confirm-publish` makes the internal build available to testers.
+The prod wrapper adds the helper's separate `--allow-prod` guard only after the
+caller has explicitly selected `--apply`.
+
+For an isolated worktree that intentionally has no copied secrets, point the
+standard wrapper at the trusted local-only env files in the main checkout:
+
+```sh
+MOBILE_ENV_BASE_FILE=/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile/.env \
+MOBILE_ENV_OVERLAY_FILE=/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile/.env.qa \
+MOBILE_ANDROID_SIGNING_ENV_FILE=/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile/.env.android.signing \
+MOBILE_RELEASE_ASSET_ROOT=/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile \
+npm run android:play:deploy:qa -- --dry-run
+```
+
+The paths are explicit overrides; normal main-checkout commands continue to
+use that checkout's own `.env`, variant overlay, Android signing env, and
+Google service files. In an isolated worktree, the wrapper resolves the
+variant's ignored `google-services.<variant>.json` directly from
+`MOBILE_RELEASE_ASSET_ROOT` for preflight and native sync; it does not copy the
+local Firebase config into the worktree.
 
 Upload a new bundle as a **draft** internal release after dry-run review:
 

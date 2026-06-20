@@ -32,6 +32,8 @@
     "android:play:api:status:prod": "node ./scripts/google-play-release.mjs --status --lane prod",
     "android:play:api:dry-run:qa": "node ./scripts/google-play-release.mjs --dry-run --lane qa",
     "android:play:api:dry-run:prod": "node ./scripts/google-play-release.mjs --dry-run --lane prod",
+    "android:play:deploy:qa": "bash ./scripts/with-mobile-env.sh qa qa bash ./scripts/deploy-android-play.sh qa qa",
+    "android:play:deploy:prod": "bash ./scripts/with-mobile-env.sh prod prod bash ./scripts/deploy-android-play.sh prod prod",
     "ios:testflight:preflight": "bash ./scripts/ios-testflight-preflight.sh",
     "ios:testflight:preflight:qa": "bash ./scripts/with-mobile-env.sh qa qa bash ./scripts/ios-testflight-preflight.sh qa qa",
     "ios:testflight:preflight:prod": "bash ./scripts/with-mobile-env.sh prod prod bash ./scripts/ios-testflight-preflight.sh prod prod",
