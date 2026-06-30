@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const API_BASE = "https://androidpublisher.googleapis.com/androidpublisher/v3";
+const UPLOAD_API_BASE = "https://androidpublisher.googleapis.com/upload/androidpublisher/v3";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(SCRIPT_DIR, "..");
@@ -147,7 +148,7 @@ async function accessToken() {
 }
 
 async function request(token, method, endpoint, { json, bytes, headers } = {}) {
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+  const response = await fetch(`${bytes ? UPLOAD_API_BASE : API_BASE}${endpoint}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,

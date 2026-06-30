@@ -2,6 +2,7 @@ import { Platform } from "react-native";
 
 export type AppVariant = "prod" | "qa";
 export type ReleaseEnv = "local" | "qa" | "prod";
+export type VoicePlaybackEnginePreference = "expo-audio" | "track-player";
 
 type FirebaseConfig = {
   apiKey: string;
@@ -50,6 +51,23 @@ function resolveAppScheme(appVariant: AppVariant): string {
   return appVariant === "qa" ? "quietroommobileqa" : "quietroommobile";
 }
 
+function resolveVoicePlaybackEnginePreference(
+  value: string | undefined,
+  appVariant: AppVariant
+): VoicePlaybackEnginePreference {
+  const normalizedValue = value?.toLowerCase();
+
+  if (normalizedValue === "track-player") {
+    return "track-player";
+  }
+
+  if (normalizedValue === "expo-audio") {
+    return "expo-audio";
+  }
+
+  return appVariant === "qa" ? "track-player" : "expo-audio";
+}
+
 const devApiBase =
   Platform.OS === "android" ? "http://10.0.2.2:5000" : "http://localhost:5000";
 
@@ -71,6 +89,10 @@ export const APP_VARIANT = resolveAppVariant(appVariantRaw);
 export const RELEASE_ENV = resolveReleaseEnv(releaseEnvRaw);
 export const APP_SCHEME = resolveAppScheme(APP_VARIANT);
 export const API_BASE = trimTrailingSlashes(normalizeAndroidHostAliasForPlatform(apiBaseRaw));
+export const VOICE_PLAYBACK_ENGINE = resolveVoicePlaybackEnginePreference(
+  process.env.EXPO_PUBLIC_VOICE_PLAYBACK_ENGINE,
+  APP_VARIANT
+);
 
 export const STREAMING_BASE = trimTrailingSlashes(
   process.env.EXPO_PUBLIC_STREAMING_BASE || ""

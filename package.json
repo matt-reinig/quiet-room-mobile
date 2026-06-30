@@ -47,6 +47,7 @@
     "ios:testflight:export:prod": "bash ./scripts/deploy-ios-testflight.sh prod",
     "ios:testflight:deploy:qa": "bash ./scripts/deploy-ios-testflight.sh qa --upload",
     "ios:testflight:deploy:prod": "bash ./scripts/deploy-ios-testflight.sh prod --upload --external-testflight",
+    "postinstall": "patch-package",
     "ios:appstore:screenshots:status": "node ./scripts/upload-app-store-screenshots.mjs --status",
     "ios:appstore:screenshots:dry-run": "node ./scripts/upload-app-store-screenshots.mjs --dry-run",
     "ios:appstore:screenshots:upload": "node ./scripts/upload-app-store-screenshots.mjs",
@@ -91,6 +92,7 @@
     "react": "19.1.0",
     "react-native": "0.81.5",
     "react-native-safe-area-context": "~5.6.0",
+    "react-native-track-player": "^4.1.2",
     "react-native-webview": "13.15.0"
   },
   "devDependencies": {
@@ -98,6 +100,7 @@
     "detox": "^20.47.0",
     "jest": "^30.3.0",
     "jest-circus": "^30.3.0",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
   },
   "private": true
