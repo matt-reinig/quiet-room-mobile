@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "28",
+      "buildNumber": "29",
       "bundleIdentifier": "com.quietroom.mobile",
       "usesAppleSignIn": true,
       "infoPlist": {
