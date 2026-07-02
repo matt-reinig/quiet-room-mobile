@@ -7,8 +7,8 @@ QR-MOB-029 audit date: 2026-07-02
 Quiet Room already has a meaningful Detox suite, but the automation surface is uneven:
 
 - Detox is the primary E2E harness and should remain the source of truth for app behavior, selector-level assertions, backend-backed flows, keyboard/layout checks, and release smoke.
-- The Android QA release Detox build path works from a fresh worktree when pointed at the main checkout's local env/assets.
-- No full Detox spec completed in this audit. Android test execution stalled during the reinstall phase on the attached emulator, iOS simulator discovery hung, the worktree did not complete an iOS native sync, and the local-QA backend/Auth emulator expected by `qa/local` was not running.
+- The Android QA release Detox path is not currently reliable enough to count as release smoke.
+- No Detox spec completed in this audit. Android test execution reached Detox/instrumentation, but failed before the Jest spec could execute; iOS simulator discovery hung; the worktree did not complete an iOS native sync; and the local-QA backend/Auth emulator expected by `qa/local` was not running.
 - A minimal Maestro proof-of-concept flow now exists at `maestro/quiet-room-smoke.yaml`; it is useful as a very small installed-app shell smoke only, not as a replacement for Detox.
 
 ## Commands Audited
@@ -37,10 +37,12 @@ Result on 2026-07-02:
 
 - `npm run mobile:verify:qa` passed with no failures.
 - Android native sync completed through `scripts/sync-native-variant.sh`, which ran `npx expo prebuild --clean --no-install --platform android` inside this worktree.
-- `detox build -c android.att.release` completed successfully and produced:
+- The first `detox build -c android.att.release` completed successfully and produced:
   - `android/app/build/outputs/apk/release/app-release.apk`
   - `android/app/build/outputs/apk/androidTest/release/app-release-androidTest.apk`
-- `detox test -c android.att.release e2e/quiet-room.response-smoke.test.js` did not complete. The run was stopped after it stalled during app/test-package uninstall on `emulator-15008`, which was confirmed to be the normal working `Pixel34AVD_2` AVD; artifacts were written under `artifacts/android.att.release.2026-07-02 22-23-02Z/`.
+- `detox test -c android.att.release e2e/quiet-room.response-smoke.test.js` was attempted on `emulator-15008`, which was confirmed to be the normal working `Pixel34AVD_2` AVD. The first run stalled during app/test-package uninstall; artifacts were written under `artifacts/android.att.release.2026-07-02 22-23-02Z/`.
+- After manually reinstalling the generated app and test APKs, `detox test -c android.att.release e2e/quiet-room.response-smoke.test.js --reuse` reached instrumentation but failed before the Jest spec executed with `java.lang.NoClassDefFoundError: Failed resolution of: Landroidx/test/platform/tracing/Tracing;`.
+- Follow-up clean rebuild attempts for `android.att.release` then failed at `:app:compileReleaseAndroidTestJavaWithJavac` because generated `DetoxTest.java` could not resolve `androidx.test.ext.junit.runners.AndroidJUnit4`, `androidx.test.filters.LargeTest`, or `androidx.test.rule.ActivityTestRule`. Treat this as the current Android release-smoke blocker.
 
 Local-QA blocker:
 
@@ -70,7 +72,7 @@ Result on 2026-07-02:
 
 | Area | Existing Detox files | Current state |
 | --- | --- | --- |
-| App shell | `quiet-room.smoke.test.js`, `quiet-room.response-smoke.test.js` | Covered by selectors; Android QA build works, but response smoke did not complete on the attached emulator. |
+| App shell | `quiet-room.smoke.test.js`, `quiet-room.response-smoke.test.js` | Covered by selectors, but Android QA response smoke did not complete on the attached emulator. |
 | Prompt/response | `quiet-room.response-smoke.test.js`, `quiet-room.streaming-smoke.test.js` | Covered with live backend expectations; needs a responsive device and backend. |
 | Composer/keyboard/layout | `quiet-room.composer-flow.test.js`, `quiet-room.chat-layout.test.js`, `quiet-room.login-layout.test.js`, `quiet-room.scroll-anchor.test.js` | Good focused coverage for prior Android/iOS layout regressions; not rerun in this audit because base smoke could not complete. |
 | Auth/login/session | `quiet-room.login-known-account.test.js`, `quiet-room.auth-persistence.test.js`, `quiet-room.ios-login-compliance.test.js` | Covered, but credentials/device readiness are prerequisites. |
@@ -129,7 +131,8 @@ Maestro is worth keeping only if the team wants a quick manual/CI check that an 
 ## Next Stabilization Steps
 
 1. Follow `docs/privacy-v2/10-quiet-room-mobile-worktree-setup-guide.md` for every new mobile worktree: install dependencies, copy or reference local-only env/Firebase/signing inputs, verify config, and regenerate native projects in-place.
-2. Restart or clear `Pixel34AVD_2`, then rerun `npm run smoke:android:qa` with `DETOX_AVD_NAME=Pixel34AVD_2`, `DETOX_ATTACHED_DEVICE=<Pixel34 serial>`, and `DETOX_ANDROID_CONFIG=android.att.release`.
-3. Start the local Gabriel backend and Firebase Auth emulator before local-QA specs.
-4. Repair local iOS simulator tooling so `xcrun simctl list devices available` returns promptly, then run `npm run native:sync:qa -- ios` before iOS Detox build/test.
-5. Once base Android/iOS smoke passes, run the focused specs by feature area rather than attempting the entire suite in one batch.
+2. Fix the Android release androidTest dependency/classpath issue so `detox build -c android.att.release` consistently produces a runnable release test APK from a clean native sync.
+3. Restart or clear `Pixel34AVD_2`, then rerun `npm run smoke:android:qa` with `DETOX_AVD_NAME=Pixel34AVD_2`, `DETOX_ATTACHED_DEVICE=<Pixel34 serial>`, and `DETOX_ANDROID_CONFIG=android.att.release`.
+4. Start the local Gabriel backend and Firebase Auth emulator before local-QA specs.
+5. Repair local iOS simulator tooling so `xcrun simctl list devices available` returns promptly, then run `npm run native:sync:qa -- ios` before iOS Detox build/test.
+6. Once base Android/iOS smoke passes, run the focused specs by feature area rather than attempting the entire suite in one batch.
