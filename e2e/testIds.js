@@ -1,6 +1,7 @@
 module.exports = {
   screen: 'quiet-room.screen',
   header: 'quiet-room.header',
+  aboutButton: 'quiet-room.about.open',
   profileButton: 'quiet-room.profile.open',
   profileMenu: 'quiet-room.profile.menu',
   profileLogoutButton: 'quiet-room.profile.logout',
@@ -37,6 +38,8 @@ module.exports = {
   scrollTopButton: 'quiet-room.scroll.top',
   scrollNewestButton: 'quiet-room.scroll.newest',
   promptCuesToggle: 'quiet-room.prompt-cues.toggle',
+  promptCuesRoot: 'quiet-room.prompt-cues.root',
+  promptCuesPanel: 'quiet-room.prompt-cues.panel',
   modelMenu: 'quiet-room.model.menu',
   modelMenuVoiceToggle: 'quiet-room.model.voice-toggle',
   conversationsButton: 'quiet-room.conversations.open',
@@ -55,12 +58,17 @@ module.exports = {
   crucifixImage: 'quiet-room.crucifix.image',
   loginModal: 'quiet-room.login.modal',
   loginClose: 'quiet-room.login.close',
+  loginTabSignin: 'quiet-room.login.tab.signin',
+  loginTabSignup: 'quiet-room.login.tab.signup',
+  loginTabReset: 'quiet-room.login.tab.reset',
   loginAppleButton: 'quiet-room.login.apple',
   loginGoogleButton: 'quiet-room.login.google',
   loginEmailInput: 'quiet-room.login.email',
   loginPasswordInput: 'quiet-room.login.password',
   loginError: 'quiet-room.login.error',
   loginSigninButton: 'quiet-room.login.signin',
+  loginSignupButton: 'quiet-room.login.signup',
+  loginResetButton: 'quiet-room.login.reset',
   thinkingRow: 'quiet-room.messages.thinking',
   message: {
     user(index) {
@@ -68,6 +76,9 @@ module.exports = {
     },
     assistant(index) {
       return `quiet-room.message.assistant.${index}`;
+    },
+    copy(index) {
+      return `quiet-room.message.assistant.${index}.copy`;
     },
     voice(role, index) {
       return `quiet-room.message.${role}.${index}.voice`;
@@ -80,9 +91,18 @@ module.exports = {
     row(id) {
       return `quiet-room.conversation.${id}.row`;
     },
+    menu(id) {
+      return `quiet-room.conversation.${id}.menu`;
+    },
     rename(id) {
       return `quiet-room.conversation.${id}.rename`;
     },
+    delete(id) {
+      return `quiet-room.conversation.${id}.delete`;
+    },
+  },
+  promptCue(id) {
+    return `quiet-room.prompt-cues.option.${id}`;
   },
   modelOption(model) {
     return `quiet-room.model.option.${model}`;

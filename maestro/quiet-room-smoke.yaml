@@ -1,0 +1,12 @@
+appId: ${MAESTRO_APP_ID}
+name: Quiet Room shell smoke
+tags:
+  - smoke
+---
+- launchApp
+- assertVisible:
+    id: quiet-room.screen
+- assertVisible:
+    id: quiet-room.messages.list
+- assertVisible:
+    id: quiet-room.send

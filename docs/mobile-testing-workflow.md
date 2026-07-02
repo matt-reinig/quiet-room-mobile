@@ -2,17 +2,20 @@
 
 ## Current position
 
-The mobile workflow is now AI-first, not manual-first.
+The mobile workflow is now selector-first and AI-assisted, not manual-first.
 
 The React Native app stays focused on product behavior, while emulator normalization, device diagnosis, and automation orchestration live in `scripts/`.
 
 For the broader rationale and the selector-driven direction, see `docs/mobile-ai-testing-workflow.md`.
+For the QR-MOB-029 E2E audit, current coverage matrix, and release-smoke recommendation, see `docs/e2e-current-state.md`.
 
 ## Current tooling
 
 From `quiet-room-mobile/`:
 
 ```powershell
+npm run smoke:android:qa
+npm run smoke:ios:qa
 npm run mobile:start:5556
 npm run mobile:doctor:5556
 npm run mobile:anchor:5556
@@ -20,6 +23,10 @@ npm run mobile:anchor:5556
 
 ## Tool roles
 
+- `smoke:android:qa` / `smoke:ios:qa`
+  - regenerate native projects for the selected QA variant
+  - build a release-style Detox app
+  - run the primary prompt/response smoke spec
 - `mobile:start:5556`
   - boots or reuses the emulator
   - normalizes Android settings
@@ -53,8 +60,14 @@ Do not use `uiautomator` as the main source of truth for:
 - immediate post-send layout changes
 - interaction timing
 
-## Next upgrade
+## Supplemental Maestro smoke
 
-The next process step is a proper mobile E2E harness that uses the selector contract directly.
-Detox remains the recommended direction.
+Detox remains the recommended primary harness.
 
+The optional Maestro proof of concept is intentionally shallow and assumes a build is already installed:
+
+```powershell
+MAESTRO_APP_ID=com.quietroom.mobile.qa maestro test maestro/quiet-room-smoke.yaml
+```
+
+Use it only as a quick installed-app shell check. Use Detox for prompt/response, backend, auth, layout, persistence, and selector-rich behavior.
