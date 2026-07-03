@@ -46,6 +46,18 @@ function ensureLineAfter(anchor, line) {
   appSource = appSource.replace(anchor, `${anchor}\n        ${line}`);
 }
 
+function ensureRawLineAfter(anchor, line) {
+  if (appSource.includes(line)) {
+    return;
+  }
+
+  if (!appSource.includes(anchor)) {
+    throw new Error(`Unable to find anchor: ${anchor}`);
+  }
+
+  appSource = appSource.replace(anchor, `${anchor}\n${line}`);
+}
+
 function ensureBlockAfter(anchor, block) {
   const normalizedBlock = block.replace(/\s+$/, "");
   if (appSource.includes(normalizedBlock)) {
@@ -99,6 +111,19 @@ function ensureRootRepositoryLine(line) {
   rootSource = rootSource.replace(anchor, `${anchor}\n    ${line}`);
 }
 
+function ensureRootRepositoryFirst(line) {
+  const repositoryLinePattern = new RegExp(`\\n\\s*${line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g');
+  rootSource = rootSource.replace(repositoryLinePattern, '');
+
+  const anchor = `allprojects {
+  repositories {`;
+  if (!rootSource.includes(anchor)) {
+    throw new Error(`Unable to find repository block anchor: ${anchor}`);
+  }
+
+  rootSource = rootSource.replace(anchor, `${anchor}\n    ${line}`);
+}
+
 function replaceOnce(before, after) {
   if (appSource.includes(after)) {
     return;
@@ -109,6 +134,11 @@ function replaceOnce(before, after) {
   }
 
   appSource = appSource.replace(before, after);
+}
+
+function removeAppLine(line) {
+  const escapedLine = line.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  appSource = appSource.replace(new RegExp(`\\n\\s*${escapedLine}`), '');
 }
 
 function resolveAndroidPackageName() {
@@ -227,9 +257,10 @@ ext.quietRoomHasReleaseSigning = [
     ext.quietRoomReleaseSigningKeyPassword,
 ].every { value -> value != null && !value.toString().trim().isEmpty() }`
 );
-ensureLineAfter(`        versionName "1.0.0"`, `testBuildType System.getProperty('testBuildType', 'debug')`);
+removeAppLine(`testBuildType System.getProperty('testBuildType', 'debug')`);
+ensureRawLineAfter(`    compileSdk rootProject.ext.compileSdkVersion`, `    testBuildType System.getProperty('testBuildType', 'debug')`);
 ensureLineAfter(
-  `        testBuildType System.getProperty('testBuildType', 'debug')`,
+  `        versionName "1.0.0"`,
   `testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'`
 );
 ensureBlockAfter(
@@ -248,6 +279,23 @@ ensureBlockAfter(
             }
         }`
 );
+ensureBlockAfter(
+  `    androidResources {
+        ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
+}`,
+  `configurations.configureEach { configuration ->
+    def configurationName = configuration.name.toLowerCase()
+    if (configurationName.endsWith("runtimeclasspath") &&
+        !configurationName.contains("androidtest") &&
+        !configurationName.contains("unittest")) {
+        configuration.exclude group: "androidx.test"
+        configuration.exclude group: "androidx.test.ext"
+        configuration.exclude group: "androidx.test.espresso"
+        configuration.exclude group: "androidx.test.services"
+    }
+}`
+);
 replaceOnce(
   `        release {
             // Caution! In production, you need to generate your own keystore file.
@@ -264,7 +312,13 @@ replaceOnce(
 ensureDependencyAfter(`    implementation("com.facebook.react:react-android")`, `implementation("androidx.appcompat:appcompat:1.7.1")`);
 ensureDependencyAfter(`    implementation("androidx.appcompat:appcompat:1.7.1")`, `implementation("androidx.core:core-splashscreen:1.0.1")`);
 ensureDependencyAfter(`    implementation("androidx.core:core-splashscreen:1.0.1")`, `androidTestImplementation('com.wix:detox:+')`);
-ensureRootRepositoryLine(`maven { url("$rootDir/../node_modules/detox/Detox-android") }`);
+ensureDependencyAfter(`    androidTestImplementation('com.wix:detox:+')`, `androidTestImplementation("androidx.test:monitor:1.8.0")`);
+ensureDependencyAfter(`    androidTestImplementation("androidx.test:monitor:1.8.0")`, `androidTestImplementation("androidx.test:runner:1.7.0")`);
+ensureDependencyAfter(`    androidTestImplementation("androidx.test:runner:1.7.0")`, `androidTestImplementation("androidx.test:rules:1.7.0")`);
+ensureDependencyAfter(`    androidTestImplementation("androidx.test:rules:1.7.0")`, `androidTestImplementation("androidx.test.ext:junit:1.3.0")`);
+ensureDependencyAfter(`    androidTestImplementation("androidx.test.ext:junit:1.3.0")`, `androidTestImplementation("androidx.test.services:storage:1.6.0")`);
+ensureDependencyAfter(`    androidTestImplementation("androidx.test.services:storage:1.6.0")`, `androidTestImplementation("junit:junit:4.13.2")`);
+ensureRootRepositoryFirst(`maven { url("$rootDir/../node_modules/detox/Detox-android") }`);
 ensureManifestAttribute();
 
 const packageName = resolveAndroidPackageName();

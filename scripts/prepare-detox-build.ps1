@@ -11,7 +11,7 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $androidDir = Join-Path $projectRoot 'android'
 $appApk = Join-Path $androidDir ("app\\build\\outputs\\apk\\$BuildType\\app-$BuildType.apk")
 $testApk = Join-Path $androidDir ("app\\build\\outputs\\apk\\androidTest\\$BuildType\\app-$BuildType-androidTest.apk")
-$gradleTasks = if ($BuildType -eq 'release') { 'assembleRelease assembleAndroidTest' } else { 'assembleDebug assembleAndroidTest' }
+$gradleTasks = if ($BuildType -eq 'release') { ':app:assembleRelease :app:assembleAndroidTest' } else { ':app:assembleDebug :app:assembleAndroidTest' }
 
 Push-Location $androidDir
 try {

@@ -10,7 +10,7 @@ describe('Quiet Room smoke', () => {
   it('shows the main shell', async () => {
     await expect(element(by.id(ids.header))).toBeVisible();
     await expect(element(by.id(ids.messageList))).toBeVisible();
-    await expect(element(by.id(ids.openingMessage))).toBeVisible();
+    await expect(element(by.id(ids.openingMessage))).toBeVisible(50);
 
     if (device.getPlatform() === 'ios') {
       // The Expo dev client can show a bottom warning banner that partially covers

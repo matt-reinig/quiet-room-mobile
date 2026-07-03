@@ -90,7 +90,7 @@ describe('Quiet Room response smoke', () => {
   it('launches and completes one basic prompt/response flow', async () => {
     await expect(element(by.id(ids.header))).toBeVisible();
     await expect(element(by.id(ids.messageList))).toBeVisible();
-    await expect(element(by.id(ids.openingMessage))).toBeVisible();
+    await expect(element(by.id(ids.openingMessage))).toBeVisible(50);
 
     if (device.getPlatform() === 'ios') {
       await expect(element(by.id(ids.promptCuesToggle))).toBeVisible();

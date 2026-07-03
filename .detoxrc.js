@@ -49,8 +49,8 @@ const releaseTestApkPath = path.join(
   'app/build/outputs/apk/androidTest/release/app-release-androidTest.apk'
 );
 const gradlew = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
-const buildDebug = `cd android && ${gradlew} assembleDebug assembleAndroidTest -DtestBuildType=debug`;
-const buildRelease = `cd android && ${gradlew} assembleRelease assembleAndroidTest -DtestBuildType=release`;
+const buildDebug = `cd android && ${gradlew} :app:assembleDebug :app:assembleAndroidTest -DtestBuildType=debug`;
+const buildRelease = `cd android && ${gradlew} :app:assembleRelease :app:assembleAndroidTest -DtestBuildType=release`;
 const attachedDeviceName = process.env.DETOX_ATTACHED_DEVICE || process.env.ANDROID_SERIAL || 'emulator-5554';
 const avdName = process.env.DETOX_AVD_NAME || 'Pixel34AVD_2';
 const iosSimulatorName = process.env.DETOX_IOS_DEVICE || 'iPhone 17';
