@@ -166,6 +166,19 @@ async function waitForExistsMaybe(elementHandle, timeoutMs) {
   }
 }
 
+async function waitForNotExistsMaybe(elementHandle, timeoutMs) {
+  try {
+    await waitFor(elementHandle).not.toExist().withTimeout(timeoutMs);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function delay(ms) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function acceptAiConsentIfVisible(timeoutMs = 4000) {
   const consentModal = element(by.id(ids.aiConsentModal));
   const consentVisible = await waitForExistsMaybe(consentModal, timeoutMs);
@@ -174,7 +187,19 @@ async function acceptAiConsentIfVisible(timeoutMs = 4000) {
     return false;
   }
 
-  await element(by.id(ids.aiConsentAcceptButton)).tap();
+  const acceptButton = element(by.id(ids.aiConsentAcceptButton));
+  await acceptButton.tap();
+
+  if (device.getPlatform() === 'ios') {
+    const dismissed = await waitForNotExistsMaybe(consentModal, 2500);
+    if (dismissed) {
+      return true;
+    }
+
+    await delay(500);
+    await acceptButton.tap();
+  }
+
   await waitFor(consentModal).not.toExist().withTimeout(15000);
   return true;
 }

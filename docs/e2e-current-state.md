@@ -8,7 +8,7 @@ Quiet Room already has a meaningful Detox suite, but the automation surface is u
 
 - Detox is the primary E2E harness and should remain the source of truth for app behavior, selector-level assertions, backend-backed flows, keyboard/layout checks, and release smoke.
 - The Android QA release Detox path now builds and runs targeted release smoke on the normal Pixel 34 emulator.
-- Android release shell smoke and response smoke completed in this audit. iOS simulator discovery still needs local tooling cleanup before iOS release smoke can be rerun; the local-QA backend/Auth emulator expected by `qa/local` was not running.
+- Android release shell smoke and response smoke completed in this audit. After the local Xcode install was repaired, iOS QA release build and response smoke also completed on the iPhone 17 simulator; the local-QA backend/Auth emulator expected by `qa/local` was not running.
 - A minimal Maestro proof-of-concept flow now exists at `maestro/quiet-room-smoke.yaml`; it is useful as a very small installed-app shell smoke only, not as a replacement for Detox.
 
 ## Commands Audited
@@ -66,7 +66,7 @@ Result on 2026-07-02:
 - `mobile:verify:local-qa` passed only when pointed at sibling env files.
 - `localhost:5002` and `localhost:9099` refused connections, so local-QA Detox flows that depend on the local backend or Auth emulator are blocked until those services are started.
 
-iOS blocker:
+iOS QA smoke:
 
 ```sh
 xcrun simctl list devices available
@@ -76,22 +76,31 @@ Initial result on 2026-07-02:
 
 - The command hung twice and was interrupted, so iOS Detox smoke is blocked by local simulator tooling before app build/test.
 
-Retry result on 2026-07-03:
+Superseded retry result on 2026-07-03 before the local Xcode installation repair:
 
 - `MOBILE_ENV_BASE_FILE=/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile/.env MOBILE_ENV_OVERLAY_FILE=/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile/.env.qa MOBILE_RELEASE_ASSET_ROOT=/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile npm run smoke:ios:qa` completed the repo-native config verification, iOS prebuild, Podfile patch, pod install, and signing patch inside this worktree.
 - The retry failed at `detox build -c ios.sim.release` before any Jest spec could run because Xcode could not enumerate simulators: `CoreSimulator is out of date. Current version (1051.54.0) is older than build version (1051.55.0).`
 - `xcrun simctl list devices available` and `xcrun simctl list runtimes` still hung after restarting simulator services, and `xcodebuild -runFirstLaunch` also did not return promptly.
-- Treat iOS release smoke as blocked by local Xcode/CoreSimulator installation state, not by Detox config or app source.
+- At that point, iOS release smoke was blocked by local Xcode/CoreSimulator installation state, not by Detox config or app source.
+
+Resolved retry result on 2026-07-03 after local Xcode installation repair:
+
+- `xcodebuild -version` reported Xcode `26.6` build `17F113`.
+- `xcrun simctl list devices available` returned promptly and listed the iOS 26.5 `iPhone 17` simulator `7FC81BB9-2A0C-4F31-AEFD-3281BC112EFB`.
+- `npm run smoke:ios:qa` completed config verification, native sync, Pod install, signing patch, and `detox build -c ios.sim.release`; the Release simulator build ended with `** BUILD SUCCEEDED **`.
+- The first iOS Detox attempt launched `com.quietroom.mobile.qa` and reached the AI consent modal, then failed because the first accept tap was swallowed while the iOS text-editing overlay was still present.
+- `acceptAiConsentIfVisible` now gives iOS one short retry if the modal remains after the first tap. With that stabilization, `npx detox test -c ios.sim.release e2e/quiet-room.response-smoke.test.js --record-logs all --take-screenshots failing --loglevel info` passed on the iPhone 17 simulator: 1 test passed, total 42.153s. Artifacts: `artifacts/ios.sim.release.2026-07-03 15-07-04Z/`.
+- `npx detox test -c ios.sim.release e2e/quiet-room.ai-consent.test.js --record-logs all --take-screenshots failing --loglevel info` passed the three app-side consent cases and failed only the signed-in backend persistence case because the QA backend returned `404` for `/test/create-user`. Artifacts: `artifacts/ios.sim.release.2026-07-03 15-07-56Z/`.
 
 ## Coverage Matrix
 
 | Area | Existing Detox files | Current state |
 | --- | --- | --- |
-| App shell | `quiet-room.smoke.test.js`, `quiet-room.response-smoke.test.js` | Android QA release shell smoke passed on `Pixel34AVD_2` / `emulator-15008`. |
-| Prompt/response | `quiet-room.response-smoke.test.js`, `quiet-room.streaming-smoke.test.js` | Android QA release response smoke passed against the hosted QA backend on `Pixel34AVD_2` / `emulator-15008`; broader streaming coverage remains focused-spec territory. |
+| App shell | `quiet-room.smoke.test.js`, `quiet-room.response-smoke.test.js` | Android QA release shell smoke passed on `Pixel34AVD_2` / `emulator-15008`; iOS QA release response smoke passed on iPhone 17 simulator `7FC81BB9-2A0C-4F31-AEFD-3281BC112EFB`. |
+| Prompt/response | `quiet-room.response-smoke.test.js`, `quiet-room.streaming-smoke.test.js` | Android QA release response smoke passed against the hosted QA backend on `Pixel34AVD_2` / `emulator-15008`; iOS QA release response smoke passed after stabilizing AI consent acceptance. Broader streaming coverage remains focused-spec territory. |
 | Composer/keyboard/layout | `quiet-room.composer-flow.test.js`, `quiet-room.chat-layout.test.js`, `quiet-room.login-layout.test.js`, `quiet-room.scroll-anchor.test.js` | Good focused coverage for prior Android/iOS layout regressions; not rerun in this audit after base Android release smoke passed. |
 | Auth/login/session | `quiet-room.login-known-account.test.js`, `quiet-room.auth-persistence.test.js`, `quiet-room.ios-login-compliance.test.js` | Covered, but credentials/device readiness are prerequisites. |
-| AI consent | `quiet-room.ai-consent.test.js` | Covers first-send block, accept/resume, cold relaunch, and signed-in backend persistence. |
+| AI consent | `quiet-room.ai-consent.test.js` | Covers first-send block, accept/resume, cold relaunch, and signed-in backend persistence. On iOS QA release, the three app-side cases passed; signed-in backend persistence was blocked by QA `/test/create-user` returning 404. |
 | Conversations | `quiet-room.conversations-menu.test.js` | Covers conversation drawer actions and rename surface. |
 | Account deletion | `quiet-room.account-deletion.test.js` | Covers success and retryable failure through backend test hooks. |
 | Reporting | `quiet-room.report-response.test.js` | Covers assistant-response report submission and keyboard/modal layout. |
@@ -148,5 +157,5 @@ Maestro is worth keeping only if the team wants a quick manual/CI check that an 
 1. Follow `docs/privacy-v2/10-quiet-room-mobile-worktree-setup-guide.md` for every new mobile worktree: install dependencies, copy or reference local-only env/Firebase/signing inputs, verify config, and regenerate native projects in-place.
 2. Keep Android release smoke anchored to `Pixel34AVD_2` or explicitly pass `DETOX_AVD_NAME` / `DETOX_ATTACHED_DEVICE` for the active attached emulator.
 3. Start the local Gabriel backend and Firebase Auth emulator before local-QA specs.
-4. Repair local Xcode/CoreSimulator tooling so `xcrun simctl list devices available` returns promptly and CoreSimulator versions match Xcode, then rerun `npm run smoke:ios:qa`.
+4. Restore or expose the QA backend test hook expected by signed-in E2E setup: `/test/create-user`.
 5. Once base Android/iOS smoke passes, run the focused specs by feature area rather than attempting the entire suite in one batch.

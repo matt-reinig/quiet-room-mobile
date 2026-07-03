@@ -1,5 +1,6 @@
 const { expect: jestExpect } = require('@jest/globals');
 const {
+  acceptAiConsentIfVisible,
   createDisposableTestUser,
   launchQuietRoom,
   loginWithEmailCredentials,
@@ -33,9 +34,7 @@ describe('Quiet Room AI consent', () => {
     await element(by.id(ids.sendButton)).tap();
 
     await waitFor(element(by.id(ids.aiConsentModal))).toBeVisible().withTimeout(10000);
-    await element(by.id(ids.aiConsentAcceptButton)).tap();
-
-    await waitFor(element(by.id(ids.aiConsentModal))).not.toExist().withTimeout(10000);
+    jestExpect(await acceptAiConsentIfVisible(10000)).toBe(true);
     await waitFor(element(by.id(ids.message.user(0)))).toBeVisible().withTimeout(30000);
     await waitFor(element(by.id(ids.message.assistant(1)))).toExist().withTimeout(90000);
   });
@@ -44,7 +43,7 @@ describe('Quiet Room AI consent', () => {
     await element(by.id(ids.composerInput)).replaceText('consent persistence first send');
     await element(by.id(ids.sendButton)).tap();
     await waitFor(element(by.id(ids.aiConsentModal))).toBeVisible().withTimeout(10000);
-    await element(by.id(ids.aiConsentAcceptButton)).tap();
+    jestExpect(await acceptAiConsentIfVisible(10000)).toBe(true);
 
     await waitFor(element(by.id(ids.message.user(0)))).toBeVisible().withTimeout(30000);
     await waitFor(element(by.id(ids.message.assistant(1)))).toExist().withTimeout(90000);
@@ -70,9 +69,7 @@ describe('Quiet Room AI consent', () => {
     await element(by.id(ids.sendButton)).tap();
 
     await waitFor(element(by.id(ids.aiConsentModal))).toBeVisible().withTimeout(10000);
-    await element(by.id(ids.aiConsentAcceptButton)).tap();
-
-    await waitFor(element(by.id(ids.aiConsentModal))).not.toExist().withTimeout(10000);
+    jestExpect(await acceptAiConsentIfVisible(10000)).toBe(true);
     await waitFor(element(by.id(ids.message.user(0)))).toBeVisible().withTimeout(30000);
 
     const userData = await waitForUserConsentState({
