@@ -72,10 +72,16 @@ iOS blocker:
 xcrun simctl list devices available
 ```
 
-Result on 2026-07-02:
+Initial result on 2026-07-02:
 
 - The command hung twice and was interrupted, so iOS Detox smoke is blocked by local simulator tooling before app build/test.
-- This worktree also did not run `npm run native:sync:qa -- ios` or `npm run native:sync:qa`, so it never generated an iOS native project. A valid iOS smoke retry must complete the native sync step from `docs/privacy-v2/10-quiet-room-mobile-worktree-setup-guide.md` before building or testing.
+
+Retry result on 2026-07-03:
+
+- `MOBILE_ENV_BASE_FILE=/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile/.env MOBILE_ENV_OVERLAY_FILE=/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile/.env.qa MOBILE_RELEASE_ASSET_ROOT=/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile npm run smoke:ios:qa` completed the repo-native config verification, iOS prebuild, Podfile patch, pod install, and signing patch inside this worktree.
+- The retry failed at `detox build -c ios.sim.release` before any Jest spec could run because Xcode could not enumerate simulators: `CoreSimulator is out of date. Current version (1051.54.0) is older than build version (1051.55.0).`
+- `xcrun simctl list devices available` and `xcrun simctl list runtimes` still hung after restarting simulator services, and `xcodebuild -runFirstLaunch` also did not return promptly.
+- Treat iOS release smoke as blocked by local Xcode/CoreSimulator installation state, not by Detox config or app source.
 
 ## Coverage Matrix
 
@@ -142,5 +148,5 @@ Maestro is worth keeping only if the team wants a quick manual/CI check that an 
 1. Follow `docs/privacy-v2/10-quiet-room-mobile-worktree-setup-guide.md` for every new mobile worktree: install dependencies, copy or reference local-only env/Firebase/signing inputs, verify config, and regenerate native projects in-place.
 2. Keep Android release smoke anchored to `Pixel34AVD_2` or explicitly pass `DETOX_AVD_NAME` / `DETOX_ATTACHED_DEVICE` for the active attached emulator.
 3. Start the local Gabriel backend and Firebase Auth emulator before local-QA specs.
-4. Repair local iOS simulator tooling so `xcrun simctl list devices available` returns promptly, then run `npm run native:sync:qa -- ios` before iOS Detox build/test.
+4. Repair local Xcode/CoreSimulator tooling so `xcrun simctl list devices available` returns promptly and CoreSimulator versions match Xcode, then rerun `npm run smoke:ios:qa`.
 5. Once base Android/iOS smoke passes, run the focused specs by feature area rather than attempting the entire suite in one batch.
