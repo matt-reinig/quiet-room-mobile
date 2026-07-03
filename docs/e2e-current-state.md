@@ -92,6 +92,15 @@ Resolved retry result on 2026-07-03 after local Xcode installation repair:
 - `acceptAiConsentIfVisible` now gives iOS one short retry if the modal remains after the first tap. With that stabilization, `npx detox test -c ios.sim.release e2e/quiet-room.response-smoke.test.js --record-logs all --take-screenshots failing --loglevel info` passed on the iPhone 17 simulator: 1 test passed, total 42.153s. Artifacts: `artifacts/ios.sim.release.2026-07-03 15-07-04Z/`.
 - `npx detox test -c ios.sim.release e2e/quiet-room.ai-consent.test.js --record-logs all --take-screenshots failing --loglevel info` passed the three app-side consent cases and failed only the signed-in backend persistence case because the QA backend returned `404` for `/test/create-user`. Artifacts: `artifacts/ios.sim.release.2026-07-03 15-07-56Z/`.
 
+Hosted/test-hook split implemented after that retry:
+
+- `e2e/quiet-room.ai-consent.test.js` is now hosted-safe. It covers guest consent behavior plus a signed-in smoke path using the reusable known account from `E2E_EMAIL` / `E2E_PASSWORD` without calling `/test/create-user`.
+- `e2e/quiet-room.ai-consent.local-qa.test.js` owns the disposable-user backend persistence assertion and is skipped unless `E2E_ENABLE_TEST_HOOKS=1`.
+- `npm run detox:test:ai-consent:ios` runs the hosted-safe iOS release spec.
+- `npm run detox:test:ai-consent:local-hooks:ios` runs the local/emulator-backed iOS release hook spec with `E2E_ENABLE_TEST_HOOKS=1`.
+- `MOBILE_ENV_BASE_FILE=/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile/.env MOBILE_ENV_OVERLAY_FILE=/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile/.env.qa MOBILE_RELEASE_ASSET_ROOT=/Users/mjreinig/projects/Gabriel_App/quiet-room-mobile bash ./scripts/with-mobile-env.sh qa qa npm run detox:test:ai-consent:ios -- --loglevel info` passed on iPhone 17: 4 tests passed, including the `newuser@example.com` hosted signed-in smoke, total 103.239s. Artifacts: `artifacts/ios.sim.release.2026-07-03 15-39-44Z/`.
+- Running `e2e/quiet-room.ai-consent.local-qa.test.js` without `E2E_ENABLE_TEST_HOOKS=1` through `npx detox test -c ios.sim.release ...` skipped the hook-backed test as intended.
+
 ## Coverage Matrix
 
 | Area | Existing Detox files | Current state |
@@ -100,7 +109,7 @@ Resolved retry result on 2026-07-03 after local Xcode installation repair:
 | Prompt/response | `quiet-room.response-smoke.test.js`, `quiet-room.streaming-smoke.test.js` | Android QA release response smoke passed against the hosted QA backend on `Pixel34AVD_2` / `emulator-15008`; iOS QA release response smoke passed after stabilizing AI consent acceptance. Broader streaming coverage remains focused-spec territory. |
 | Composer/keyboard/layout | `quiet-room.composer-flow.test.js`, `quiet-room.chat-layout.test.js`, `quiet-room.login-layout.test.js`, `quiet-room.scroll-anchor.test.js` | Good focused coverage for prior Android/iOS layout regressions; not rerun in this audit after base Android release smoke passed. |
 | Auth/login/session | `quiet-room.login-known-account.test.js`, `quiet-room.auth-persistence.test.js`, `quiet-room.ios-login-compliance.test.js` | Covered, but credentials/device readiness are prerequisites. |
-| AI consent | `quiet-room.ai-consent.test.js` | Covers first-send block, accept/resume, cold relaunch, and signed-in backend persistence. On iOS QA release, the three app-side cases passed; signed-in backend persistence was blocked by QA `/test/create-user` returning 404. |
+| AI consent | `quiet-room.ai-consent.test.js`, `quiet-room.ai-consent.local-qa.test.js` | Hosted-safe coverage uses guest consent plus the reusable known account. Backend-internal disposable-user consent persistence is isolated to the local hook spec and requires `E2E_ENABLE_TEST_HOOKS=1`. |
 | Conversations | `quiet-room.conversations-menu.test.js` | Covers conversation drawer actions and rename surface. |
 | Account deletion | `quiet-room.account-deletion.test.js` | Covers success and retryable failure through backend test hooks. |
 | Reporting | `quiet-room.report-response.test.js` | Covers assistant-response report submission and keyboard/modal layout. |
@@ -138,6 +147,8 @@ npm run smoke:ios:prod
 Use the focused Detox specs when touching specific areas:
 
 - Composer/layout: `npm run detox:test:composer:5556`, `npm run detox:test:ios:chat-layout`
+- AI consent hosted smoke: `npm run detox:test:ai-consent:ios`
+- AI consent backend persistence: `npm run detox:test:ai-consent:local-hooks:ios` against local-QA emulators
 - Account deletion: `npm run smoke:android:account-deletion:local-qa`
 - Streaming/voice: `npm run detox:test:streaming:5556`
 - Known-account auth: `npm run detox:login:android`, `npm run detox:login:ios`
@@ -157,5 +168,5 @@ Maestro is worth keeping only if the team wants a quick manual/CI check that an 
 1. Follow `docs/privacy-v2/10-quiet-room-mobile-worktree-setup-guide.md` for every new mobile worktree: install dependencies, copy or reference local-only env/Firebase/signing inputs, verify config, and regenerate native projects in-place.
 2. Keep Android release smoke anchored to `Pixel34AVD_2` or explicitly pass `DETOX_AVD_NAME` / `DETOX_ATTACHED_DEVICE` for the active attached emulator.
 3. Start the local Gabriel backend and Firebase Auth emulator before local-QA specs.
-4. Restore or expose the QA backend test hook expected by signed-in E2E setup: `/test/create-user`.
+4. Keep hosted QA/prod specs on reusable known-account flows; keep `/test/create-user` coverage local/emulator-only.
 5. Once base Android/iOS smoke passes, run the focused specs by feature area rather than attempting the entire suite in one batch.

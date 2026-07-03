@@ -1,15 +1,25 @@
 const { expect: jestExpect } = require('@jest/globals');
 const {
   acceptAiConsentIfVisible,
-  createDisposableTestUser,
+  dismissIosPasswordSavePromptIfPresent,
   launchQuietRoom,
-  loginWithEmailCredentials,
-  waitForUserConsentState,
+  loginWithKnownAccount,
   waitForExistsMaybe,
 } = require('./helpers');
 const ids = require('./testIds');
 
 jest.setTimeout(240000);
+
+async function sendPrompt(text) {
+  await element(by.id(ids.composerInput)).replaceText(text);
+  await element(by.id(ids.sendButton)).tap();
+}
+
+async function waitForAnyUserMessage(timeoutMs = 30000) {
+  const anyUserMessage = element(by.id(/^quiet-room\.message\.user\.\d+$/)).atIndex(0);
+  await waitFor(anyUserMessage).toExist().withTimeout(timeoutMs);
+  return anyUserMessage;
+}
 
 describe('Quiet Room AI consent', () => {
   beforeEach(async () => {
@@ -18,8 +28,7 @@ describe('Quiet Room AI consent', () => {
   });
 
   it('blocks the first send until consent is accepted', async () => {
-    await element(by.id(ids.composerInput)).replaceText('consent block smoke');
-    await element(by.id(ids.sendButton)).tap();
+    await sendPrompt('consent block smoke');
 
     await waitFor(element(by.id(ids.aiConsentModal))).toBeVisible().withTimeout(10000);
     await expect(element(by.text('Before you continue'))).toBeVisible();
@@ -30,8 +39,7 @@ describe('Quiet Room AI consent', () => {
   });
 
   it('accepting consent resumes the pending send', async () => {
-    await element(by.id(ids.composerInput)).replaceText('consent accept smoke');
-    await element(by.id(ids.sendButton)).tap();
+    await sendPrompt('consent accept smoke');
 
     await waitFor(element(by.id(ids.aiConsentModal))).toBeVisible().withTimeout(10000);
     jestExpect(await acceptAiConsentIfVisible(10000)).toBe(true);
@@ -40,8 +48,7 @@ describe('Quiet Room AI consent', () => {
   });
 
   it('persists consent across a cold relaunch', async () => {
-    await element(by.id(ids.composerInput)).replaceText('consent persistence first send');
-    await element(by.id(ids.sendButton)).tap();
+    await sendPrompt('consent persistence first send');
     await waitFor(element(by.id(ids.aiConsentModal))).toBeVisible().withTimeout(10000);
     jestExpect(await acceptAiConsentIfVisible(10000)).toBe(true);
 
@@ -52,31 +59,40 @@ describe('Quiet Room AI consent', () => {
     await launchQuietRoom();
     await waitFor(element(by.id(ids.screen))).toBeVisible().withTimeout(60000);
 
-    await element(by.id(ids.composerInput)).replaceText('consent persistence second send');
-    await element(by.id(ids.sendButton)).tap();
+    await sendPrompt('consent persistence second send');
 
     await waitFor(element(by.id(ids.aiConsentModal))).not.toExist().withTimeout(2000);
 
-    const anyUserMessage = element(by.id(/^quiet-room\.message\.user\.\d+$/)).atIndex(0);
-    await waitFor(anyUserMessage).toExist().withTimeout(30000);
+    await waitForAnyUserMessage();
   });
 
-  it('persists accepted consent to the backend for signed-in users', async () => {
-    const credentials = await createDisposableTestUser();
-    await loginWithEmailCredentials(credentials);
+  it('uses the reusable known account for hosted signed-in consent smoke', async () => {
+    const credentials = await loginWithKnownAccount();
 
-    await element(by.id(ids.composerInput)).replaceText('authenticated consent persistence');
-    await element(by.id(ids.sendButton)).tap();
+    await device.terminateApp();
+    await launchQuietRoom();
+    await waitFor(element(by.id(ids.screen))).toBeVisible().withTimeout(60000);
+    await waitFor(element(by.id(ids.conversationsButton))).toExist().withTimeout(60000);
+    await dismissIosPasswordSavePromptIfPresent();
 
-    await waitFor(element(by.id(ids.aiConsentModal))).toBeVisible().withTimeout(10000);
-    jestExpect(await acceptAiConsentIfVisible(10000)).toBe(true);
-    await waitFor(element(by.id(ids.message.user(0)))).toBeVisible().withTimeout(30000);
+    await sendPrompt('known account consent smoke first send');
+    const sawConsentModal = await acceptAiConsentIfVisible(4000);
+    await waitForAnyUserMessage();
 
-    const userData = await waitForUserConsentState({
-      uid: credentials.uid,
-      aiSharingAccepted: true,
-      timeoutMs: 10000,
-    });
-    jestExpect(userData.consentState.source).toBe('quiet-room-mobile');
+    await device.terminateApp();
+    await launchQuietRoom();
+    await waitFor(element(by.id(ids.screen))).toBeVisible().withTimeout(60000);
+
+    await dismissIosPasswordSavePromptIfPresent(3000);
+    await sendPrompt('known account consent smoke second send');
+    await waitFor(element(by.id(ids.aiConsentModal))).not.toExist().withTimeout(2000);
+    await waitForAnyUserMessage();
+
+    console.log('known-account-ai-consent-smoke', JSON.stringify({
+      email: credentials.email,
+      platform: device.getPlatform(),
+      sawConsentModal,
+      testHookUsed: false,
+    }));
   });
 });

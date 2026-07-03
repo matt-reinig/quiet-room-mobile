@@ -63,6 +63,8 @@
     "detox:build:ios": "detox build -c ios.sim.debug",
     "detox:test:response-smoke:ios": "detox test -c ios.sim.release e2e/quiet-room.response-smoke.test.js --record-logs all --take-screenshots failing",
     "detox:test:response-smoke:5556": "detox test -c android.att.release e2e/quiet-room.response-smoke.test.js --record-logs all --take-screenshots failing",
+    "detox:test:ai-consent:ios": "detox test -c ios.sim.release e2e/quiet-room.ai-consent.test.js --record-logs all --take-screenshots failing",
+    "detox:test:ai-consent:local-hooks:ios": "E2E_ENABLE_TEST_HOOKS=1 detox test -c ios.sim.release e2e/quiet-room.ai-consent.local-qa.test.js --record-logs all --take-screenshots failing",
     "detox:test:ios:smoke": "detox test -c ios.sim.debug e2e/quiet-room.smoke.test.js --record-logs all --take-screenshots failing",
     "detox:test:ios:chat-layout": "detox test -c ios.sim.debug e2e/quiet-room.chat-layout.test.js --record-logs all --take-screenshots failing",
     "detox:test:account-deletion:5556": "npx detox test -c android.att.release e2e/quiet-room.account-deletion.test.js --record-logs all --take-screenshots failing",

@@ -226,12 +226,12 @@ async function openLoginModal() {
   await waitFor(element(by.id(ids.loginModal))).toBeVisible().withTimeout(10000);
 }
 
-async function dismissIosPasswordSavePromptIfPresent() {
+async function dismissIosPasswordSavePromptIfPresent(timeoutMs = 12000) {
   if (device.getPlatform() !== 'ios') {
     return;
   }
 
-  const deadline = Date.now() + 12000;
+  const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
     const notNowButtonByLabel = element(by.label('Not Now'));
