@@ -19,7 +19,8 @@ replace the separate cleanup operation.
   passed entitlement verification, and the App Store Connect API-key fallback
   reported `Uploaded package is processing`, `Upload succeeded`,
   `Uploaded QuietRoomQA`, and `** EXPORT SUCCEEDED **`. App Store Connect API
-  readback then reported build `34` with processing state `VALID`.
+  readback then reported build `34` with processing state `VALID` and uploaded
+  date `2026-07-10T11:57:34-07:00`.
 - Final mobile source: `d16b083` on `develop`.
 
 ## Controlled running-app proof
