@@ -99,6 +99,8 @@ type IdTokenResult = {
   user: User;
 };
 
+let anonymousRecoveryPromise: Promise<User> | null = null;
+
 function getAuthErrorCode(error: unknown): string {
   return typeof error === "object" && error !== null && "code" in error
     ? String(error.code)
@@ -129,6 +131,40 @@ async function resetToAnonymousSession(options: { forceSignOut?: boolean } = {})
   return credential.user;
 }
 
+async function recoverAnonymousUser(staleUser: User): Promise<User> {
+  if (anonymousRecoveryPromise) {
+    return anonymousRecoveryPromise;
+  }
+
+  const activeUser = auth.currentUser;
+
+  if (activeUser && activeUser.uid !== staleUser.uid) {
+    if (!activeUser.isAnonymous) {
+      throw new Error("The authenticated user changed during anonymous session recovery.");
+    }
+
+    try {
+      await activeUser.getIdToken(true);
+      return activeUser;
+    } catch (error) {
+      if (!isStaleAnonymousSessionError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  const recovery = resetToAnonymousSession({ forceSignOut: true });
+  anonymousRecoveryPromise = recovery;
+
+  try {
+    return await recovery;
+  } finally {
+    if (anonymousRecoveryPromise === recovery) {
+      anonymousRecoveryPromise = null;
+    }
+  }
+}
+
 export function subscribeAuthUser(listener: (user: User | null) => void): () => void {
   return onIdTokenChanged(auth, listener);
 }
@@ -138,6 +174,10 @@ export async function recoverStaleAnonymousSession(error?: unknown): Promise<Use
     return null;
   }
 
+  if (anonymousRecoveryPromise) {
+    return anonymousRecoveryPromise;
+  }
+
   const currentUser = auth.currentUser;
 
   if (!currentUser?.isAnonymous) {
@@ -145,7 +185,7 @@ export async function recoverStaleAnonymousSession(error?: unknown): Promise<Use
   }
 
   console.warn("Recovering stale anonymous Firebase session.");
-  return resetToAnonymousSession({ forceSignOut: true });
+  return recoverAnonymousUser(currentUser);
 }
 
 export async function getIdTokenWithAnonymousRecovery(
@@ -165,7 +205,7 @@ export async function getIdTokenWithAnonymousRecovery(
       throw error;
     }
 
-    const recoveredUser = await resetToAnonymousSession({ forceSignOut: true });
+    const recoveredUser = await recoverAnonymousUser(user);
 
     return {
       idToken: await recoveredUser.getIdToken(true),

@@ -76,6 +76,44 @@ async function currentEnsureAuthShape(auth) {
   return credential.user;
 }
 
+let anonymousRecoveryPromise = null;
+
+async function recoverAnonymousUserForHarness(auth, staleUser) {
+  if (anonymousRecoveryPromise) {
+    return anonymousRecoveryPromise;
+  }
+
+  const activeUser = auth.currentUser;
+
+  if (activeUser && activeUser.uid !== staleUser.uid) {
+    if (!activeUser.isAnonymous) {
+      throw new Error("The authenticated user changed during anonymous session recovery.");
+    }
+
+    try {
+      await activeUser.getIdToken(true);
+      return activeUser;
+    } catch {
+      // A concurrently replaced anonymous user can itself be stale. Fall
+      // through to one shared reset in that case.
+    }
+  }
+
+  const recovery = (async () => {
+    await signOut(auth).catch(() => null);
+    return (await signInAnonymously(auth)).user;
+  })();
+  anonymousRecoveryPromise = recovery;
+
+  try {
+    return await recovery;
+  } finally {
+    if (anonymousRecoveryPromise === recovery) {
+      anonymousRecoveryPromise = null;
+    }
+  }
+}
+
 async function getIdTokenWithAnonymousRecoveryForHarness(auth, user, forceRefresh = false) {
   const shouldForceRefresh = forceRefresh || user.isAnonymous;
 
@@ -90,13 +128,12 @@ async function getIdTokenWithAnonymousRecoveryForHarness(auth, user, forceRefres
       throw error;
     }
 
-    await signOut(auth).catch(() => null);
-    const credential = await signInAnonymously(auth);
+    const recoveredUser = await recoverAnonymousUserForHarness(auth, user);
 
     return {
-      idToken: await credential.user.getIdToken(true),
+      idToken: await recoveredUser.getIdToken(true),
       recovered: true,
-      user: credential.user,
+      user: recoveredUser,
     };
   }
 }
@@ -170,6 +207,26 @@ async function main() {
   const runningRecoveryTokenRefreshAfterRecovery =
     await runningRecoveryResult.user.getIdToken(true);
 
+  const concurrentRecoveryStorage = createAsyncStorage();
+  const concurrentRecovery = initAuth("concurrent-running-recovery", concurrentRecoveryStorage);
+  const concurrentRecoveryCredential = await signInAnonymously(concurrentRecovery.auth);
+  const concurrentRecoveryDeletedUid = concurrentRecoveryCredential.user.uid;
+  const concurrentRecoveryDeleteToken = await concurrentRecoveryCredential.user.getIdToken();
+
+  await deleteViaEmulatorRest(concurrentRecoveryDeleteToken);
+
+  const concurrentRecoveryResults = await Promise.all(
+    Array.from({ length: 4 }, () =>
+      getIdTokenWithAnonymousRecoveryForHarness(
+        concurrentRecovery.auth,
+        concurrentRecoveryCredential.user
+      )
+    )
+  );
+  const concurrentRecoveryUids = [
+    ...new Set(concurrentRecoveryResults.map((result) => result.user.uid)),
+  ];
+
   const registeredStorage = createAsyncStorage();
   const registered = initAuth("registered-no-downgrade", registeredStorage);
   const registeredCredential = await createUserWithEmailAndPassword(
@@ -218,6 +275,17 @@ async function main() {
       isAnonymous: runningRecoveryResult.user.isAnonymous,
       tokenRefreshAfterRecoverySucceeded: Boolean(runningRecoveryTokenRefreshAfterRecovery),
     },
+    concurrentAnonymousRecovery: {
+      deletedUid: concurrentRecoveryDeletedUid,
+      allCallersRecovered: concurrentRecoveryResults.every((result) => result.recovered),
+      replacementUids: concurrentRecoveryUids,
+      oneReplacementUid: concurrentRecoveryUids.length === 1,
+      newUidDiffersFromDeletedUid:
+        concurrentRecoveryUids.length === 1 &&
+        concurrentRecoveryUids[0] !== concurrentRecoveryDeletedUid,
+      activeUidMatchesReplacement:
+        concurrentRecovery.auth.currentUser?.uid === concurrentRecoveryUids[0],
+    },
     registeredNoSilentDowngrade: {
       deletedUid: registeredDeletedUid,
       currentUserAfterFailureUid: registered.auth.currentUser?.uid ?? null,
@@ -235,6 +303,10 @@ async function main() {
   assert.equal(result.runningAnonymousRecovery.newUidDiffersFromDeletedUid, true);
   assert.equal(result.runningAnonymousRecovery.isAnonymous, true);
   assert.equal(result.runningAnonymousRecovery.tokenRefreshAfterRecoverySucceeded, true);
+  assert.equal(result.concurrentAnonymousRecovery.allCallersRecovered, true);
+  assert.equal(result.concurrentAnonymousRecovery.oneReplacementUid, true);
+  assert.equal(result.concurrentAnonymousRecovery.newUidDiffersFromDeletedUid, true);
+  assert.equal(result.concurrentAnonymousRecovery.activeUidMatchesReplacement, true);
   assert.equal(result.registeredNoSilentDowngrade.isAnonymousAfterFailure, false);
   assert.equal(
     result.registeredNoSilentDowngrade.recoveryError?.code,
@@ -245,6 +317,7 @@ async function main() {
 
   await deleteApp(relaunched.app);
   await deleteApp(runningRecovery.app);
+  await deleteApp(concurrentRecovery.app);
   await deleteApp(registered.app);
 }
 
