@@ -18,7 +18,8 @@ replace the separate cleanup operation.
 - iOS App Store Connect / TestFlight: QuietRoomQA build `34`. The signed archive
   passed entitlement verification, and the App Store Connect API-key fallback
   reported `Uploaded package is processing`, `Upload succeeded`,
-  `Uploaded QuietRoomQA`, and `** EXPORT SUCCEEDED **`.
+  `Uploaded QuietRoomQA`, and `** EXPORT SUCCEEDED **`. App Store Connect API
+  readback then reported build `34` with processing state `VALID`.
 - Final mobile source: `d16b083` on `develop`.
 
 ## Controlled running-app proof
