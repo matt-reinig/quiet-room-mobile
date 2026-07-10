@@ -21,6 +21,7 @@ const {
   GoogleAuthProvider,
   initializeAuth,
   OAuthProvider,
+  onIdTokenChanged,
   sendPasswordResetEmail,
   signInAnonymously,
   signInWithCredential,
@@ -83,21 +84,95 @@ function maybeConnectAuthEmulator() {
 
 maybeConnectAuthEmulator();
 
-async function resetToAnonymousSession() {
-  if (auth.currentUser && !auth.currentUser.isAnonymous) {
+const STALE_ANONYMOUS_SESSION_ERROR_CODES = new Set([
+  "auth/id-token-expired",
+  "auth/invalid-refresh-token",
+  "auth/invalid-user-token",
+  "auth/token-expired",
+  "auth/user-not-found",
+  "auth/user-token-expired",
+]);
+
+type IdTokenResult = {
+  idToken: string;
+  recovered: boolean;
+  user: User;
+};
+
+function getAuthErrorCode(error: unknown): string {
+  return typeof error === "object" && error !== null && "code" in error
+    ? String(error.code)
+    : "";
+}
+
+export function isStaleAnonymousSessionError(error: unknown): boolean {
+  const code = getAuthErrorCode(error);
+  return STALE_ANONYMOUS_SESSION_ERROR_CODES.has(code);
+}
+
+async function resetToAnonymousSession(options: { forceSignOut?: boolean } = {}) {
+  const currentUser = auth.currentUser;
+
+  if (currentUser && (options.forceSignOut || !currentUser.isAnonymous)) {
     try {
       await signOut(auth);
     } catch (error) {
       console.warn("signOut during session reset failed", error);
     }
 
-    if (Platform.OS === "android") {
+    if (!currentUser.isAnonymous && Platform.OS === "android") {
       await GoogleSignin.signOut().catch(() => null);
     }
   }
 
   const credential = await signInAnonymously(auth);
   return credential.user;
+}
+
+export function subscribeAuthUser(listener: (user: User | null) => void): () => void {
+  return onIdTokenChanged(auth, listener);
+}
+
+export async function recoverStaleAnonymousSession(error?: unknown): Promise<User | null> {
+  if (error && !isStaleAnonymousSessionError(error)) {
+    return null;
+  }
+
+  const currentUser = auth.currentUser;
+
+  if (!currentUser?.isAnonymous) {
+    return null;
+  }
+
+  console.warn("Recovering stale anonymous Firebase session.");
+  return resetToAnonymousSession({ forceSignOut: true });
+}
+
+export async function getIdTokenWithAnonymousRecovery(
+  user: User,
+  forceRefresh = false
+): Promise<IdTokenResult> {
+  const shouldForceRefresh = forceRefresh || user.isAnonymous;
+
+  try {
+    return {
+      idToken: await user.getIdToken(shouldForceRefresh),
+      recovered: false,
+      user,
+    };
+  } catch (error) {
+    if (!user.isAnonymous || !isStaleAnonymousSessionError(error)) {
+      throw error;
+    }
+
+    const recoveredUser = await resetToAnonymousSession({ forceSignOut: true });
+
+    return {
+      idToken: await recoveredUser.getIdToken(true),
+      recovered: true,
+      user: recoveredUser,
+    };
+  }
 }
 
 async function restoreNativeGoogleUser(): Promise<User | null> {
@@ -131,7 +206,25 @@ export async function ensureAuth(): Promise<User> {
   await auth.authStateReady();
 
   if (auth.currentUser) {
-    return auth.currentUser;
+    const currentUser = auth.currentUser;
+
+    if (!currentUser.isAnonymous) {
+      return currentUser;
+    }
+
+    try {
+      await currentUser.getIdToken(true);
+      return auth.currentUser || currentUser;
+    } catch (error) {
+      const recoveredUser = await recoverStaleAnonymousSession(error);
+
+      if (recoveredUser) {
+        return recoveredUser;
+      }
+
+      console.warn("ensureAuth: anonymous token refresh failed; keeping existing session", error);
+      return currentUser;
+    }
   }
 
   const restoredGoogleUser = await restoreNativeGoogleUser();

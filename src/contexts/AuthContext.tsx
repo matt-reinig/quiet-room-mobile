@@ -1,4 +1,12 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import type { User } from "firebase/auth";
 import { Linking, NativeModules, StyleSheet, View } from "react-native";
 import Spinner from "../components/Spinner";
@@ -11,6 +19,7 @@ import {
   logout as firebaseLogout,
   sendPasswordReset as firebaseSendPasswordReset,
   signupWithEmail as firebaseSignupWithEmail,
+  subscribeAuthUser,
 } from "../lib/firebase";
 import { APP_VARIANT, RELEASE_ENV } from "../config/env";
 
@@ -85,6 +94,37 @@ export function AuthProvider({ children }: AuthProviderProps) {
     user: null,
   });
 
+  const applyResolvedUser = useCallback((resolvedUser: User | null, loading = false) => {
+    setState({
+      initializing: false,
+      isAnon: Boolean(resolvedUser?.isAnonymous),
+      loading,
+      user: resolvedUser,
+    });
+  }, []);
+
+  useEffect(() => {
+    return subscribeAuthUser((nextUser) => {
+      setState((prev) => {
+        const nextIsAnon = Boolean(nextUser?.isAnonymous);
+
+        if (
+          prev.initializing ||
+          (prev.user?.uid === nextUser?.uid && prev.isAnon === nextIsAnon)
+        ) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          isAnon: nextIsAnon,
+          loading: false,
+          user: nextUser,
+        };
+      });
+    });
+  }, []);
+
   useEffect(() => {
     const initializeAuth = async () => {
       setState((prev) => ({ ...prev, initializing: true }));
@@ -96,12 +136,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           ? ((await firebaseLoginWithEmail(e2eLogin.email, e2eLogin.password)) as { user: User }).user
           : initialUser;
 
-        setState({
-          initializing: false,
-          isAnon: Boolean(resolvedUser?.isAnonymous),
-          loading: false,
-          user: resolvedUser,
-        });
+        applyResolvedUser(resolvedUser);
       } catch (error) {
         console.error("Auth initialization failed", error);
         setState((prev) => ({ ...prev, initializing: false }));
@@ -109,7 +144,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
 
     void initializeAuth();
-  }, []);
+  }, [applyResolvedUser]);
 
   const loginWithGoogle = async (idToken: string) => {
     setState((prev) => ({ ...prev, loading: true }));
@@ -119,12 +154,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         user: User;
       };
 
-      setState({
-        initializing: false,
-        isAnon: Boolean(loginUser.user?.isAnonymous),
-        loading: false,
-        user: loginUser.user,
-      });
+      applyResolvedUser(loginUser.user);
 
       return loginUser;
     } catch (error) {
@@ -141,12 +171,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         user: User;
       };
 
-      setState({
-        initializing: false,
-        isAnon: Boolean(loginUser.user?.isAnonymous),
-        loading: false,
-        user: loginUser.user,
-      });
+      applyResolvedUser(loginUser.user);
 
       return loginUser;
     } catch (error) {
@@ -163,12 +188,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         user: User;
       };
 
-      setState({
-        initializing: false,
-        isAnon: Boolean(loginUser.user?.isAnonymous),
-        loading: false,
-        user: loginUser.user,
-      });
+      applyResolvedUser(loginUser.user);
 
       return loginUser;
     } catch (error) {
@@ -195,12 +215,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         user: User;
       };
 
-      setState({
-        initializing: false,
-        isAnon: Boolean(newUser.user?.isAnonymous),
-        loading: false,
-        user: newUser.user,
-      });
+      applyResolvedUser(newUser.user);
 
       return newUser;
     } catch (error) {
@@ -214,12 +229,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const logoutUser = (await firebaseLogout()) as User;
 
-    setState({
-      initializing: false,
-      isAnon: Boolean(logoutUser?.isAnonymous),
-      loading: false,
-      user: logoutUser,
-    });
+    applyResolvedUser(logoutUser);
   };
 
   const deleteAccount = async () => {
@@ -228,12 +238,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const nextUser = (await firebaseDeleteAccount()) as User;
 
-      setState({
-        initializing: false,
-        isAnon: Boolean(nextUser?.isAnonymous),
-        loading: false,
-        user: nextUser,
-      });
+      applyResolvedUser(nextUser);
     } catch (error) {
       setState((prev) => ({ ...prev, loading: false }));
       throw error;

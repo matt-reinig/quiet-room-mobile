@@ -23,6 +23,7 @@ import TrackPlayer, {
 import { resolveVoiceUrl, VOICE_PLAYBACK_ENGINE } from "../config/env";
 import { mobileWeb } from "../theme/mobileWeb";
 import { useAuth } from "../contexts/AuthContext";
+import { getIdTokenWithAnonymousRecovery } from "../lib/firebase";
 import {
   publishVoicePlayback,
   subscribeVoicePlayback,
@@ -296,8 +297,8 @@ export default function MessageVoiceButton({
       return {};
     }
 
-    const token = await user.getIdToken();
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    const tokenResult = await getIdTokenWithAnonymousRecovery(user);
+    return tokenResult.idToken ? { Authorization: `Bearer ${tokenResult.idToken}` } : {};
   }, [user]);
 
   const startTrackPlayerConversationPlayback = useCallback(
@@ -685,7 +686,6 @@ const styles = StyleSheet.create({
     maxWidth: 180,
   },
 });
-
 
 
 

@@ -15,6 +15,7 @@ import {
   resolveEnabledChatModelOptions,
   type ChatModelOption,
 } from "../lib/chatModels";
+import { getIdTokenWithAnonymousRecovery } from "../lib/firebase";
 import type { ChatMessage, Conversation, ConversationsById } from "../types/chat";
 
 const STREAM_FLUSH_INTERVAL_MS = 120;
@@ -123,22 +124,16 @@ function mergeConversationPage(
 }
 
 async function fetchChatModelCatalog(user: User): Promise<ChatModelOption[]> {
-  let idToken: string;
-
-  try {
-    idToken = await user.getIdToken();
-  } catch {
-    idToken = await user.getIdToken(true);
-  }
+  let tokenResult = await getIdTokenWithAnonymousRecovery(user);
 
   let response = await fetch(`${API_BASE}/api/model_catalog`, {
-    headers: { Authorization: `Bearer ${idToken}` },
+    headers: { Authorization: `Bearer ${tokenResult.idToken}` },
   });
 
   if (response.status === 401) {
-    const refreshedToken = await user.getIdToken(true);
+    tokenResult = await getIdTokenWithAnonymousRecovery(tokenResult.user, true);
     response = await fetch(`${API_BASE}/api/model_catalog`, {
-      headers: { Authorization: `Bearer ${refreshedToken}` },
+      headers: { Authorization: `Bearer ${tokenResult.idToken}` },
     });
   }
 
@@ -505,10 +500,10 @@ export function useChatController({
 
     const loadConversations = async () => {
       try {
-        const idToken = await user.getIdToken(true);
+        const tokenResult = await getIdTokenWithAnonymousRecovery(user, true);
 
         const response = await fetch(`${API_BASE}/api/conversations`, {
-          headers: { Authorization: `Bearer ${idToken}` },
+          headers: { Authorization: `Bearer ${tokenResult.idToken}` },
         });
 
         if (!response.ok) {
@@ -612,10 +607,16 @@ export function useChatController({
 
     const loadConversation = async () => {
       try {
-        const idToken = await user.getIdToken(true);
+        const tokenResult = await getIdTokenWithAnonymousRecovery(user, true);
+
+        if (tokenResult.recovered) {
+          setConversations({});
+          setCurrentId(null);
+          return;
+        }
 
         const response = await fetch(`${API_BASE}/api/conversations/${currentId}`, {
-          headers: { Authorization: `Bearer ${idToken}` },
+          headers: { Authorization: `Bearer ${tokenResult.idToken}` },
           signal: abortController.signal,
         });
 
@@ -783,12 +784,28 @@ export function useChatController({
         return;
       }
 
+      let tokenResult: Awaited<ReturnType<typeof getIdTokenWithAnonymousRecovery>>;
+
+      try {
+        tokenResult = await getIdTokenWithAnonymousRecovery(user);
+      } catch (error) {
+        console.error(error);
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Something went wrong talking to Quiet Room.";
+
+        Alert.alert("Quiet Room", message);
+        return;
+      }
+
       const now = Date.now();
-      const conversationId = currentId || generateConversationId();
+      const conversationId = tokenResult.recovered ? generateConversationId() : currentId || generateConversationId();
       const requestModel = requestModelForChatModel(currentModel, modelOptions);
       const requestLogicalKey = logicalKeyForChatModel(currentModel, modelOptions);
 
-      const previousMessages = conversations[conversationId]?.messages || [];
+      const previousMessages = tokenResult.recovered ? [] : conversations[conversationId]?.messages || [];
       const userMessage: ChatMessage = {
         content: text,
         logicalModelKey: requestLogicalKey,
@@ -797,7 +814,7 @@ export function useChatController({
       };
 
       const outgoingMessages = [...previousMessages, userMessage];
-      const existingConversation = conversations[conversationId];
+      const existingConversation = tokenResult.recovered ? null : conversations[conversationId];
 
       const shouldRename =
         (!existingConversation || existingConversation.title === "New Chat") &&
@@ -810,18 +827,24 @@ export function useChatController({
       setConversations((previous) => {
         const previousConversation = previous[conversationId];
 
+        const nextConversation = {
+          createdAt: previousConversation?.createdAt || now,
+          currentModel,
+          id: conversationId,
+          logicalModelKey: requestLogicalKey,
+          messages: outgoingMessages,
+          messagesLoaded: true,
+          title,
+          updatedAt: now,
+        };
+
+        if (tokenResult.recovered) {
+          return { [conversationId]: nextConversation };
+        }
+
         return {
           ...previous,
-          [conversationId]: {
-            createdAt: previousConversation?.createdAt || now,
-            currentModel,
-            id: conversationId,
-            logicalModelKey: requestLogicalKey,
-            messages: outgoingMessages,
-            messagesLoaded: true,
-            title,
-            updatedAt: now,
-          },
+          [conversationId]: nextConversation,
         };
       });
 
@@ -835,8 +858,6 @@ export function useChatController({
       let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
       try {
-        const idToken = await user.getIdToken();
-
         const payload: Record<string, unknown> = {
           conversation_id: conversationId,
           messages: outgoingMessages,
@@ -849,7 +870,7 @@ export function useChatController({
 
         const requestBody = JSON.stringify(payload);
         const requestHeaders = {
-          Authorization: `Bearer ${idToken}`,
+          Authorization: `Bearer ${tokenResult.idToken}`,
           "Content-Type": "application/json",
         };
 
@@ -991,10 +1012,18 @@ export function useChatController({
     setLoadingMoreConversations(true);
 
     try {
-      const idToken = await user.getIdToken(true);
+      const tokenResult = await getIdTokenWithAnonymousRecovery(user, true);
+
+      if (tokenResult.recovered) {
+        setConversations({});
+        setCurrentId(null);
+        setNextConversationCursor(null);
+        return;
+      }
+
       const query = `limit=${CONVERSATIONS_PAGE_SIZE}&cursor=${encodeURIComponent(nextConversationCursor)}`;
       const response = await fetch(`${API_BASE}/api/conversations?${query}`, {
-        headers: { Authorization: `Bearer ${idToken}` },
+        headers: { Authorization: `Bearer ${tokenResult.idToken}` },
       });
 
       if (!response.ok) {
@@ -1032,12 +1061,19 @@ export function useChatController({
         throw new Error("Title cannot be empty");
       }
 
-      const idToken = await user.getIdToken(true);
+      const tokenResult = await getIdTokenWithAnonymousRecovery(user, true);
+
+      if (tokenResult.recovered) {
+        setConversations({});
+        setCurrentId(null);
+        setNextConversationCursor(null);
+        return;
+      }
 
       const response = await fetch(`${API_BASE}/api/conversations/${conversationId}`, {
         body: JSON.stringify({ title: trimmed }),
         headers: {
-          Authorization: `Bearer ${idToken}`,
+          Authorization: `Bearer ${tokenResult.idToken}`,
           "Content-Type": "application/json",
         },
         method: "PATCH",
@@ -1077,10 +1113,17 @@ export function useChatController({
         return;
       }
 
-      const idToken = await user.getIdToken(true);
+      const tokenResult = await getIdTokenWithAnonymousRecovery(user, true);
+
+      if (tokenResult.recovered) {
+        setConversations({});
+        setCurrentId(null);
+        setNextConversationCursor(null);
+        return;
+      }
 
       const response = await fetch(`${API_BASE}/api/conversations/${conversationId}`, {
-        headers: { Authorization: `Bearer ${idToken}` },
+        headers: { Authorization: `Bearer ${tokenResult.idToken}` },
         method: "DELETE",
       });
 

@@ -7,12 +7,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { User } from "firebase/auth";
 import { Linking } from "react-native";
 import { API_BASE } from "../config/env";
 import {
   filterSupportedFlagReasons,
   filterSupportedFlagValues,
 } from "../lib/featureFlags";
+import { getIdTokenWithAnonymousRecovery } from "../lib/firebase";
 import { useAuth } from "./AuthContext";
 
 type FeatureFlagReasons = Record<string, string>;
@@ -221,12 +223,9 @@ async function fetchFeatureFlags(userToken: string): Promise<Response> {
   }
 }
 
-async function getIdTokenWithTimeout(
-  getIdToken: (forceRefresh?: boolean) => Promise<string>,
-  forceRefresh = false,
-): Promise<string> {
+async function getIdTokenWithTimeout(user: User, forceRefresh = false): Promise<string> {
   return withTimeout(
-    getIdToken(forceRefresh),
+    getIdTokenWithAnonymousRecovery(user, forceRefresh).then((result) => result.idToken),
     FEATURE_FLAGS_TIMEOUT_MS,
     forceRefresh ? "Firebase ID token refresh" : "Firebase ID token",
   );
@@ -276,15 +275,15 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
       let idToken: string;
 
       try {
-        idToken = await getIdTokenWithTimeout(user.getIdToken.bind(user));
+        idToken = await getIdTokenWithTimeout(user);
       } catch {
-        idToken = await getIdTokenWithTimeout(user.getIdToken.bind(user), true);
+        idToken = await getIdTokenWithTimeout(user, true);
       }
 
       let response = await fetchFeatureFlags(idToken);
 
       if (response.status === 401) {
-        const refreshedToken = await getIdTokenWithTimeout(user.getIdToken.bind(user), true);
+        const refreshedToken = await getIdTokenWithTimeout(user, true);
         response = await fetchFeatureFlags(refreshedToken);
       }
 
