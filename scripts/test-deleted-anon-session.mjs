@@ -77,6 +77,25 @@ async function currentEnsureAuthShape(auth) {
 }
 
 let anonymousRecoveryPromise = null;
+let anonymousTokenRequest = null;
+
+async function getAnonymousIdTokenForHarness(user, forceRefresh) {
+  if (anonymousTokenRequest?.uid === user.uid) {
+    return anonymousTokenRequest.promise;
+  }
+
+  const promise = user.getIdToken(forceRefresh);
+  const request = { promise, uid: user.uid };
+  anonymousTokenRequest = request;
+
+  try {
+    return await promise;
+  } finally {
+    if (anonymousTokenRequest === request) {
+      anonymousTokenRequest = null;
+    }
+  }
+}
 
 async function recoverAnonymousUserForHarness(auth, staleUser) {
   if (anonymousRecoveryPromise) {
@@ -91,8 +110,10 @@ async function recoverAnonymousUserForHarness(auth, staleUser) {
     }
 
     try {
-      await activeUser.getIdToken(true);
-      return activeUser;
+      return {
+        idToken: await getAnonymousIdTokenForHarness(activeUser, true),
+        user: activeUser,
+      };
     } catch {
       // A concurrently replaced anonymous user can itself be stale. Fall
       // through to one shared reset in that case.
@@ -101,7 +122,11 @@ async function recoverAnonymousUserForHarness(auth, staleUser) {
 
   const recovery = (async () => {
     await signOut(auth).catch(() => null);
-    return (await signInAnonymously(auth)).user;
+    const user = (await signInAnonymously(auth)).user;
+    return {
+      idToken: await getAnonymousIdTokenForHarness(user, false),
+      user,
+    };
   })();
   anonymousRecoveryPromise = recovery;
 
@@ -119,7 +144,9 @@ async function getIdTokenWithAnonymousRecoveryForHarness(auth, user, forceRefres
 
   try {
     return {
-      idToken: await user.getIdToken(shouldForceRefresh),
+      idToken: user.isAnonymous
+        ? await getAnonymousIdTokenForHarness(user, shouldForceRefresh)
+        : await user.getIdToken(shouldForceRefresh),
       recovered: false,
       user,
     };
@@ -128,12 +155,12 @@ async function getIdTokenWithAnonymousRecoveryForHarness(auth, user, forceRefres
       throw error;
     }
 
-    const recoveredUser = await recoverAnonymousUserForHarness(auth, user);
+    const recovered = await recoverAnonymousUserForHarness(auth, user);
 
     return {
-      idToken: await recoveredUser.getIdToken(true),
+      idToken: recovered.idToken,
       recovered: true,
-      user: recoveredUser,
+      user: recovered.user,
     };
   }
 }
