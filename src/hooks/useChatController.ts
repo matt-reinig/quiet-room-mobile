@@ -403,6 +403,7 @@ export function useChatController({
 
   const chatLoadRequestIdRef = useRef(0);
   const currentIdRef = useRef<string | null>(null);
+  const anonymousConversationUidRef = useRef<string | null>(null);
   currentIdRef.current = currentId;
 
   useEffect(() => {
@@ -483,6 +484,12 @@ export function useChatController({
     }
 
     if (isAnon) {
+      if (anonymousConversationUidRef.current === user.uid) {
+        setConversationsHydrated(true);
+        return;
+      }
+
+      anonymousConversationUidRef.current = user.uid;
       setConversations({});
       setCurrentId(null);
       setCurrentModelState(normalizeChatModelKey(DEFAULT_MODEL, modelOptions));
@@ -493,6 +500,7 @@ export function useChatController({
       return;
     }
 
+    anonymousConversationUidRef.current = null;
     let cancelled = false;
 
     setConversationsHydrated(false);
@@ -798,6 +806,12 @@ export function useChatController({
 
         Alert.alert("Quiet Room", message);
         return;
+      }
+
+      if (tokenResult.user.isAnonymous) {
+        // Claim the recovered UID before AuthContext's token-change render so
+        // the identity reset does not erase the fresh recovery conversation.
+        anonymousConversationUidRef.current = tokenResult.user.uid;
       }
 
       const now = Date.now();
