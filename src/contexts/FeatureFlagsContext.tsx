@@ -27,6 +27,7 @@ type E2EFeatureFlagsPayload = {
 type FeatureFlagsContextValue = {
   env: string | null;
   error: unknown;
+  initialized: boolean;
   isEnabled: (flag: string, defaultValue?: boolean) => boolean;
   loading: boolean;
   reasons: FeatureFlagReasons;
@@ -41,6 +42,7 @@ type FeatureFlagsProviderProps = {
 type FeatureFlagsState = {
   env: string | null;
   error: unknown;
+  initialized: boolean;
   loading: boolean;
   reasons: FeatureFlagReasons;
   values: FeatureFlagValues;
@@ -54,6 +56,7 @@ type FeatureFlagsOverride = {
 const FeatureFlagsContext = createContext<FeatureFlagsContextValue>({
   env: null,
   error: null,
+  initialized: false,
   isEnabled: (_flag, defaultValue = false) => defaultValue,
   loading: false,
   reasons: {},
@@ -114,6 +117,7 @@ function buildOverrideState(
   return {
     env: override.env,
     error: null,
+    initialized: true,
     loading: false,
     reasons,
     values: override.values,
@@ -238,6 +242,7 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
   const [state, setState] = useState<FeatureFlagsState>(() => ({
     env: null,
     error: null,
+    initialized: Boolean(e2eOverrides) || !user,
     loading: Boolean(user) && !e2eOverrides,
     reasons: {},
     values: {},
@@ -262,6 +267,7 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
       setState({
         env: null,
         error: null,
+        initialized: true,
         loading: false,
         reasons: {},
         values: {},
@@ -300,13 +306,14 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
       setState({
         env: typeof data.env === "string" ? data.env : null,
         error: null,
+        initialized: true,
         loading: false,
         reasons: filterSupportedFlagReasons(data.reasons),
         values: filterSupportedFlagValues(data.values),
       });
     } catch (error) {
       console.warn("Failed to load feature flags", error);
-      setState((prev) => ({ ...prev, loading: false, error }));
+      setState((prev) => ({ ...prev, initialized: true, loading: false, error }));
     }
   }, [user]);
 
@@ -346,13 +353,23 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
     () => ({
       env: state.env,
       error: state.error,
+      initialized: state.initialized,
       isEnabled,
       loading: state.loading,
       reasons: state.reasons,
       refresh,
       values: state.values,
     }),
-    [isEnabled, refresh, state.env, state.error, state.loading, state.reasons, state.values]
+    [
+      isEnabled,
+      refresh,
+      state.env,
+      state.error,
+      state.initialized,
+      state.loading,
+      state.reasons,
+      state.values,
+    ]
   );
 
   return (
