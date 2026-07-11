@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { User } from "firebase/auth";
 import {
   API_BASE,
@@ -21,6 +22,7 @@ import type { ChatMessage, Conversation, ConversationsById } from "../types/chat
 const STREAM_FLUSH_INTERVAL_MS = 120;
 const CONVERSATIONS_PAGE_SIZE = 20;
 const MIN_LOADING_MORE_VISIBLE_MS = 800;
+const ACTIVE_CONVERSATION_STORAGE_PREFIX = "quiet-room.active-conversation";
 
 type ConversationListPage = {
   items: Record<string, unknown>[];
@@ -121,6 +123,26 @@ function mergeConversationPage(
   }
 
   return next;
+}
+
+function activeConversationStorageKey(uid: string): string {
+  return `${ACTIVE_CONVERSATION_STORAGE_PREFIX}.${uid}`;
+}
+
+function compareConversations(a: Conversation, b: Conversation): number {
+  const updatedAtDifference = (b.updatedAt || 0) - (a.updatedAt || 0);
+
+  if (updatedAtDifference !== 0) {
+    return updatedAtDifference;
+  }
+
+  const createdAtDifference = (b.createdAt || 0) - (a.createdAt || 0);
+
+  if (createdAtDifference !== 0) {
+    return createdAtDifference;
+  }
+
+  return b.id.localeCompare(a.id);
 }
 
 async function fetchChatModelCatalog(user: User): Promise<ChatModelOption[]> {
@@ -483,19 +505,11 @@ export function useChatController({
       return;
     }
 
-    if (isAnon) {
-      if (anonymousConversationUidRef.current === user.uid) {
-        setConversationsHydrated(true);
-        return;
-      }
-
-      anonymousConversationUidRef.current = user.uid;
-      setConversations({});
-      setCurrentId(null);
-      setCurrentModelState(normalizeChatModelKey(DEFAULT_MODEL, modelOptions));
-      setSidebarLoading(false);
-      setLoadingMoreConversations(false);
-      setNextConversationCursor(null);
+    // A recovered anonymous UID already has the triggering conversation in
+    // local state. Let the send complete before a UID-change render reloads
+    // the list; ordinary anonymous startup still loads persisted history.
+    if (isAnon && anonymousConversationUidRef.current === user.uid) {
+      anonymousConversationUidRef.current = null;
       setConversationsHydrated(true);
       return;
     }
@@ -525,13 +539,18 @@ export function useChatController({
 
         const payload = normalizeConversationListPayload((await response.json()) as unknown);
         const mapped = mergeConversationPage({}, payload.items, modelOptions);
-        const sorted = Object.values(mapped).sort(
-          (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)
-        );
+        const sorted = Object.values(mapped).sort(compareConversations);
+        const rememberedConversationId = isAnon
+          ? await AsyncStorage.getItem(activeConversationStorageKey(tokenResult.user.uid)).catch(() => null)
+          : null;
 
         setConversations(mapped);
         setNextConversationCursor(payload.nextCursor);
         setCurrentId((previous) => {
+          if (rememberedConversationId && mapped[rememberedConversationId]) {
+            return rememberedConversationId;
+          }
+
           if (previous && mapped[previous]) {
             return previous;
           }
@@ -554,6 +573,20 @@ export function useChatController({
       cancelled = true;
     };
   }, [isAnon, modelOptions, user]);
+
+  useEffect(() => {
+    if (!user?.isAnonymous) {
+      return;
+    }
+
+    const storageKey = activeConversationStorageKey(user.uid);
+
+    if (!currentId) {
+      return;
+    }
+
+    void AsyncStorage.setItem(storageKey, currentId).catch(() => null);
+  }, [currentId, user]);
 
   const setCurrentModel = useCallback(
     (model: string) => {
@@ -598,7 +631,7 @@ export function useChatController({
   );
 
   useEffect(() => {
-    if (!user || isAnon || !currentId) {
+    if (!user || !currentId) {
       return;
     }
 
@@ -742,7 +775,7 @@ export function useChatController({
     return () => {
       abortController.abort();
     };
-  }, [conversations, currentId, isAnon, modelOptions, user]);
+  }, [conversations, currentId, modelOptions, user]);
 
   useEffect(() => {
     if (!currentId) {
@@ -1160,9 +1193,7 @@ export function useChatController({
             return previousCurrent;
           }
 
-          const nextConversation = Object.values(rest).sort(
-            (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)
-          )[0];
+          const nextConversation = Object.values(rest).sort(compareConversations)[0];
 
           return nextConversation?.id || null;
         });
@@ -1187,9 +1218,9 @@ export function useChatController({
   const resolvedChatLoading =
     sidebarLoading ||
     chatLoading ||
-    (Boolean(user) && !isAnon && Boolean(currentId) && !activeConversationLoaded);
+    (Boolean(user) && Boolean(currentId) && !activeConversationLoaded);
 
-  const shouldBlockForConversations = Boolean(user) && !isAnon && !conversationsHydrated;
+  const shouldBlockForConversations = Boolean(user) && !conversationsHydrated;
 
   const baseMessages = activeConversation?.messages || [];
 
