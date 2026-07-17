@@ -4,6 +4,8 @@
 
 Make logout feel like one deliberate transition from a registered account to the replacement guest session, without briefly rendering an empty conversation, switching to a second loading screen, or exposing content from the account that just signed out.
 
+The implementation sequence and verification matrix are defined in [`plan.md`](./plan.md).
+
 ## Reported Behavior
 
 When a registered user taps **Logout**, the app currently appears to:
