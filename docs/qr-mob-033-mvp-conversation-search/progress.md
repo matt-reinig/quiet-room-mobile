@@ -4,7 +4,7 @@ Updated: 2026-07-16
 
 ## Current status
 
-The MVP and the accepted match-navigation follow-up are implemented in the isolated mobile and backend worktrees. Local native validation is complete. The tracker remains `In Progress` because the backend has not yet been deployed to the live QA Lambda; the AWS session needs to be reauthenticated before that deployment can happen.
+The MVP and the accepted match-navigation follow-up are implemented and merged into mobile `develop` (`d34bcac`) and backend `develop-from-main` (`e79b904`). Local native validation is complete, and the backend is deployed to all three QA Lambdas. Production remains untouched.
 
 The match-navigation implementation and validation evidence are captured in [match-navigation-plan.md](./match-navigation-plan.md).
 
@@ -39,6 +39,9 @@ The match-navigation implementation and validation evidence are captured in [mat
 - Made the open Conversations drawer safe-area-aware with `react-native-safe-area-context` top/bottom insets instead of fixed system-bar padding.
 - Added a deterministic three-match navigation fixture for local Detox validation.
 - Added a temporary QA/local/Detox-gated custom-token launch path so the Google-only representative QA account can be used in native QA validation. This path is not enabled for ordinary production launches.
+- Merged the mobile implementation into `origin/develop` at `d34bcac` and pushed it.
+- Deployed backend commit `e79b904` to `gabriel_lambda`, `gabriel-profile-builder`, and `gabriel_streaming_lambda`; all three settled `Successful` on image digest `sha256:3848de48368ad8cecc5f1d477454295b487ae8a015853017dd7494d3ddc8050e`.
+- Verified QA `/health` with HTTP 200 and ran an authenticated read-only live search for `mom`, which returned HTTP 200 and 279 grouped results.
 
 ## Automated and native validation
 
@@ -113,13 +116,10 @@ The viewing session uses real QA authentication and reads QA conversation data t
 ## Issues and decisions recorded
 
 - The initial performance harness exposed emulator system-UI ANR behavior, token-selection confusion, matcher assumptions, and clear-button assumptions. Those issues were corrected before the final pass; the final Android and iOS performance runs passed.
-- A live QA Lambda deployment is still outstanding because the current AWS credentials/session are expired. No deployment was claimed.
+- The main `develop` checkout and backend `develop-from-main` checkout retain unrelated local worktree edits; those edits were preserved and not included in the QR-MOB-033 commits.
 - The MVP search result now opens at the representative matching message, highlights the active query, and supports Previous/Next navigation without another search or Firestore read.
 
 ## Next steps
 
-1. Finish or verify the iPhone 17 Pro deep-link confirmation if iOS viewing is needed.
-2. Reauthenticate AWS and deploy the backend branch to QA.
-3. Re-run the live QA smoke check against the deployed Lambda while keeping the rollout target-only.
-4. Reauthenticate AWS and deploy the backend branch to QA when deployment is authorized.
-5. Restore any temporary viewing-session feature flag and stop the local backend after inspection is complete.
+1. If broader rollout is desired, review the target-only `conversation_search` flag before changing its QA allowlist or percentage.
+2. Stop the local viewing backend/emulator session when inspection is complete.
