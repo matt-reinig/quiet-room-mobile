@@ -20,3 +20,21 @@ export type Conversation = {
 };
 
 export type ConversationsById = Record<string, Conversation>;
+
+export type ConversationSearchResult = {
+  createdAt?: number;
+  id: string;
+  matchCount: number;
+  messageIndex?: number;
+  messageIndexes?: number[];
+  snippet: string;
+  title?: string;
+  updatedAt?: number;
+};
+
+export type ConversationSearchNavigationTarget = {
+  conversationId: string;
+  messageIndexes: number[];
+  query: string;
+  selectedPosition: number;
+};

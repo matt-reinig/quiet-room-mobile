@@ -279,7 +279,7 @@ async function createDisposableTestUser() {
   });
 }
 
-async function seedConversations({ uid, token, count }) {
+async function seedConversations({ uid, token, count, navigationFixture = false }) {
   return backendRequest('/test/seed-conversations', {
     method: 'POST',
     headers: {
@@ -288,6 +288,7 @@ async function seedConversations({ uid, token, count }) {
     },
     body: JSON.stringify({
       count,
+      navigationFixture,
       uid,
     }),
   });

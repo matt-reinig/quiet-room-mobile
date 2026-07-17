@@ -13,6 +13,7 @@ import Spinner from "../components/Spinner";
 import {
   deleteAccount as firebaseDeleteAccount,
   ensureAuth as firebaseEnsureAuth,
+  loginWithCustomToken as firebaseLoginWithCustomToken,
   loginWithApple as firebaseLoginWithApple,
   loginWithEmail as firebaseLoginWithEmail,
   loginWithGoogle as firebaseLoginWithGoogle,
@@ -56,7 +57,11 @@ const isDetoxSession = Boolean(
 );
 const allowLocalQaE2ELogin = APP_VARIANT === "qa" && RELEASE_ENV === "local";
 
-function parseE2ELoginFromUrl(url: string | null): { email: string; password: string } | null {
+type E2ELogin =
+  | { customToken: string }
+  | { email: string; password: string };
+
+function parseE2ELoginFromUrl(url: string | null): E2ELogin | null {
   if ((!isDetoxSession && !allowLocalQaE2ELogin) || !url) {
     return null;
   }
@@ -67,6 +72,12 @@ function parseE2ELoginFromUrl(url: string | null): { email: string; password: st
   }
 
   const params = new URLSearchParams(url.slice(queryIndex + 1));
+  const customToken = params.get("e2eLoginCustomToken")?.trim();
+
+  if (customToken) {
+    return { customToken };
+  }
+
   const email = params.get("e2eLoginEmail")?.trim();
   const password = params.get("e2eLoginPassword") || "";
 
@@ -133,7 +144,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const initialUser = (await firebaseEnsureAuth()) as User;
         const e2eLogin = await readLaunchE2ELogin();
         const resolvedUser = e2eLogin
-          ? ((await firebaseLoginWithEmail(e2eLogin.email, e2eLogin.password)) as { user: User }).user
+          ? ("customToken" in e2eLogin
+              ? ((await firebaseLoginWithCustomToken(e2eLogin.customToken)) as { user: User }).user
+              : ((await firebaseLoginWithEmail(e2eLogin.email, e2eLogin.password)) as { user: User }).user)
           : initialUser;
 
         applyResolvedUser(resolvedUser);

@@ -7,19 +7,24 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  type StyleProp,
+  type TextStyle,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { splitTextForSearchHighlight } from "../lib/conversationSearchNavigation";
 import { mobileWeb } from "../theme/mobileWeb";
-import type { Conversation } from "../types/chat";
+import type { Conversation, ConversationSearchResult } from "../types/chat";
 import {
   conversationDeleteButtonTestId,
   conversationMenuButtonTestId,
   conversationRenameButtonTestId,
   conversationRowTestId,
+  conversationSearchResultRowTestId,
+  conversationSearchSnippetTestId,
   testIds,
 } from "../testIds";
 import Spinner from "./Spinner";
@@ -36,6 +41,16 @@ type ConversationsModalProps = {
   onLoadMore: () => Promise<void>;
   onRenameConversation: (conversationId: string, title: string) => Promise<void>;
   onSelectConversation: (conversationId: string) => void;
+  onSelectSearchResult: (result: ConversationSearchResult) => void;
+  onSearchQueryChange: (value: string) => void;
+  onSearchSubmit: () => Promise<void>;
+  onClearSearch: () => void;
+  searchEnabled: boolean;
+  searchError: string | null;
+  searchHasSearched: boolean;
+  searchLoading: boolean;
+  searchQuery: string;
+  searchResults: ConversationSearchResult[];
   visible: boolean;
 };
 
@@ -48,7 +63,7 @@ type OpenMenuState = {
   top: number;
 };
 
-function formatConversationTitle(conversation: Conversation): string {
+function formatConversationTitle(conversation: Pick<Conversation, "title">): string {
   const title = typeof conversation.title === "string" ? conversation.title.trim() : "";
 
   if (title.length > 0) {
@@ -72,6 +87,35 @@ function formatTimestamp(value: number | undefined): string {
   return date.toLocaleString();
 }
 
+type SearchHighlightedTextProps = {
+  numberOfLines?: number;
+  query: string;
+  style?: StyleProp<TextStyle>;
+  testID?: string;
+  text: string;
+};
+
+function SearchHighlightedText({
+  numberOfLines,
+  query,
+  style,
+  testID,
+  text,
+}: SearchHighlightedTextProps) {
+  return (
+    <Text numberOfLines={numberOfLines} style={style} testID={testID}>
+      {splitTextForSearchHighlight(text, query).map((segment, index) => (
+        <Text
+          key={`${segment.highlighted ? "match" : "text"}-${index}`}
+          style={segment.highlighted ? styles.searchHighlight : null}
+        >
+          {segment.text}
+        </Text>
+      ))}
+    </Text>
+  );
+}
+
 export default function ConversationsModal({
   conversations,
   currentId,
@@ -84,11 +128,29 @@ export default function ConversationsModal({
   onLoadMore,
   onRenameConversation,
   onSelectConversation,
+  onSelectSearchResult,
+  onSearchQueryChange,
+  onSearchSubmit,
+  onClearSearch,
+  searchEnabled,
+  searchError,
+  searchHasSearched,
+  searchLoading,
+  searchQuery,
+  searchResults,
   visible,
 }: ConversationsModalProps) {
+  const insets = useSafeAreaInsets();
   const sortedConversations = useMemo(() => {
     return [...conversations].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   }, [conversations]);
+  const sortedSearchResults = useMemo(() => {
+    return [...searchResults].sort((a, b) => {
+      const updatedAtDifference = (b.updatedAt || 0) - (a.updatedAt || 0);
+      return updatedAtDifference || a.id.localeCompare(b.id);
+    });
+  }, [searchResults]);
+  const showingSearchResults = searchEnabled && searchHasSearched && Boolean(searchQuery.trim());
 
   const [openMenu, setOpenMenu] = useState<OpenMenuState | null>(null);
   const [panelHeight, setPanelHeight] = useState(0);
@@ -244,13 +306,19 @@ export default function ConversationsModal({
       >
         <View style={styles.backdrop}>
           <Pressable onPress={closePanel} style={StyleSheet.absoluteFill} />
-          <SafeAreaView
+          <View
             onLayout={(event) => {
               setPanelHeight(event.nativeEvent.layout.height);
               setPanelWidth(event.nativeEvent.layout.width);
             }}
             ref={panelRef}
-            style={styles.panel}
+            style={[
+              styles.panel,
+              {
+                paddingBottom: Math.max(20, insets.bottom + 20),
+                paddingTop: Math.max(16, insets.top + 16),
+              },
+            ]}
             testID={testIds.conversationsPanel}
           >
               <View style={styles.headerRow}>
@@ -271,21 +339,76 @@ export default function ConversationsModal({
                 <Text style={styles.newChatLabel}>+ New chat</Text>
               </Pressable>
 
+              {searchEnabled ? (
+                <View style={styles.searchSection}>
+                  <Text accessibilityRole="text" style={styles.searchLabel}>
+                    Search conversations
+                  </Text>
+                  <View style={styles.searchRow}>
+                    <TextInput
+                      accessibilityLabel="Search conversations"
+                      editable={!searchLoading}
+                      onChangeText={onSearchQueryChange}
+                      onSubmitEditing={() => {
+                        void onSearchSubmit();
+                      }}
+                      placeholder="Search messages"
+                      returnKeyType="search"
+                      style={styles.searchInput}
+                      testID={testIds.conversationsSearchInput}
+                      value={searchQuery}
+                    />
+                    {searchQuery ? (
+                      <Pressable
+                        accessibilityLabel="Clear conversation search"
+                        disabled={searchLoading}
+                        onPress={onClearSearch}
+                        style={styles.searchClearButton}
+                        testID={testIds.conversationsSearchClear}
+                      >
+                        <Text style={styles.searchClearLabel}>Clear</Text>
+                      </Pressable>
+                    ) : null}
+                    <Pressable
+                      accessibilityLabel="Search conversations"
+                      accessibilityRole="button"
+                      disabled={searchLoading}
+                      onPress={() => {
+                        void onSearchSubmit();
+                      }}
+                      style={styles.searchSubmitButton}
+                      testID={testIds.conversationsSearchSubmit}
+                    >
+                      <Text style={styles.searchSubmitLabel}>Search</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
+
               {loading ? (
                 <View style={styles.loadingWrap}>
                   <Spinner label="Loading conversations..." tone="accent" />
                 </View>
+              ) : showingSearchResults && searchLoading ? (
+                <View style={styles.loadingWrap} testID={testIds.conversationsSearchLoading}>
+                  <Spinner label="Searching conversations..." tone="accent" />
+                </View>
+              ) : showingSearchResults && searchError ? (
+                <View style={styles.statusWrap}>
+                  <Text style={styles.errorText} testID={testIds.conversationsSearchError}>
+                    {searchError}
+                  </Text>
+                  <Text style={styles.statusHint}>Use Search to try again.</Text>
+                </View>
               ) : (
                 <View style={styles.listWrap}>
-                  <FlatList
+                  <FlatList<Conversation | ConversationSearchResult>
                     contentContainerStyle={styles.listContent}
-                    data={sortedConversations}
+                    data={showingSearchResults ? sortedSearchResults : sortedConversations}
                     keyboardShouldPersistTaps="handled"
-                    onEndReached={() => {
-                      maybeLoadMore();
-                    }}
+                    onEndReached={showingSearchResults ? undefined : maybeLoadMore}
                     onEndReachedThreshold={0.35}
-                    onScroll={({ nativeEvent }) => {
+                    onScroll={showingSearchResults ? undefined : ({ nativeEvent }) => {
                       const distanceFromBottom =
                         nativeEvent.contentSize.height -
                         (nativeEvent.contentOffset.y + nativeEvent.layoutMeasurement.height);
@@ -299,18 +422,60 @@ export default function ConversationsModal({
                     style={styles.list}
                     testID={testIds.conversationsList}
                     ListEmptyComponent={
-                      <View style={styles.emptyWrap}>
-                        <Text style={styles.emptyText}>No conversations yet.</Text>
+                      <View
+                        style={styles.emptyWrap}
+                        testID={showingSearchResults ? testIds.conversationsSearchNoResults : undefined}
+                      >
+                        <Text style={styles.emptyText}>
+                          {showingSearchResults ? "No matching conversations." : "No conversations yet."}
+                        </Text>
                       </View>
                     }
                     ListFooterComponent={
-                      loadingMore ? (
+                      !showingSearchResults && loadingMore ? (
                         <View style={styles.listFooterLoading} testID={testIds.conversationsLoadingMore}>
                           <Spinner label="Loading more conversations..." tone="accent" />
                         </View>
                       ) : null
                     }
                     renderItem={({ item }) => {
+                    if (showingSearchResults) {
+                      const result = item as unknown as ConversationSearchResult;
+
+                      return (
+                        <Pressable
+                          accessibilityLabel={`Open ${formatConversationTitle(result)}`}
+                          onPress={() => {
+                            onSelectSearchResult(result);
+                          }}
+                          style={styles.searchResultRow}
+                          testID={conversationSearchResultRowTestId(result.id)}
+                        >
+                          <SearchHighlightedText
+                            numberOfLines={1}
+                            query={searchQuery}
+                            style={styles.itemTitle}
+                            text={formatConversationTitle(result)}
+                          />
+                          <Text numberOfLines={1} style={styles.itemMeta}>
+                            {formatTimestamp(result.updatedAt)}
+                          </Text>
+                          <SearchHighlightedText
+                            numberOfLines={3}
+                            query={searchQuery}
+                            style={styles.searchSnippet}
+                            testID={conversationSearchSnippetTestId(result.id)}
+                            text={result.snippet}
+                          />
+                          {result.matchCount > 1 ? (
+                            <Text style={styles.searchMatchCount}>
+                              {result.matchCount} matches
+                            </Text>
+                          ) : null}
+                        </Pressable>
+                      );
+                    }
+
                     const isActive = item.id === currentId;
                     const isMenuOpen = openMenu?.id === item.id;
 
@@ -401,7 +566,7 @@ export default function ConversationsModal({
                   </View>
                 </View>
               ) : null}
-          </SafeAreaView>
+          </View>
           {Platform.OS === "ios" && openMenuConversation && openMenu ? (
             <View pointerEvents="box-none" style={styles.menuOverlayScreen}>
               <Pressable onPress={() => setOpenMenu(null)} style={StyleSheet.absoluteFill} />
@@ -576,6 +741,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
+  errorText: {
+    color: mobileWeb.colors.red600,
+    fontSize: 13,
+    fontWeight: "600",
+    textAlign: "center",
+  },
   list: {
     flex: 1,
   },
@@ -652,6 +823,92 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
   },
+  searchClearButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 40,
+    paddingHorizontal: 6,
+  },
+  searchClearLabel: {
+    color: mobileWeb.colors.gray500,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  searchInput: {
+    borderColor: mobileWeb.colors.gray300,
+    borderRadius: 10,
+    borderWidth: 1,
+    color: mobileWeb.colors.gray900,
+    flex: 1,
+    fontSize: 14,
+    minHeight: 40,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  searchLabel: {
+    color: mobileWeb.colors.gray700,
+    fontSize: 12,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  searchHighlight: {
+    backgroundColor: mobileWeb.colors.blue200,
+    color: mobileWeb.colors.gray900,
+    fontWeight: "800",
+  },
+  searchMatchCount: {
+    color: mobileWeb.colors.gray500,
+    fontSize: 11,
+    marginTop: 4,
+  },
+  searchResultRow: {
+    backgroundColor: mobileWeb.colors.white,
+    borderColor: mobileWeb.colors.gray200,
+    borderRadius: mobileWeb.radii.lg,
+    borderWidth: 1,
+    marginBottom: 10,
+    paddingHorizontal: Platform.OS === "ios" ? 14 : 12,
+    paddingVertical: 10,
+  },
+  searchRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 6,
+  },
+  searchSection: {
+    marginBottom: 14,
+    marginHorizontal: Platform.OS === "ios" ? 10 : 0,
+  },
+  searchSnippet: {
+    color: mobileWeb.colors.gray700,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 6,
+  },
+  searchSubmitButton: {
+    alignItems: "center",
+    backgroundColor: mobileWeb.colors.gray900,
+    borderRadius: 10,
+    justifyContent: "center",
+    minHeight: 40,
+    paddingHorizontal: 12,
+  },
+  searchSubmitLabel: {
+    color: mobileWeb.colors.white,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  statusHint: {
+    color: mobileWeb.colors.gray500,
+    fontSize: 12,
+    marginTop: 6,
+  },
+  statusWrap: {
+    alignItems: "center",
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
   panel: {
     alignSelf: "stretch",
     backgroundColor: mobileWeb.colors.white,
@@ -659,9 +916,7 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     flex: 1,
     maxWidth: Platform.OS === "ios" ? 404 : 380,
-    paddingBottom: 20,
     paddingHorizontal: Platform.OS === "ios" ? 18 : 14,
-    paddingTop: Platform.OS === "ios" ? 16 : 36,
     width: Platform.OS === "ios" ? "84%" : "88%",
   },
   renameActions: {
