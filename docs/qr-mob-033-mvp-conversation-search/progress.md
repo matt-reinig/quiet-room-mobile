@@ -12,7 +12,7 @@ The match-navigation implementation and validation evidence are captured in [mat
 
 - Mobile source was deployed from `origin/develop` at `82e8535`.
 - Android Play internal: completed release `QA internal 29` for package `com.quietroom.mobile.qa`; Play edit `09842538804049219584`; AAB SHA256 `d6742e2da100c281d76bb6f02bff5db3d66ff0a8b8808b46c08ef3a9f86e2091`.
-- iOS internal TestFlight: `QuietRoomQA` build `36` uploaded successfully and entered App Store Connect processing. The archive entitlements were verified for `com.quietroom.mobile.qa` and Apple Sign In.
+- iOS internal TestFlight: `QuietRoomQA` build `36` uploaded successfully and is `VALID` in App Store Connect (not expired). The archive entitlements were verified for `com.quietroom.mobile.qa` and Apple Sign In.
 - Android and iOS QA preflights passed with no warnings or blocking failures. The iOS archive used the manual QA provisioning profile; export required the documented App Store Connect API-key fallback after Xcode reported `exportArchive Failed to Use Accounts`.
 - The temporary `conversation_search` QA allowlist remains target-only at percentage `0`; production was not changed.
 
