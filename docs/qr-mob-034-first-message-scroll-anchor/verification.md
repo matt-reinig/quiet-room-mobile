@@ -45,9 +45,9 @@ After the final-source rebuild, an additional focused first-send run passed on `
 
 One pre-assistant-settled iOS follow-up run missed the anchor while the conversation was still transitioning; the assistant-existence gate was added before follow-up measurement. A later clean-bundle repetition still exposed an old-offset frame once, so the implementation then added keyboard/layout state retries and a reply-completion refresh. The post-change clean matrix passed 5/5; the pre-final exploratory failure remains in `artifacts/ios.sim.release.2026-07-17 00-58-06Z/detox.log`.
 
-## Acceptance items still requiring external device/state
+## Handoff decision and remaining QA risk
 
-- The plan requires repeated physical Android QA trials (10/10 normal, 10/10 anonymous, and 3/3 recovered anonymous). Only the Android emulator `emulator-15008` was available; it went offline during the final rerun and no physical Android device was attached, so those physical-device counts are not claimed.
-- The final Android follow-up attempt is an environment/instrumentation failure (`Process crashed` / Detox disconnect), not a reached-message scroll assertion. A subsequent targeted run stopped at `adb: device offline`; the emulator was not healthy enough to continue.
+- The original plan called for repeated physical Android QA trials (10/10 normal, 10/10 anonymous, and 3/3 recovered anonymous). For this develop-branch handoff, the user explicitly waived that physical-device gate. No physical-device result is claimed; the waiver is a release/QA risk rather than a passing result.
+- The final Android follow-up attempt is an environment/instrumentation failure (`Process crashed` / Detox disconnect), not a reached-message scroll assertion. Subsequent targeted runs stopped at Android root-window focus loss and `adb: more than one device/emulator`; those failures are documented above and were not reclassified as product passes.
 - No consent or product logic was changed for this task; only the shared Detox helper's fallback text target was updated after the simulator/Android evidence showed the ID target could miss the visible button.
 - No QA/prod store upload, backend deploy, database mutation, or App Review action was performed.

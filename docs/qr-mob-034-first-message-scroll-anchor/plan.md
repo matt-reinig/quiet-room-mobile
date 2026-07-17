@@ -113,7 +113,7 @@ Required before declaring the fix ready:
 
 For every measured run, use the existing near-top assertion rather than visual judgment alone. Keep screenshots for at least one passing first send and one passing follow-up per platform/configuration.
 
-Physical-device verification is required for the Android QA configuration because that is where the regression was reported consistently. Store upload/deployment is outside this task unless separately approved.
+Physical-device verification was originally required for the Android QA configuration because that is where the regression was reported consistently. For this develop-branch handoff, the user explicitly waived the physical-device gate; the waiver is recorded in `verification.md`, and the missing physical coverage remains a QA/release risk. Store upload/deployment is outside this task unless separately approved.
 
 ## Acceptance Details
 
@@ -143,6 +143,7 @@ Do not expand into unrelated conversation search, audio playback, backend chat, 
 - [x] The implementation uses readiness/settlement conditions rather than arbitrary delays.
 - [x] First-send and follow-up automated coverage passes in reached-message runs; intermittent QA/backend setup failures are documented.
 - [x] QR-MOB-031 recovery boundary remains intact; anonymous continuity passes across three cold relaunches.
+- [x] Physical-device Android verification was explicitly waived by the user for this develop-branch handoff; no physical pass is claimed.
 - [x] QR-MOB-032 persistence boundary remains intact in the anonymous continuity pass.
 - [x] Android QA/prod configuration results are recorded in `verification.md`.
 - [x] iOS QA simulator build, first-send/follow-up matrix, and consent-helper result are recorded in `verification.md`.
