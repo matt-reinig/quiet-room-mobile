@@ -124,6 +124,7 @@ export default function QuietRoomScreen() {
   const insets = useSafeAreaInsets();
   const optimisticAnchorBindingRef = useRef<(payload: OptimisticAnchorBinding) => void>(() => {});
   const clearAnchorStateRef = useRef<() => void>(() => {});
+  const refreshResolvedAnchorTargetRef = useRef<() => boolean>(() => false);
 
   const {
     chatLoading,
@@ -457,6 +458,10 @@ export default function QuietRoomScreen() {
       }
 
       setShowNewestButton(!nearBottom);
+      pendingAnchorScrollRef.current = true;
+      requestAnimationFrame(() => {
+        refreshResolvedAnchorTargetRef.current();
+      });
     }
 
     if (
@@ -483,7 +488,15 @@ export default function QuietRoomScreen() {
 
     prevLoadingRef.current = loading;
     prevMessagesRef.current = currentMessages;
-  }, [clearAnchorState, currentId, loading, messages, scrollToLatest, voiceModeAvailable, voiceModeEnabled]);
+  }, [
+    clearAnchorState,
+    currentId,
+    loading,
+    messages,
+    scrollToLatest,
+    voiceModeAvailable,
+    voiceModeEnabled,
+  ]);
 
   const renderedMessages = useMemo<RenderMessage[]>(() => {
     const opening: RenderMessage = {
@@ -663,6 +676,8 @@ export default function QuietRoomScreen() {
     });
     return true;
   }, [syncAnchorMinHeight, syncAnchorScroll]);
+
+  refreshResolvedAnchorTargetRef.current = refreshResolvedAnchorTarget;
 
   const tryResolvePendingSendAnchor = useCallback(() => {
     if (!pendingSendScrollRef.current) {

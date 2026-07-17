@@ -27,8 +27,9 @@ The temporary runtime probe showed the conversation was valid (`currentId` set, 
 2. A render that has not exposed that message yet leaves the transaction pending instead of cancelling it.
 3. Layout, content-size, and scroll events retry from measured state until the target offset is both reachable and observed.
 4. The message-list minimum height is applied to the scroll content so the requested offset is actually reachable.
-5. Reply completion no longer removes the anchor range; it remains until the user drags or starts another send, preventing the visible snap-back.
-6. Token/recovery failure explicitly cancels the pending transaction without changing the existing authentication behavior.
+5. Keyboard show/hide, message/render commits, loading/conversation-ID changes, and reply completion all re-enter the same measured-target refresh path, covering native layout events that can arrive without a matching JS content-size callback.
+6. Reply completion no longer removes the anchor range; it remains until the user drags or starts another send, preventing the visible snap-back.
+7. Token/recovery failure explicitly cancels the pending transaction without changing the existing authentication behavior.
 
 The focused Detox coverage now waits for composer/send readiness, creates a genuinely new conversation, covers first-send, follow-up, multiline input, reply stability, and manual scroll cancellation, and uses Jest numeric assertions rather than Detox native matchers.
 
