@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -23,6 +24,7 @@ import {
   subscribeAuthUser,
 } from "../lib/firebase";
 import { APP_VARIANT, RELEASE_ENV } from "../config/env";
+import { removeUserQueries } from "../lib/queryClient";
 
 type AuthContextValue = {
   deleteAccount: () => Promise<void>;
@@ -104,6 +106,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     loading: false,
     user: null,
   });
+  const cachedUserUidRef = useRef<string | null>(null);
 
   const applyResolvedUser = useCallback((resolvedUser: User | null, loading = false) => {
     setState({
@@ -135,6 +138,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
       });
     });
   }, []);
+
+  useEffect(() => {
+    const previousUid = cachedUserUidRef.current;
+    const nextUid = state.user?.uid || null;
+
+    if (previousUid && previousUid !== nextUid) {
+      removeUserQueries(previousUid);
+    }
+
+    cachedUserUidRef.current = nextUid;
+  }, [state.user?.uid]);
 
   useEffect(() => {
     const initializeAuth = async () => {

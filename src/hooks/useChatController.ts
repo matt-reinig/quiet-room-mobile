@@ -17,6 +17,12 @@ import {
   type ChatModelOption,
 } from "../lib/chatModels";
 import { getIdTokenWithAnonymousRecovery } from "../lib/firebase";
+import {
+  invalidateConversationQueries,
+  queryClient,
+  queryKeys,
+  removeConversationQuery,
+} from "../lib/queryClient";
 import type {
   ChatMessage,
   Conversation,
@@ -150,25 +156,39 @@ function compareConversations(a: Conversation, b: Conversation): number {
   return b.id.localeCompare(a.id);
 }
 
-async function fetchChatModelCatalog(user: User): Promise<ChatModelOption[]> {
+async function fetchChatModelCatalog(
+  user: User,
+  isCancelled: () => boolean,
+): Promise<ChatModelOption[]> {
   let tokenResult = await getIdTokenWithAnonymousRecovery(user);
 
-  let response = await fetch(`${API_BASE}/api/model_catalog`, {
-    headers: { Authorization: `Bearer ${tokenResult.idToken}` },
+  if (isCancelled()) {
+    return [];
+  }
+
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.modelCatalog(tokenResult.user.uid),
+    queryFn: async ({ signal }) => {
+      let response = await fetch(`${API_BASE}/api/model_catalog`, {
+        headers: { Authorization: `Bearer ${tokenResult.idToken}` },
+        signal,
+      });
+
+      if (response.status === 401) {
+        tokenResult = await getIdTokenWithAnonymousRecovery(tokenResult.user, true);
+        response = await fetch(`${API_BASE}/api/model_catalog`, {
+          headers: { Authorization: `Bearer ${tokenResult.idToken}` },
+          signal,
+        });
+      }
+
+      if (!response.ok) {
+        throw new Error(`Failed to load model catalog: ${response.status}`);
+      }
+
+      return parseChatModelCatalog((await response.json()) as unknown);
+    },
   });
-
-  if (response.status === 401) {
-    tokenResult = await getIdTokenWithAnonymousRecovery(tokenResult.user, true);
-    response = await fetch(`${API_BASE}/api/model_catalog`, {
-      headers: { Authorization: `Bearer ${tokenResult.idToken}` },
-    });
-  }
-
-  if (!response.ok) {
-    throw new Error(`Failed to load model catalog: ${response.status}`);
-  }
-
-  return parseChatModelCatalog((await response.json()) as unknown);
 }
 
 function decodeSseChunk(data: string): string {
@@ -444,7 +464,7 @@ export function useChatController({
 
     const loadCatalog = async () => {
       try {
-        const nextOptions = await fetchChatModelCatalog(user);
+        const nextOptions = await fetchChatModelCatalog(user, () => cancelled);
 
         if (!cancelled) {
           setCatalogModelOptions(nextOptions.length > 0 ? nextOptions : null);
@@ -530,20 +550,33 @@ export function useChatController({
       try {
         const tokenResult = await getIdTokenWithAnonymousRecovery(user, true);
 
-        const response = await fetch(`${API_BASE}/api/conversations`, {
-          headers: { Authorization: `Bearer ${tokenResult.idToken}` },
-        });
-
-        if (!response.ok) {
-          console.error("Failed to load conversations:", response.status);
+        if (cancelled) {
           return;
         }
+
+        const result = await queryClient.fetchQuery({
+          queryKey: queryKeys.conversationPage(tokenResult.user.uid, null),
+          queryFn: async ({ signal }) => {
+            const response = await fetch(`${API_BASE}/api/conversations`, {
+              headers: { Authorization: `Bearer ${tokenResult.idToken}` },
+              signal,
+            });
+
+            if (!response.ok) {
+              throw new Error(`Failed to load conversations: ${response.status}`);
+            }
+
+            return {
+              payload: normalizeConversationListPayload((await response.json()) as unknown),
+            };
+          },
+        });
 
         if (cancelled) {
           return;
         }
 
-        const payload = normalizeConversationListPayload((await response.json()) as unknown);
+        const payload = result.payload;
         const mapped = mergeConversationPage({}, payload.items, modelOptions);
         const sorted = Object.values(mapped).sort(compareConversations);
         const rememberedConversationId = isAnon
@@ -648,7 +681,7 @@ export function useChatController({
     }
 
     const requestId = (chatLoadRequestIdRef.current += 1);
-    const abortController = new AbortController();
+    const conversationQueryKey = queryKeys.conversation(user.uid, currentId);
 
     setChatLoading(true);
 
@@ -662,40 +695,35 @@ export function useChatController({
           return;
         }
 
-        const response = await fetch(`${API_BASE}/api/conversations/${currentId}`, {
-          headers: { Authorization: `Bearer ${tokenResult.idToken}` },
-          signal: abortController.signal,
-        });
-
-        if (!response.ok) {
-          console.error("Failed to load conversation:", currentId, response.status);
-
-          if (requestId === chatLoadRequestIdRef.current) {
-            setConversations((previous) => {
-              const previousConversation = previous[currentId];
-
-              if (!previousConversation) {
-                return previous;
-              }
-
-              return {
-                ...previous,
-                [currentId]: {
-                  ...previousConversation,
-                  messagesLoaded: true,
-                },
-              };
-            });
-          }
-
+        if (requestId !== chatLoadRequestIdRef.current) {
           return;
         }
+
+        const resolvedConversationQueryKey = queryKeys.conversation(
+          tokenResult.user.uid,
+          currentId,
+        );
+        const dataRaw = await queryClient.fetchQuery({
+          queryKey: resolvedConversationQueryKey,
+          retry: false,
+          queryFn: async ({ signal }) => {
+            const response = await fetch(`${API_BASE}/api/conversations/${currentId}`, {
+              headers: { Authorization: `Bearer ${tokenResult.idToken}` },
+              signal,
+            });
+
+            if (!response.ok) {
+              throw new Error(`Failed to load conversation ${currentId}: ${response.status}`);
+            }
+
+            return (await response.json()) as unknown;
+          },
+        });
 
         if (requestId !== chatLoadRequestIdRef.current) {
           return;
         }
 
-        const dataRaw = (await response.json()) as unknown;
         const data = isRecord(dataRaw) ? dataRaw : {};
 
         const fetchedMessagesRaw = Array.isArray(data.messages) ? data.messages : [];
@@ -779,7 +807,10 @@ export function useChatController({
     void loadConversation();
 
     return () => {
-      abortController.abort();
+      void queryClient.cancelQueries({
+        exact: true,
+        queryKey: conversationQueryKey,
+      });
     };
   }, [conversations, currentId, modelOptions, user]);
 
@@ -1065,6 +1096,7 @@ export function useChatController({
         });
 
         setPartial("");
+        await invalidateConversationQueries(tokenResult.user.uid, conversationId);
       } catch (error) {
         console.error(error);
 
@@ -1111,17 +1143,23 @@ export function useChatController({
         return;
       }
 
-      const query = `limit=${CONVERSATIONS_PAGE_SIZE}&cursor=${encodeURIComponent(nextConversationCursor)}`;
-      const response = await fetch(`${API_BASE}/api/conversations?${query}`, {
-        headers: { Authorization: `Bearer ${tokenResult.idToken}` },
+      const cursor = nextConversationCursor;
+      const payload = await queryClient.fetchQuery({
+        queryKey: queryKeys.conversationPage(tokenResult.user.uid, cursor),
+        queryFn: async ({ signal }) => {
+          const query = `limit=${CONVERSATIONS_PAGE_SIZE}&cursor=${encodeURIComponent(cursor)}`;
+          const response = await fetch(`${API_BASE}/api/conversations?${query}`, {
+            headers: { Authorization: `Bearer ${tokenResult.idToken}` },
+            signal,
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to load more conversations: ${response.status}`);
+          }
+
+          return normalizeConversationListPayload((await response.json()) as unknown);
+        },
       });
-
-      if (!response.ok) {
-        console.error("Failed to load more conversations:", response.status);
-        return;
-      }
-
-      const payload = normalizeConversationListPayload((await response.json()) as unknown);
 
       setConversations((previous) => mergeConversationPage(previous, payload.items, modelOptions));
       setNextConversationCursor(payload.nextCursor);
@@ -1193,6 +1231,7 @@ export function useChatController({
           },
         };
       });
+      await invalidateConversationQueries(tokenResult.user.uid, conversationId);
     },
     [user]
   );
@@ -1243,6 +1282,8 @@ export function useChatController({
 
         return rest;
       });
+      removeConversationQuery(tokenResult.user.uid, conversationId);
+      await invalidateConversationQueries(tokenResult.user.uid);
     },
     [user]
   );

@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { User } from "firebase/auth";
 import { API_BASE } from "../config/env";
+import { queryClient, queryKeys } from "./queryClient";
 
 const ANONYMOUS_AI_CONSENT_KEY = "gabriel.aiConsent.anonymous.accepted";
 const AI_CONSENT_SOURCE = "quiet-room-mobile";
@@ -36,12 +37,17 @@ async function getUserToken(user: User, forceRefresh = false): Promise<string> {
   return user.getIdToken(forceRefresh);
 }
 
-async function fetchAiConsentResponse(user: User, forceRefresh = false): Promise<Response> {
+async function fetchAiConsentResponse(
+  user: User,
+  forceRefresh = false,
+  signal?: AbortSignal,
+): Promise<Response> {
   const idToken = await getUserToken(user, forceRefresh);
   return fetch(`${API_BASE}/api/account/ai-consent`, {
     headers: {
       Authorization: `Bearer ${idToken}`,
     },
+    signal,
   });
 }
 
@@ -50,26 +56,32 @@ export async function getAiConsentAccepted(user: User | null): Promise<boolean> 
     return getLocalAiConsentAccepted(user);
   }
 
-  const localAccepted = await getLocalAiConsentAccepted(user);
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.aiConsent(user.uid),
+    staleTime: 5 * 60_000,
+    queryFn: async ({ signal }) => {
+      const localAccepted = await getLocalAiConsentAccepted(user);
 
-  try {
-    let response = await fetchAiConsentResponse(user);
+      try {
+        let response = await fetchAiConsentResponse(user, false, signal);
 
-    if (response.status === 401) {
-      response = await fetchAiConsentResponse(user, true);
-    }
+        if (response.status === 401) {
+          response = await fetchAiConsentResponse(user, true, signal);
+        }
 
-    if (!response.ok) {
-      throw new Error(`Failed to load AI consent: ${response.status}`);
-    }
+        if (!response.ok) {
+          throw new Error(`Failed to load AI consent: ${response.status}`);
+        }
 
-    const payload = (await response.json()) as Partial<{ aiSharingAccepted: unknown }>;
-    const accepted = payload.aiSharingAccepted === true;
-    await setLocalAiConsentAccepted(user, accepted);
-    return accepted;
-  } catch {
-    return localAccepted;
-  }
+        const payload = (await response.json()) as Partial<{ aiSharingAccepted: unknown }>;
+        const accepted = payload.aiSharingAccepted === true;
+        await setLocalAiConsentAccepted(user, accepted);
+        return accepted;
+      } catch {
+        return localAccepted;
+      }
+    },
+  });
 }
 
 export async function setAiConsentAccepted(user: User | null, accepted: boolean): Promise<void> {
@@ -109,4 +121,5 @@ export async function setAiConsentAccepted(user: User | null, accepted: boolean)
   }
 
   await setLocalAiConsentAccepted(user, accepted);
+  queryClient.setQueryData(queryKeys.aiConsent(user.uid), accepted);
 }

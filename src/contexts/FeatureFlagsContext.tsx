@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -15,6 +16,7 @@ import {
   filterSupportedFlagValues,
 } from "../lib/featureFlags";
 import { getIdTokenWithAnonymousRecovery } from "../lib/firebase";
+import { queryClient, queryKeys } from "../lib/queryClient";
 import { useAuth } from "./AuthContext";
 
 type FeatureFlagReasons = Record<string, string>;
@@ -51,6 +53,12 @@ type FeatureFlagsState = {
 type FeatureFlagsOverride = {
   env: string;
   values: FeatureFlagValues;
+};
+
+type RemoteFeatureFlags = Pick<FeatureFlagsState, "env" | "reasons" | "values">;
+type FeatureFlagTokenResult = {
+  idToken: string;
+  user: User;
 };
 
 const FeatureFlagsContext = createContext<FeatureFlagsContextValue>({
@@ -205,8 +213,18 @@ async function withTimeout<T>(
   }
 }
 
-async function fetchFeatureFlags(userToken: string): Promise<Response> {
+async function fetchFeatureFlags(
+  userToken: string,
+  querySignal?: AbortSignal,
+): Promise<Response> {
   const controller = new AbortController();
+  const abortFromQuery = () => controller.abort();
+
+  if (querySignal?.aborted) {
+    controller.abort();
+  } else {
+    querySignal?.addEventListener("abort", abortFromQuery, { once: true });
+  }
   const timer = setTimeout(() => {
     controller.abort();
   }, FEATURE_FLAGS_TIMEOUT_MS);
@@ -224,20 +242,53 @@ async function fetchFeatureFlags(userToken: string): Promise<Response> {
     throw error;
   } finally {
     clearTimeout(timer);
+    querySignal?.removeEventListener("abort", abortFromQuery);
   }
 }
 
-async function getIdTokenWithTimeout(user: User, forceRefresh = false): Promise<string> {
+async function getIdTokenWithTimeout(
+  user: User,
+  forceRefresh = false,
+): Promise<FeatureFlagTokenResult> {
   return withTimeout(
-    getIdTokenWithAnonymousRecovery(user, forceRefresh).then((result) => result.idToken),
+    getIdTokenWithAnonymousRecovery(user, forceRefresh),
     FEATURE_FLAGS_TIMEOUT_MS,
     forceRefresh ? "Firebase ID token refresh" : "Firebase ID token",
   );
 }
 
+async function requestRemoteFeatureFlags(
+  tokenResult: FeatureFlagTokenResult,
+  signal?: AbortSignal,
+): Promise<RemoteFeatureFlags> {
+  let response = await fetchFeatureFlags(tokenResult.idToken, signal);
+
+  if (response.status === 401) {
+    tokenResult = await getIdTokenWithTimeout(tokenResult.user, true);
+    response = await fetchFeatureFlags(tokenResult.idToken, signal);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to load feature flags: ${response.status}`);
+  }
+
+  const data = (await response.json()) as Partial<{
+    env: string;
+    reasons: FeatureFlagReasons;
+    values: FeatureFlagValues;
+  }>;
+
+  return {
+    env: typeof data.env === "string" ? data.env : null,
+    reasons: filterSupportedFlagReasons(data.reasons),
+    values: filterSupportedFlagValues(data.values),
+  };
+}
+
 export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
   const { user } = useAuth();
   const e2eOverrides = parseE2EFeatureFlags();
+  const loadRequestIdRef = useRef(0);
 
   const [state, setState] = useState<FeatureFlagsState>(() => ({
     env: null,
@@ -248,8 +299,13 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
     values: {},
   }));
 
-  const refresh = useCallback(async () => {
+  const loadFeatureFlags = useCallback(async (forceRefresh = false) => {
+    const requestId = (loadRequestIdRef.current += 1);
     const launchUrlOverrides = await readLaunchFeatureFlags();
+
+    if (requestId !== loadRequestIdRef.current) {
+      return;
+    }
 
     if (launchUrlOverrides) {
       setState(buildOverrideState(launchUrlOverrides, "launch_url_override"));
@@ -278,48 +334,60 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
     setState((prev) => ({ ...prev, loading: true, error: null }));
 
     try {
-      let idToken: string;
+      let tokenResult: FeatureFlagTokenResult;
 
       try {
-        idToken = await getIdTokenWithTimeout(user);
+        tokenResult = await getIdTokenWithTimeout(user);
       } catch {
-        idToken = await getIdTokenWithTimeout(user, true);
+        tokenResult = await getIdTokenWithTimeout(user, true);
       }
 
-      let response = await fetchFeatureFlags(idToken);
-
-      if (response.status === 401) {
-        const refreshedToken = await getIdTokenWithTimeout(user, true);
-        response = await fetchFeatureFlags(refreshedToken);
+      if (requestId !== loadRequestIdRef.current) {
+        return;
       }
 
-      if (!response.ok) {
-        throw new Error(`Failed to load feature flags: ${response.status}`);
+      if (forceRefresh) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags(tokenResult.user.uid) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.modelCatalog(tokenResult.user.uid) }),
+        ]);
       }
 
-      const data = (await response.json()) as Partial<{
-        env: string;
-        reasons: FeatureFlagReasons;
-        values: FeatureFlagValues;
-      }>;
+      const data = await queryClient.fetchQuery({
+        queryKey: queryKeys.featureFlags(tokenResult.user.uid),
+        queryFn: ({ signal }) => requestRemoteFeatureFlags(tokenResult, signal),
+      });
+
+      if (requestId !== loadRequestIdRef.current) {
+        return;
+      }
 
       setState({
-        env: typeof data.env === "string" ? data.env : null,
+        env: data.env,
         error: null,
         initialized: true,
         loading: false,
-        reasons: filterSupportedFlagReasons(data.reasons),
-        values: filterSupportedFlagValues(data.values),
+        reasons: data.reasons,
+        values: data.values,
       });
     } catch (error) {
+      if (requestId !== loadRequestIdRef.current) {
+        return;
+      }
+
       console.warn("Failed to load feature flags", error);
       setState((prev) => ({ ...prev, initialized: true, loading: false, error }));
     }
   }, [user]);
 
+  const refresh = useCallback(
+    () => loadFeatureFlags(true),
+    [loadFeatureFlags],
+  );
+
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void loadFeatureFlags();
+  }, [loadFeatureFlags]);
 
   useEffect(() => {
     const subscription = Linking.addEventListener("url", ({ url }) => {
@@ -329,6 +397,7 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
         return;
       }
 
+      loadRequestIdRef.current += 1;
       setState(buildOverrideState(overrides, "url_event_override"));
     });
 

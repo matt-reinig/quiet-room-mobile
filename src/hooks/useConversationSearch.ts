@@ -3,6 +3,13 @@ import type { User } from "firebase/auth";
 import { API_BASE } from "../config/env";
 import { getIdTokenWithAnonymousRecovery } from "../lib/firebase";
 import { normalizeSearchMessageIndexes } from "../lib/conversationSearchNavigation";
+import {
+  CONVERSATION_SEARCH_STALE_TIME_MS,
+  hasFreshQueryData,
+  normalizeServerSearchQuery,
+  queryClient,
+  queryKeys,
+} from "../lib/queryClient";
 import type { ConversationSearchResult } from "../types/chat";
 
 type UseConversationSearchArgs = {
@@ -100,7 +107,7 @@ export function useConversationSearch({
   }, [clearSearch, enabled, user?.uid]);
 
   const search = useCallback(async () => {
-    const trimmedQuery = query.trim();
+    const trimmedQuery = normalizeServerSearchQuery(query);
 
     if (!enabled || !user) {
       return;
@@ -119,24 +126,49 @@ export function useConversationSearch({
 
     let status: number | null = null;
     let resultCount = 0;
+    let cacheHit = false;
 
     try {
       const tokenResult = await getIdTokenWithAnonymousRecovery(user, true);
-      const response = await fetch(
-        `${API_BASE}/api/conversations/search?q=${encodeURIComponent(trimmedQuery)}`,
-        { headers: { Authorization: `Bearer ${tokenResult.idToken}` } },
-      );
-      status = response.status;
 
-      if (!response.ok) {
-        throw new Error(
-          response.status === 404
-            ? "Conversation search is not available for this account."
-            : `Search failed: ${response.status}`,
-        );
+      if (requestId !== requestIdRef.current) {
+        return;
       }
 
-      const nextResults = normalizeConversationSearchPayload((await response.json()) as unknown);
+      const searchQueryKey = queryKeys.conversationSearch(
+        tokenResult.user.uid,
+        trimmedQuery,
+      );
+      cacheHit = hasFreshQueryData(
+        searchQueryKey,
+        CONVERSATION_SEARCH_STALE_TIME_MS,
+      );
+      const nextResults = await queryClient.fetchQuery({
+        queryKey: searchQueryKey,
+        staleTime: CONVERSATION_SEARCH_STALE_TIME_MS,
+        gcTime: 15 * 60_000,
+        retry: false,
+        queryFn: async ({ signal }) => {
+          const response = await fetch(
+            `${API_BASE}/api/conversations/search?q=${encodeURIComponent(trimmedQuery)}`,
+            {
+              headers: { Authorization: `Bearer ${tokenResult.idToken}` },
+              signal,
+            },
+          );
+          status = response.status;
+
+          if (!response.ok) {
+            throw new Error(
+              response.status === 404
+                ? "Conversation search is not available for this account."
+                : `Search failed: ${response.status}`,
+            );
+          }
+
+          return normalizeConversationSearchPayload((await response.json()) as unknown);
+        },
+      });
       resultCount = nextResults.length;
 
       if (requestId === requestIdRef.current) {
@@ -157,6 +189,7 @@ export function useConversationSearch({
       if (__DEV__) {
         console.info("conversation_search", {
           durationMs,
+          cacheHit,
           resultCount,
           status,
         });

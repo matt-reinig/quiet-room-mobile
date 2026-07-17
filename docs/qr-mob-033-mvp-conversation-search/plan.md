@@ -3,7 +3,7 @@
 ## Status
 
 - Planning status: ready for implementation
-- Implementation status: code complete; local native Android/iOS validation complete; representative QA performance pass complete against real QA data; live QA Lambda deployment pending AWS reauthentication
+- Implementation status: search and match navigation complete and confirmed live on QA by the product owner; app-wide mobile server-state cache implemented locally with native QA promotion pending
 - Mobile branch: `codex/qr-mob-033-mvp-conversation-search`
 - Mobile worktree: `../worktrees/quiet-room-mobile-qr-mob-033-mvp-conversation-search`
 - Backend branch: `codex/qr-mob-033-mvp-conversation-search-backend`
@@ -19,6 +19,7 @@
 - Backend contract validation passes with 19 tests; mobile TypeScript validation passes with `npm run typecheck`.
 - The focused Detox spec at `e2e/quiet-room.conversation-search.test.js` passed on the rebuilt local-QA Android and iOS targets on 2026-07-16. The capped representative QA performance/navigation pass also passed against the real QA account through the local backend branch; the backend was not deployed because the AWS session had expired.
 - Post-MVP UX feedback is captured in `docs/qr-mob-033-mvp-conversation-search/match-navigation-plan.md`: preserve grouped results, jump to the representative message, highlight the submitted term, and navigate additional matches with Previous/Next controls.
+- The accepted cache follow-up is implemented as documented in `docs/qr-mob-033-mvp-conversation-search/frontend-cache-plan.md`: TanStack Query caches reusable reads in memory, scopes all authenticated keys by UID, and invalidates conversation state after mutations while leaving chat/audio streaming unchanged.
 
 ## Worktree and Repository Boundary
 

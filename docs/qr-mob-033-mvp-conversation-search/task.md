@@ -100,3 +100,7 @@ Add development logging or equivalent instrumentation for:
 ## Accepted Post-MVP UX Follow-up
 
 Preserve one grouped result row per conversation. Highlight every case-insensitive occurrence of the submitted term in the result title/snippet. When the user selects a result, open the conversation at the exact representative matching message, visibly highlight the submitted search term in that active message, and provide Previous/Next navigation through the conversation's other matching messages without additional Firestore reads. The open Conversations drawer must also keep its header and list content inside the device safe areas on Android and iOS. The implementation-ready plan is `docs/qr-mob-033-mvp-conversation-search/match-navigation-plan.md`.
+
+## Accepted Mobile Cache Follow-up
+
+Use TanStack Query as the app-level in-memory server-state cache for feature flags, model catalog, conversation list/detail/search reads, and registered-user AI consent. Scope every key by Firebase UID, clear the prior UID on identity transitions, and invalidate conversation list/detail/search keys after send, rename, or delete. Keep chat/audio streaming and fire-and-forget telemetry on their existing transports. Repeated identical searches may be reused for two minutes and must not create another Firestore read while fresh. The implementation and validation plan is `docs/qr-mob-033-mvp-conversation-search/frontend-cache-plan.md`.
