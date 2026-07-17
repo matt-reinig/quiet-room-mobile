@@ -1,12 +1,23 @@
 # QR-MOB-033 — Conversation Search Progress
 
-Updated: 2026-07-16
+Updated: 2026-07-17
 
 ## Current status
 
-The MVP and the accepted match-navigation follow-up are implemented and merged into mobile `develop` (`d34bcac`) and backend `develop-from-main` (`e79b904`). Local native validation is complete, the backend is deployed to all three QA Lambdas, and the mobile build is deployed to both QA stores. Production remains untouched.
+The MVP and the accepted match-navigation follow-up are implemented and merged into mobile `develop` (`d34bcac`) and backend `develop-from-main` (`e79b904`). The in-memory TanStack Query follow-up is implemented and has completed Luna-driven Android/iOS validation for integration into mobile `develop`. The backend is deployed to all three QA Lambdas, and the existing no-cache mobile build is deployed to both QA stores. Production remains untouched.
 
 The match-navigation implementation and validation evidence are captured in [match-navigation-plan.md](./match-navigation-plan.md).
+
+## Mobile cache follow-up (2026-07-17)
+
+- Added one app-level TanStack Query client for authenticated feature flags, model catalog, conversation list/detail/search reads, and registered-user AI consent.
+- Scoped every server-state key by Firebase UID and removed the prior UID's cache on identity transitions.
+- Invalidated conversation list/detail/search data after send, rename, and delete while leaving chat streaming, audio, and telemetry on their existing transports.
+- Kept the cache in memory only. Conversation search remains behind `conversation_search`; the QA store binaries listed below still contain the earlier no-cache source.
+- Reused normalized identical searches for two minutes and added a focused native repeat-search journey plus local-release-only cache-hit instrumentation.
+- Luna-driven native release validation passed iOS `4/4` in `artifacts/ios.sim.release.2026-07-17 14-42-17Z/` and Android `4/4` in `artifacts/android.att.release.2026-07-17 14-49-14Z/`.
+- The focused Android repeat-search journey passed `1/1` in `artifacts/android.att.release.2026-07-17 14-58-04Z/`: first search `cacheHit: false`, HTTP `200`, `1052 ms`; second search `cacheHit: true`, no network status, `42 ms`; backend stdout contained exactly one search request.
+- `npm run typecheck`, `npm run mobile:verify:local-qa`, native release builds, and `git diff --check` passed. Validation used only disposable local-emulator users and did not change QA flags or QA/production data.
 
 ## QA store deployment (2026-07-16)
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { User } from "firebase/auth";
-import { API_BASE } from "../config/env";
+import { API_BASE, RELEASE_ENV } from "../config/env";
 import { getIdTokenWithAnonymousRecovery } from "../lib/firebase";
 import { normalizeSearchMessageIndexes } from "../lib/conversationSearchNavigation";
 import {
@@ -186,7 +186,7 @@ export function useConversationSearch({
     } finally {
       const durationMs = Date.now() - startedAt;
 
-      if (__DEV__) {
+      if (__DEV__ || RELEASE_ENV === "local") {
         console.info("conversation_search", {
           durationMs,
           cacheHit,

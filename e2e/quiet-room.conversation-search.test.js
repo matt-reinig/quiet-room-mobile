@@ -108,6 +108,33 @@ describe('Quiet Room conversation search', () => {
     await waitFor(element(by.id(ids.conversation.row('seed-conv-025')))).toBeVisible().withTimeout(15000);
   });
 
+  it('serves a repeated identical search from the fresh UID-scoped client cache', async () => {
+    await launchSeededSearchAccount(true);
+    await element(by.id(ids.conversationsButton)).tap();
+    await waitFor(element(by.id(ids.conversationsPanel))).toBeVisible().withTimeout(10000);
+
+    const query = 'mEsSaGe 5';
+    await element(by.id(ids.conversationsSearchInput)).replaceText(query);
+    await element(by.id(ids.conversationsSearchSubmit)).tap();
+    await waitFor(element(by.id(ids.conversationSearchResultRow('seed-conv-005'))))
+      .toBeVisible()
+      .withTimeout(15000);
+
+    await element(by.id(ids.conversationsSearchClear)).tap();
+    await waitFor(element(by.id(ids.conversationsSearchInput))).toBeVisible().withTimeout(5000);
+    await element(by.id(ids.conversationsSearchInput)).replaceText(query);
+    await element(by.id(ids.conversationsSearchSubmit)).tap();
+    await waitFor(element(by.id(ids.conversationSearchResultRow('seed-conv-005'))))
+      .toBeVisible()
+      .withTimeout(15000);
+
+    console.log('conversation-search-repeat-cache-journey-complete', JSON.stringify({
+      platform: device.getPlatform(),
+      query,
+      expectedBackendSearchRequests: 1,
+    }));
+  });
+
   it('navigates grouped matches, highlights the active message, and clears stale context', async () => {
     await launchSeededSearchAccount(true, { navigationFixture: true });
     await element(by.id(ids.conversationsButton)).tap();

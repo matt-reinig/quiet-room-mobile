@@ -2,12 +2,12 @@
 
 ## Status
 
-- Implementation status: complete in the QR-MOB-033 mobile worktree; TypeScript and focused cache validation pass
+- Implementation status: complete and validated in the QR-MOB-033 mobile worktree; ready for integration into `develop`
 - Package: TanStack Query (`@tanstack/react-query`)
 - Persistence: memory only; no server response is written to device storage
 - Identity boundary: every server-state key is scoped by Firebase UID and the previous UID's cache is removed on logout, login, account deletion, or anonymous recovery
 - Rollout boundary: conversation search remains gated by `conversation_search`; the shared cache is behavior-preserving infrastructure and does not expose a new product surface
-- Native validation: the focused iOS search suite passes 4/4; Android release build/sync pass, but the focused Android rerun remains required because the local emulator was blocked by repeated system-app ANRs
+- Native validation: Luna-driven release suites pass 4/4 on iOS and 4/4 on Android; the focused repeated-search cache journey also passes on Android with direct cache-hit and backend-request-count evidence
 
 ## Decision
 
@@ -61,9 +61,10 @@ Automatic refetch on mount, focus, and reconnect is disabled. Mobile screen tran
 - Focused query-client smoke proving that two fresh reads of one key execute the fetch once, case/whitespace-normalized search keys are stable, removing one UID clears only that user's entries, another UID's entry remains intact, and removing an in-flight old-UID query aborts it without restoring cached data
 - `npm run mobile:verify:local-qa`
 - Expo production bundle for Android and iOS
-- Focused iOS conversation-search Detox journeys: 4/4 passing in `artifacts/ios.sim.release.2026-07-17 03-52-47Z/`, covering flag-off behavior, safe areas, search/open/clear, grouped message jumps, highlighting, and Previous/Next
-- Android release bundle, native sync, and Detox build pass. The focused Android run remains outstanding: `artifacts/android.att.release.2026-07-17 03-53-29Z/` records a local emulator failure caused by Digital Wellbeing, followed by a System UI ANR after reboot, rather than an app assertion or React Native failure
-- Before QA promotion, rerun the focused Android journey on a healthy emulator and capture one repeated identical search with instrumentation showing `cacheHit: true`
+- Luna-driven focused iOS release suite: 4/4 passing in `artifacts/ios.sim.release.2026-07-17 14-42-17Z/`, covering flag-off behavior, safe areas, search/open/clear, grouped message jumps, highlighting, and Previous/Next
+- Luna-driven focused Android release suite: 4/4 passing in `artifacts/android.att.release.2026-07-17 14-49-14Z/` on a headless SwiftShader emulator, covering the same native journeys
+- Luna-driven repeated identical-search journey: 1/1 passing in `artifacts/android.att.release.2026-07-17 14-58-04Z/`. Local-release instrumentation recorded the first search as `cacheHit: false`, HTTP `200`, `1052 ms`, and the second as `cacheHit: true`, no network status, `42 ms`; backend stdout recorded exactly one `GET /api/conversations/search` request
+- Validation used disposable emulator users and local Firebase Auth/Firestore plus the local backend. It did not mutate the QA feature flag, representative QA account, production data, or store builds
 
 ## Definition of Done
 
@@ -72,4 +73,4 @@ Automatic refetch on mount, focus, and reconnect is disabled. Mobile screen tran
 - Conversation mutations cannot leave list, detail, or search results silently fresh.
 - Streaming and audio behavior are unchanged.
 - Conversation search remains feature-flagged and explicit; cached repeat searches do not add Firestore reads.
-- TypeScript, bundle, focused cache, and iOS native search validation pass; a healthy Android native rerun is the remaining QA-promotion gate.
+- TypeScript, bundle, focused cache, and Android/iOS native search validation pass, including direct proof that a fresh identical search does not add a backend or Firestore read.
