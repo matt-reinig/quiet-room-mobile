@@ -17,7 +17,12 @@ import {
   type ChatModelOption,
 } from "../lib/chatModels";
 import { getIdTokenWithAnonymousRecovery } from "../lib/firebase";
-import type { ChatMessage, Conversation, ConversationsById } from "../types/chat";
+import type {
+  ChatMessage,
+  Conversation,
+  ConversationSearchResult,
+  ConversationsById,
+} from "../types/chat";
 
 const STREAM_FLUSH_INTERVAL_MS = 120;
 const CONVERSATIONS_PAGE_SIZE = 20;
@@ -391,6 +396,7 @@ type UseChatControllerResult = {
   loadingMoreConversations: boolean;
   messages: ChatMessage[];
   modelOptions: ChatModelOption[];
+  openConversation: (conversation: Conversation | ConversationSearchResult | string) => void;
   renameConversation: (conversationId: string, title: string) => Promise<void>;
   sendMessage: (overrideText?: string) => Promise<void>;
   setCurrentId: (id: string | null) => void;
@@ -827,6 +833,43 @@ export function useChatController({
     setShowThinking(false);
     setStreamingModel(null);
   }, []);
+
+  const openConversation = useCallback(
+    (selection: Conversation | ConversationSearchResult | string) => {
+      const conversationId = typeof selection === "string" ? selection : selection.id;
+
+      if (!conversationId) {
+        return;
+      }
+
+      if (typeof selection !== "string") {
+        setConversations((previous) => {
+          const existing = previous[conversationId];
+          return {
+            ...previous,
+            [conversationId]: {
+              ...existing,
+              createdAt: selection.createdAt ?? existing?.createdAt,
+              currentModel:
+                existing?.currentModel ||
+                ("messages" in selection ? selection.currentModel : undefined),
+              id: conversationId,
+              logicalModelKey:
+                existing?.logicalModelKey ||
+                ("messages" in selection ? selection.logicalModelKey : undefined),
+              messages: existing?.messages || ("messages" in selection ? selection.messages : []),
+              messagesLoaded: existing?.messagesLoaded ?? false,
+              title: selection.title || existing?.title || "New Chat",
+              updatedAt: selection.updatedAt ?? existing?.updatedAt,
+            },
+          };
+        });
+      }
+
+      setCurrentId(conversationId);
+    },
+    [],
+  );
 
   const sendMessage = useCallback(
     async (overrideText?: string) => {
@@ -1272,6 +1315,7 @@ export function useChatController({
     loadingMoreConversations,
     messages,
     modelOptions,
+    openConversation,
     renameConversation,
     sendMessage,
     setCurrentId,

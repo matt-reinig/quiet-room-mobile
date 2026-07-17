@@ -25,6 +25,7 @@ const {
   sendPasswordResetEmail,
   signInAnonymously,
   signInWithCredential,
+  signInWithCustomToken,
   signInWithEmailAndPassword,
   signOut,
 } = firebaseAuth;
@@ -350,6 +351,16 @@ export async function loginWithApple(idToken: string, rawNonce: string) {
 
 export async function loginWithEmail(email: string, password: string) {
   return signInWithEmailAndPassword(auth, email, password);
+}
+
+export async function loginWithCustomToken(token: string) {
+  const trimmedToken = typeof token === "string" ? token.trim() : "";
+
+  if (!trimmedToken) {
+    throw new Error("Custom sign-in token is missing.");
+  }
+
+  return signInWithCustomToken(auth, trimmedToken);
 }
 
 export async function signupWithEmail(email: string, password: string) {

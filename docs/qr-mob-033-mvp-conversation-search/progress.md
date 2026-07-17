@@ -1,0 +1,125 @@
+# QR-MOB-033 — Conversation Search Progress
+
+Updated: 2026-07-16
+
+## Current status
+
+The MVP and the accepted match-navigation follow-up are implemented in the isolated mobile and backend worktrees. Local native validation is complete. The tracker remains `In Progress` because the backend has not yet been deployed to the live QA Lambda; the AWS session needs to be reauthenticated before that deployment can happen.
+
+The match-navigation implementation and validation evidence are captured in [match-navigation-plan.md](./match-navigation-plan.md).
+
+## Worktrees
+
+| Area | Worktree | Branch | Scope |
+| --- | --- | --- | --- |
+| Mobile | `Gabriel_App/worktrees/quiet-room-mobile-qr-mob-033-mvp-conversation-search` | `codex/qr-mob-033-mvp-conversation-search` | Search UI, result opening, match navigation/highlighting, native validation |
+| Backend | `Gabriel_App/worktrees/Gabriel-qr-mob-033-mvp-conversation-search` | `codex/qr-mob-033-mvp-conversation-search-backend` | Search endpoint, navigation metadata, matching, telemetry, contract tests |
+
+## Implementation completed
+
+### Backend
+
+- Added `GET /api/conversations/search?q=...`.
+- Added the pure matcher in `gabriel/conversation_search.py`.
+- Enforced UID-scoped Firestore reads.
+- Checked the `conversation_search` feature flag before reading the conversation stream.
+- Added compact grouped result summaries with deterministic ordering.
+- Kept telemetry content-free.
+- Added `messageIndex` and ordered `messageIndexes` to grouped results.
+- Added backend contract coverage; the focused backend suite passes with `19 passed`.
+
+### Mobile
+
+- Added the `conversation_search` feature flag and `useConversationSearch` hook.
+- Added the search modal and result states in `ConversationsModal.tsx`.
+- Added case-insensitive query highlighting to matching result titles and snippets, reusing the in-conversation emphasis treatment.
+- Added result selection/opening through `useChatController`.
+- Added stable accessibility IDs and the focused Detox spec.
+- Added backward-compatible navigation metadata normalization, deferred in-list jumps, active-message highlighting, and Previous/Next/dismiss navigation.
+- Made the open Conversations drawer safe-area-aware with `react-native-safe-area-context` top/bottom insets instead of fixed system-bar padding.
+- Added a deterministic three-match navigation fixture for local Detox validation.
+- Added a temporary QA/local/Detox-gated custom-token launch path so the Google-only representative QA account can be used in native QA validation. This path is not enabled for ordinary production launches.
+
+## Automated and native validation
+
+Completed checks:
+
+- Backend focused tests: `19 passed`.
+- Backend broad tests excluding the environment-dependent Lambda entrypoint: `131 passed, 18 skipped`.
+- Mobile TypeScript check: passed with exit code 0.
+- Native local-QA sync: passed.
+- Android release Detox build: passed (`BUILD SUCCESSFUL`).
+- iOS release Detox build: passed (`** BUILD SUCCEEDED **`).
+- Focused conversation-search Detox flow:
+  - Android: flag-off `1/1`, ordinary result `1/1`, and grouped navigation `1/1` passed individually on `emulator-15008`. A cold full-suite run also showed an emulator main-thread ANR during startup, so the individual results are the reliable Android evidence.
+  - iOS: full suite `3/3` passed on the iPhone 17 simulator, including grouped navigation.
+- `git diff --check`: passed in both worktrees.
+- Conversations drawer safe-area Detox check: Android `1/1` on `emulator-15008`; iOS `1/1` on iPhone 17. The header close control stayed below the top system area on both platforms, and visual screenshots were captured.
+
+The focused flow covered opening the Conversations surface, searching, seeing results and no-results state, selecting a result, jumping to the representative message, navigating `3 → 2 → 1 → 2`, highlighting the active match, dismissing navigation, returning to the message list, and restoring the normal list after clearing the search.
+
+Latest follow-up artifacts:
+
+- [Android grouped-navigation pass](../../artifacts/android.att.release.2026-07-17%2001-33-51Z/)
+- [Android flag-off pass](../../artifacts/android.att.release.2026-07-17%2001-38-39Z/)
+- [iOS grouped-navigation pass](../../artifacts/ios.sim.release.2026-07-17%2001-48-08Z/)
+- [iOS full conversation-search suite](../../artifacts/ios.sim.release.2026-07-17%2001-48-33Z/)
+- [Android drawer safe-area pass and screenshot](../../artifacts/android.att.release.2026-07-17%2002-07-41Z/)
+- [iOS drawer safe-area pass and screenshot](../../artifacts/ios.sim.release.2026-07-17%2002-08-03Z/)
+
+## Representative QA-data performance validation
+
+The final local performance pass used real QA data in project `gabriel-qa-89f20` for target UID `b71cO4Azg8Sx2YofK5UFblMLCMk2`.
+
+- Dataset: `316` conversations, `5,909` messages, approximately `5,180,168` characters.
+- Searches: `10` capped searches total — four Android, four iOS, and two direct payload checks.
+- Feature-flag denial: non-allowlisted access returned `404` before conversation reads.
+- Backend fetch latency: min/median/max `215.22 / 236.93 / 300.31 ms`.
+- Filter latency: min/median/max `21.03 / 27.925 / 31.30 ms`.
+- Total backend latency: min/median/max `247.43 / 295.17 / 376.19 ms`.
+- Payload samples: `133,584` bytes for `315` result rows and `18` bytes for no results.
+- Android native pass: `4/4` searches passed, covering three result states and one no-results state.
+- iOS native pass: `4/4` searches passed, covering three result states and one no-results state.
+- Result selection opened the expected existing conversation and returned to the message list.
+- Before/after conversation digests were unchanged; the pass did not write conversation data.
+- The temporary target-only validation flag was restored after this performance pass, with percentage rollout remaining `0` and production untouched.
+
+Artifacts:
+
+- [Android performance artifacts](../../artifacts/android.att.release.2026-07-16%2006-14-04Z/)
+- [iOS performance artifacts](../../artifacts/ios.sim.release.2026-07-16%2006-16-55Z/)
+
+## Active user-viewing session
+
+After the validation pass, a separate emulator pair was brought up so the existing devices could remain available to the user:
+
+- Android: AVD `Galaxy_S22_Plus_Bottom_Inset_Repro`, serial `emulator-5554`.
+  - Release APK installed successfully.
+  - Authenticated QA session launched.
+  - Current Android verification shows the Quiet Room QA app in the foreground with the Conversations menu available.
+- iOS: iPhone 17 Pro, UUID `ECDD412E-2950-43FB-99FE-CEE8DFE922D1`, iOS 26.4.
+  - Simulator booted and the release app installed.
+  - The deep-link launch may still require the simulator's normal “Open in Quiet Room QA?” confirmation to be accepted and then rechecked.
+- Existing devices were left in place: Android `emulator-15008` and iPhone 17 `7FC81BB9-2A0C-4F31-AEFD-3281BC112EFB`.
+- Local backend session is running on `127.0.0.1:5002`; its log is `/tmp/qr-mob-033-view-backend.log`.
+- The viewing-session feature flag is currently enabled only for the target QA UID, with percentage `0`:
+
+  `feature_flags/qa/flags/conversation_search`
+
+  This is a temporary viewing-session change. Production remains untouched. Restore the flag after the user finishes viewing, and stop the local backend session when it is no longer needed.
+
+The viewing session uses real QA authentication and reads QA conversation data through the local backend. It is intended for inspection only and does not perform conversation writes.
+
+## Issues and decisions recorded
+
+- The initial performance harness exposed emulator system-UI ANR behavior, token-selection confusion, matcher assumptions, and clear-button assumptions. Those issues were corrected before the final pass; the final Android and iOS performance runs passed.
+- A live QA Lambda deployment is still outstanding because the current AWS credentials/session are expired. No deployment was claimed.
+- The MVP search result now opens at the representative matching message, highlights the active query, and supports Previous/Next navigation without another search or Firestore read.
+
+## Next steps
+
+1. Finish or verify the iPhone 17 Pro deep-link confirmation if iOS viewing is needed.
+2. Reauthenticate AWS and deploy the backend branch to QA.
+3. Re-run the live QA smoke check against the deployed Lambda while keeping the rollout target-only.
+4. Reauthenticate AWS and deploy the backend branch to QA when deployment is authorized.
+5. Restore any temporary viewing-session feature flag and stop the local backend after inspection is complete.

@@ -45,6 +45,17 @@ module.exports = {
   conversationsList: 'quiet-room.conversations.list',
   conversationsNew: 'quiet-room.conversations.new',
   conversationsLoadingMore: 'quiet-room.conversations.loading-more',
+  conversationsSearchInput: 'quiet-room.conversations.search.input',
+  conversationsSearchSubmit: 'quiet-room.conversations.search.submit',
+  conversationsSearchClear: 'quiet-room.conversations.search.clear',
+  conversationsSearchLoading: 'quiet-room.conversations.search.loading',
+  conversationsSearchError: 'quiet-room.conversations.search.error',
+  conversationsSearchNoResults: 'quiet-room.conversations.search.no-results',
+  conversationSearchNavigator: 'quiet-room.conversation-search.navigator',
+  conversationSearchOrdinal: 'quiet-room.conversation-search.ordinal',
+  conversationSearchPrevious: 'quiet-room.conversation-search.previous',
+  conversationSearchNext: 'quiet-room.conversation-search.next',
+  conversationSearchDismiss: 'quiet-room.conversation-search.dismiss',
   conversationsRenameInput: 'quiet-room.conversations.rename.input',
   conversationsRenameCancel: 'quiet-room.conversations.rename.cancel',
   conversationsRenameSave: 'quiet-room.conversations.rename.save',
@@ -83,6 +94,18 @@ module.exports = {
     rename(id) {
       return `quiet-room.conversation.${id}.rename`;
     },
+  },
+  conversationSearchResultRow(id) {
+    return `quiet-room.conversation-search.${id}.row`;
+  },
+  conversationSearchSnippet(id) {
+    return `quiet-room.conversation-search.${id}.snippet`;
+  },
+  conversationSearchActiveMessage(conversationId, messageIndex) {
+    return `quiet-room.conversation-search.${conversationId}.message.${messageIndex}`;
+  },
+  conversationSearchHighlight(conversationId, messageIndex) {
+    return `quiet-room.conversation-search.${conversationId}.highlight.${messageIndex}`;
   },
   modelOption(model) {
     return `quiet-room.model.option.${model}`;

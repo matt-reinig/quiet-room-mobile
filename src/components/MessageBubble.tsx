@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { splitTextForSearchHighlight } from "../lib/conversationSearchNavigation";
 import type { ChatMessage } from "../types/chat";
 import { mobileWeb } from "../theme/mobileWeb";
 import {
@@ -24,6 +25,8 @@ type TextSegment = {
 type MessageBubbleProps = {
   autoPlayVoice?: boolean;
   conversationId?: string | null;
+  highlightQuery?: string;
+  highlightTestID?: string;
   messageIndex?: number;
   message: ChatMessage;
   onReportResponse?: (target: {
@@ -31,6 +34,8 @@ type MessageBubbleProps = {
     message: ChatMessage;
     messageIndex: number;
   }) => void;
+  searchMatchActive?: boolean;
+  searchMatchLabel?: string;
   testID?: string;
   testIndex?: number;
 };
@@ -73,9 +78,13 @@ function parseInlineMarkdown(content: string): TextSegment[] {
 export default function MessageBubble({
   autoPlayVoice = false,
   conversationId,
+  highlightQuery,
+  highlightTestID,
   messageIndex,
   message,
   onReportResponse,
+  searchMatchActive = false,
+  searchMatchLabel,
   testID,
   testIndex,
 }: MessageBubbleProps) {
@@ -86,6 +95,7 @@ export default function MessageBubble({
   const isUser = message.role === "user";
   const content = typeof message.content === "string" ? message.content : "";
   const contentSegments = parseInlineMarkdown(content);
+  const showSearchHighlight = searchMatchActive && Boolean(highlightQuery?.trim());
 
   const showCopyButton =
     !isUser && content.trim().length > 0 && !message.isStreaming && !message.audioSrc;
@@ -144,12 +154,23 @@ export default function MessageBubble({
     !isUser && typeof testIndex === "number" ? messageReportButtonTestId(testIndex) : undefined;
 
   return (
-    <View testID={testID} style={[styles.row, isUser ? styles.rowUser : styles.rowAssistant]}>
-      <View style={[styles.bubble, isUser ? styles.userBubble : styles.assistantBubble]}>
+    <View
+      accessibilityLabel={showSearchHighlight ? searchMatchLabel : undefined}
+      testID={testID}
+      style={[styles.row, isUser ? styles.rowUser : styles.rowAssistant]}
+    >
+      <View
+        style={[
+          styles.bubble,
+          isUser ? styles.userBubble : styles.assistantBubble,
+          showSearchHighlight && styles.searchMatchBubble,
+        ]}
+      >
         <Text
           selectable={content.trim().length > 0}
           selectionColor={mobileWeb.colors.blue200}
           style={styles.content}
+          testID={highlightTestID}
         >
           {contentSegments.map((segment, index) => (
             <Text
@@ -159,7 +180,17 @@ export default function MessageBubble({
                 segment.italic ? styles.contentItalic : null,
               ]}
             >
-              {segment.text}
+              {(showSearchHighlight
+                ? splitTextForSearchHighlight(segment.text, highlightQuery)
+                : [{ highlighted: false, text: segment.text }]
+              ).map((part, partIndex) => (
+                <Text
+                  key={`${index}-${partIndex}-${part.highlighted ? "match" : "text"}`}
+                  style={part.highlighted ? styles.searchHighlight : null}
+                >
+                  {part.text}
+                </Text>
+              ))}
             </Text>
           ))}
         </Text>
@@ -304,6 +335,16 @@ const styles = StyleSheet.create({
   },
   rowUser: {
     alignItems: "flex-end",
+  },
+  searchHighlight: {
+    backgroundColor: mobileWeb.colors.blue200,
+    color: mobileWeb.colors.gray900,
+    fontWeight: "800",
+  },
+  searchMatchBubble: {
+    backgroundColor: mobileWeb.colors.blue50,
+    borderColor: mobileWeb.colors.blue600,
+    borderWidth: 2,
   },
   userBubble: {
     backgroundColor: mobileWeb.colors.blue50,
