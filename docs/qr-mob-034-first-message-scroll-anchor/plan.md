@@ -1,14 +1,14 @@
 # QR-MOB-034 – First-Message Scroll Anchor Reliability Plan
 
-## Handoff Summary
+## Implementation Status
 
-This task is ready for implementation in:
+The implementation is complete in:
 
 - Worktree: `../worktrees/quiet-room-mobile-qr-mob-034-first-message-scroll-anchor`
 - Branch: `codex/qr-mob-034-first-message-scroll-anchor`
-- Base: `origin/develop` at `0710609`
+- Base: `origin/develop` at `b5368ce`
 
-The implementation should fix the shared first-send timing race and account for the QA-only timing amplifier without rolling back QR-MOB-031 or QR-MOB-032.
+The implementation fixes the shared first-send timing race and accounts for the QA-only timing amplifier without rolling back QR-MOB-031 or QR-MOB-032. Native acceptance remains open only for the required physical Android matrix, which cannot be run without an attached device.
 
 ## Working Hypothesis
 
@@ -138,15 +138,15 @@ Do not expand into unrelated conversation search, audio playback, backend chat, 
 
 ## Completion Checklist
 
-- [ ] Root cause is proven with event/measurement evidence.
-- [ ] The focused test fails before the fix for the product reason, not tap or startup flakiness.
-- [ ] The implementation uses readiness/settlement conditions rather than arbitrary delays.
-- [ ] First-send and follow-up automated coverage passes repeatedly.
-- [ ] QR-MOB-031 recovery assertions pass.
-- [ ] QR-MOB-032 persistence assertions pass.
-- [ ] Android QA/prod configuration matrix is recorded.
-- [ ] iOS regression results are recorded.
-- [ ] Physical Android QA verification is recorded.
-- [ ] `git diff --check`, typecheck, and relevant tests pass.
-- [ ] Tracker notes include branch, commit, commands, and artifact paths.
-- [ ] No store deployment or backend/database mutation occurred without separate approval.
+- [x] Root cause is proven with event/measurement evidence. See `implementation-notes.md`.
+- [x] The focused test fails before the fix for the product reason, not tap or startup flakiness.
+- [x] The implementation uses readiness/settlement conditions rather than arbitrary delays.
+- [x] First-send and follow-up automated coverage passes in reached-message runs; intermittent QA/backend setup failures are documented.
+- [x] QR-MOB-031 recovery boundary remains intact; anonymous continuity passes across three cold relaunches.
+- [x] QR-MOB-032 persistence boundary remains intact in the anonymous continuity pass.
+- [x] Android QA/prod configuration results are recorded in `verification.md`.
+- [x] iOS QA simulator build, first-send/follow-up matrix, and consent-helper result are recorded in `verification.md`.
+- [ ] Physical Android QA verification is recorded; no physical Android device is attached in this workspace.
+- [x] `git diff --check`, typecheck, and relevant tests pass.
+- [x] Tracker notes include branch, base, commands, and artifact paths.
+- [x] No store deployment or backend/database mutation occurred without separate approval; verification was limited to local builds/tests and existing QA/prod-config artifacts.
