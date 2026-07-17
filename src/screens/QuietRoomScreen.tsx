@@ -96,6 +96,11 @@ type RenderMessage = {
   messageIndex: number | null;
 };
 
+type OptimisticAnchorBinding = {
+  content: string;
+  messageIndex: number;
+};
+
 type ReportResponseTarget = {
   assistantMessageId: string;
   assistantMessageIndex: number;
@@ -135,6 +140,9 @@ export default function QuietRoomScreen() {
   const voiceModeAvailable = useFeatureFlag("voice_mode", false);
   const conversationSearchEnabled = useFeatureFlag("conversation_search", false);
   const insets = useSafeAreaInsets();
+  const optimisticAnchorBindingRef = useRef<(payload: OptimisticAnchorBinding) => void>(() => {});
+  const clearAnchorStateRef = useRef<() => void>(() => {});
+  const refreshResolvedAnchorTargetRef = useRef<() => boolean>(() => false);
 
   const {
     chatLoading,
@@ -159,7 +167,12 @@ export default function QuietRoomScreen() {
     shouldBlockForConversations,
     showThinking,
     sidebarLoading,
-  } = useChatController({ isAnon, user });
+  } = useChatController({
+    isAnon,
+    onOptimisticUserMessage: (payload) => optimisticAnchorBindingRef.current(payload),
+    onSendAborted: () => clearAnchorStateRef.current(),
+    user,
+  });
   const {
     clearSearch,
     error: conversationSearchError,
@@ -225,7 +238,9 @@ export default function QuietRoomScreen() {
   const scrollAnchorTopRef = useRef<number | null>(null);
   const pendingAnchorScrollRef = useRef(false);
   const pendingSendScrollRef = useRef(false);
-  const lastSendScrollKeyRef = useRef<string | null>(null);
+  const pendingSendTextRef = useRef<string | null>(null);
+  const pendingSendMessageIndexRef = useRef<number | null>(null);
+  const scrollAnchorRenderIdRef = useRef<string | null>(null);
   const messageOffsetsRef = useRef<Record<string, number>>({});
   const searchMessageOffsetsRef = useRef<Record<string, number>>({});
   const pendingSearchJumpRef = useRef(false);
@@ -507,8 +522,9 @@ export default function QuietRoomScreen() {
     scrollAnchorTopRef.current = null;
     pendingAnchorScrollRef.current = false;
     pendingSendScrollRef.current = false;
-    lastSendScrollKeyRef.current = null;
-    anchorScrollRetryCountRef.current = 0;
+    pendingSendTextRef.current = null;
+    pendingSendMessageIndexRef.current = null;
+    scrollAnchorRenderIdRef.current = null;
     anchorContentMinHeightRef.current = 0;
     setAnchorContentMinHeight(0);
     setShowScrollTopButton(false);
@@ -552,16 +568,14 @@ export default function QuietRoomScreen() {
       !lastMessage?.isStreaming;
 
     const finishedReply = finishedLoading || finishedStreaming;
-    const shouldReleaseSendAnchor =
-      finishedReply &&
-      (pendingSendScrollRef.current ||
-        pendingAnchorScrollRef.current ||
-        typeof scrollAnchorTopRef.current === "number" ||
-        anchorContentMinHeightRef.current > 0);
+    const hasActiveSendAnchor =
+      pendingSendScrollRef.current ||
+      pendingAnchorScrollRef.current ||
+      typeof scrollAnchorTopRef.current === "number" ||
+      anchorContentMinHeightRef.current > 0;
+    const shouldUpdateReplyScrollState = finishedReply && hasActiveSendAnchor;
 
-    if (shouldReleaseSendAnchor) {
-      clearAnchorState();
-
+    if (shouldUpdateReplyScrollState) {
       const hasMeasuredViewport =
         listContentHeightRef.current > 0 && listViewportHeightRef.current > 0;
       const nearBottom = hasMeasuredViewport
@@ -577,6 +591,10 @@ export default function QuietRoomScreen() {
       }
 
       setShowNewestButton(!nearBottom);
+      pendingAnchorScrollRef.current = true;
+      requestAnimationFrame(() => {
+        refreshResolvedAnchorTargetRef.current();
+      });
     }
 
     if (
@@ -603,7 +621,15 @@ export default function QuietRoomScreen() {
 
     prevLoadingRef.current = loading;
     prevMessagesRef.current = currentMessages;
-  }, [clearAnchorState, currentId, loading, messages, scrollToLatest, voiceModeAvailable, voiceModeEnabled]);
+  }, [
+    clearAnchorState,
+    currentId,
+    loading,
+    messages,
+    scrollToLatest,
+    voiceModeAvailable,
+    voiceModeEnabled,
+  ]);
 
   const renderedMessages = useMemo<RenderMessage[]>(() => {
     const opening: RenderMessage = {
@@ -739,11 +765,14 @@ export default function QuietRoomScreen() {
     scrollAnchorTopRef.current = null;
     pendingAnchorScrollRef.current = false;
     pendingSendScrollRef.current = false;
-    lastSendScrollKeyRef.current = null;
-    anchorScrollRetryCountRef.current = 0;
+    pendingSendTextRef.current = null;
+    pendingSendMessageIndexRef.current = null;
+    scrollAnchorRenderIdRef.current = null;
     anchorContentMinHeightRef.current = 0;
     setAnchorContentMinHeight(0);
   }
+
+  clearAnchorStateRef.current = clearAnchorState;
 
   const isEffectivelyNearBottom = useCallback(
     (
@@ -796,7 +825,11 @@ export default function QuietRoomScreen() {
 
     if (typeof anchorTop !== "number") {
       pendingAnchorScrollRef.current = false;
-      anchorScrollRetryCountRef.current = 0;
+      return;
+    }
+
+    if (!syncAnchorMinHeight(anchorTop)) {
+      pendingAnchorScrollRef.current = true;
       return;
     }
 
@@ -820,53 +853,64 @@ export default function QuietRoomScreen() {
 
     if (!needsScrollAdjustment) {
       pendingAnchorScrollRef.current = false;
-      anchorScrollRetryCountRef.current = 0;
       return;
     }
 
     pendingAnchorScrollRef.current = true;
     scrollListTo(nextTop, animated);
+  }, [scrollListTo, syncAnchorMinHeight]);
 
-    const retryCount = anchorScrollRetryCountRef.current + 1;
-    anchorScrollRetryCountRef.current = retryCount;
+  const refreshResolvedAnchorTarget = useCallback(() => {
+    const anchorRenderId = scrollAnchorRenderIdRef.current;
+    if (!anchorRenderId) {
+      return false;
+    }
+
+    const anchorOffset = messageOffsetsRef.current[anchorRenderId];
+    if (typeof anchorOffset !== "number") {
+      return false;
+    }
+
+    const desiredTop = Math.max(0, anchorOffset - USER_ANCHOR_TOP_OFFSET);
+    scrollAnchorTopRef.current = desiredTop;
+    pendingAnchorScrollRef.current = true;
+
+    if (!syncAnchorMinHeight(desiredTop)) {
+      return false;
+    }
 
     requestAnimationFrame(() => {
-      const settled = Math.abs(currentScrollOffsetRef.current - nextTop) < 1;
-      if (settled || retryCount >= 4) {
-        pendingAnchorScrollRef.current = false;
-        anchorScrollRetryCountRef.current = 0;
-        return;
-      }
-
       syncAnchorScroll(false);
     });
-  }, [scrollListTo]);
+    return true;
+  }, [syncAnchorMinHeight, syncAnchorScroll]);
+
+  refreshResolvedAnchorTargetRef.current = refreshResolvedAnchorTarget;
 
   const tryResolvePendingSendAnchor = useCallback(() => {
     if (!pendingSendScrollRef.current) {
       return false;
     }
 
-    let lastUserIndex = -1;
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      if (messages[index]?.role === "user") {
-        lastUserIndex = index;
-        break;
+    const boundMessageIndex = pendingSendMessageIndexRef.current;
+    let lastUserIndex = typeof boundMessageIndex === "number" ? boundMessageIndex : -1;
+    if (lastUserIndex < 0) {
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        if (messages[index]?.role === "user") {
+          lastUserIndex = index;
+          break;
+        }
       }
     }
 
-    if (lastUserIndex < 0) {
-      pendingSendScrollRef.current = false;
-      return true;
+    if (lastUserIndex < 0 || !messages[lastUserIndex] || messages[lastUserIndex]?.role !== "user") {
+      return false;
     }
 
     const lastUser = messages[lastUserIndex];
-    const contentLength = typeof lastUser?.content === "string" ? lastUser.content.length : 0;
-    const scrollKey = `${currentId ?? "new"}:${lastUserIndex}:${contentLength}`;
-
-    if (lastSendScrollKeyRef.current === scrollKey) {
-      pendingSendScrollRef.current = false;
-      return true;
+    const pendingSendText = pendingSendTextRef.current;
+    if (pendingSendText && lastUser.content !== pendingSendText) {
+      return false;
     }
 
     const anchorRenderId = renderedMessages[lastUserIndex + 1]?.id;
@@ -880,32 +924,43 @@ export default function QuietRoomScreen() {
     }
 
     const desiredTop = Math.max(0, anchorOffset - USER_ANCHOR_TOP_OFFSET);
+    scrollAnchorRenderIdRef.current = anchorRenderId;
     scrollAnchorTopRef.current = desiredTop;
 
-    if (!syncAnchorMinHeight(desiredTop)) {
-      return false;
-    }
-
-    lastSendScrollKeyRef.current = scrollKey;
+    pendingSendTextRef.current = null;
+    pendingSendMessageIndexRef.current = null;
     pendingSendScrollRef.current = false;
     pendingAnchorScrollRef.current = true;
+
+    syncAnchorMinHeight(desiredTop);
 
     requestAnimationFrame(() => {
       syncAnchorScroll(false);
     });
 
     return true;
-  }, [currentId, messages, renderedMessages, syncAnchorMinHeight, syncAnchorScroll]);
+  }, [messages, renderedMessages, syncAnchorMinHeight, syncAnchorScroll]);
 
-  const armSendAnchor = useCallback(() => {
+  const armSendAnchor = useCallback((text: string) => {
     isNearBottomRef.current = false;
     scrollAnchorTopRef.current = null;
     pendingAnchorScrollRef.current = false;
     pendingSendScrollRef.current = true;
-    anchorScrollRetryCountRef.current = 0;
+    pendingSendTextRef.current = text.trim();
+    pendingSendMessageIndexRef.current = null;
+    scrollAnchorRenderIdRef.current = null;
     anchorContentMinHeightRef.current = 0;
     setAnchorContentMinHeight(0);
   }, []);
+
+  optimisticAnchorBindingRef.current = ({ content, messageIndex }) => {
+    if (!pendingSendScrollRef.current) {
+      return;
+    }
+
+    pendingSendTextRef.current = content;
+    pendingSendMessageIndexRef.current = messageIndex;
+  };
 
   useEffect(() => {
     if (!pendingSendScrollRef.current) {
@@ -918,6 +973,13 @@ export default function QuietRoomScreen() {
   }, [messages, renderedMessages, tryResolvePendingSendAnchor]);
 
   useLayoutEffect(() => {
+    if (pendingSendScrollRef.current) {
+      requestAnimationFrame(() => {
+        void tryResolvePendingSendAnchor();
+      });
+      return;
+    }
+
     if (typeof scrollAnchorTopRef.current !== "number") {
       return;
     }
@@ -929,7 +991,17 @@ export default function QuietRoomScreen() {
     if (pendingAnchorScrollRef.current) {
       syncAnchorScroll(false);
     }
-  }, [anchorContentMinHeight, syncAnchorMinHeight, syncAnchorScroll]);
+  }, [
+    anchorContentMinHeight,
+    currentId,
+    isKeyboardVisible,
+    loading,
+    messages,
+    renderedMessages,
+    syncAnchorMinHeight,
+    syncAnchorScroll,
+    tryResolvePendingSendAnchor,
+  ]);
 
   const handleComposerSizeChange = useCallback(
     (event: NativeSyntheticEvent<TextInputContentSizeChangeEventData>) => {
@@ -990,7 +1062,15 @@ export default function QuietRoomScreen() {
         scrollToLatest(false);
       });
     }
-  }, [attemptSearchJump, isEffectivelyNearBottom, scrollToLatest, syncAnchorMinHeight, syncAnchorScroll, tryResolvePendingSendAnchor]);
+  }, [
+    attemptSearchJump,
+    isEffectivelyNearBottom,
+    refreshResolvedAnchorTarget,
+    scrollToLatest,
+    syncAnchorMinHeight,
+    syncAnchorScroll,
+    tryResolvePendingSendAnchor,
+  ]);
 
   const handleMessageListInnerLayout = useCallback((event: LayoutChangeEvent) => {
     const innerHeight = event.nativeEvent.layout.height;
@@ -1012,11 +1092,10 @@ export default function QuietRoomScreen() {
 
     if (typeof scrollAnchorTopRef.current === "number") {
       requestAnimationFrame(() => {
-        pendingAnchorScrollRef.current = true;
-        syncAnchorScroll(false);
+        refreshResolvedAnchorTarget();
       });
     }
-  }, [attemptSearchJump, syncAnchorScroll, tryResolvePendingSendAnchor]);
+  }, [attemptSearchJump, refreshResolvedAnchorTarget, syncAnchorScroll, tryResolvePendingSendAnchor]);
 
   const handleListScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -1030,13 +1109,17 @@ export default function QuietRoomScreen() {
     );
     setShowScrollTopButton(contentOffset.y > 40);
 
+    if (pendingAnchorScrollRef.current) {
+      syncAnchorScroll(false);
+    }
+
     if (isNearBottomRef.current) {
       hideNewestButton();
       return;
     }
 
     queueNewestButton();
-  }, [hideNewestButton, isEffectivelyNearBottom, queueNewestButton]);
+  }, [hideNewestButton, isEffectivelyNearBottom, queueNewestButton, syncAnchorScroll]);
 
   const handleListScrollBeginDrag = useCallback(() => {
     if (
@@ -1062,6 +1145,39 @@ export default function QuietRoomScreen() {
       clearAnchorState();
     }
   }, [clearAnchorState]);
+
+  useEffect(() => {
+    const retryAnchorAfterKeyboardLayout = () => {
+      if (
+        !pendingSendScrollRef.current &&
+        !pendingAnchorScrollRef.current &&
+        typeof scrollAnchorTopRef.current !== "number"
+      ) {
+        return;
+      }
+
+      requestAnimationFrame(() => {
+        if (pendingSendScrollRef.current) {
+          void tryResolvePendingSendAnchor();
+          return;
+        }
+
+        if (typeof scrollAnchorTopRef.current === "number") {
+          refreshResolvedAnchorTarget();
+        }
+      });
+    };
+
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSubscription = Keyboard.addListener(showEvent, retryAnchorAfterKeyboardLayout);
+    const hideSubscription = Keyboard.addListener(hideEvent, retryAnchorAfterKeyboardLayout);
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [refreshResolvedAnchorTarget, tryResolvePendingSendAnchor]);
 
   function scrollToLatest(animated: boolean) {
     if (pendingSearchJumpRef.current) {
@@ -1149,7 +1265,7 @@ export default function QuietRoomScreen() {
         return;
       }
 
-      armSendAnchor();
+      armSendAnchor(nextInput);
       void sendMessage(nextInput);
     },
     [
@@ -1252,7 +1368,7 @@ export default function QuietRoomScreen() {
           return;
         }
 
-        armSendAnchor();
+        armSendAnchor(pendingMessage);
         void sendMessage(pendingMessage);
       })
       .catch((error) => {
@@ -1468,7 +1584,12 @@ export default function QuietRoomScreen() {
           ) : (
             <>
               <ScrollView
-                contentContainerStyle={styles.messageListContent}
+                contentContainerStyle={[
+                  styles.messageListContent,
+                  anchorContentMinHeight > 0
+                    ? { minHeight: anchorContentMinHeight + MESSAGE_LIST_PADDING_BOTTOM }
+                    : null,
+                ]}
                 style={styles.messageList}
                 keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "none"}
                 keyboardShouldPersistTaps="handled"
@@ -1534,7 +1655,14 @@ export default function QuietRoomScreen() {
                         key={item.id}
                         style={index === 0 ? styles.openingMessageWrap : null}
                         onLayout={(event: LayoutChangeEvent) => {
-                          messageOffsetsRef.current[item.id] = event.nativeEvent.layout.y;
+                          const messageTop = event.nativeEvent.layout.y;
+                          messageOffsetsRef.current[item.id] = messageTop;
+
+                          if (scrollAnchorRenderIdRef.current) {
+                            requestAnimationFrame(() => {
+                              refreshResolvedAnchorTarget();
+                            });
+                          }
 
                           if (currentId && typeof item.messageIndex === "number") {
                             searchMessageOffsetsRef.current[`${currentId}:${item.messageIndex}`] =

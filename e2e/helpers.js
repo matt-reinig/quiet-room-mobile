@@ -175,6 +175,10 @@ async function acceptAiConsentIfVisible(timeoutMs = 4000) {
   }
 
   await element(by.id(ids.aiConsentAcceptButton)).tap();
+  await element(by.text('I Consent')).tap().catch(() => null);
+  if (device.getPlatform() === 'ios') {
+    await element(by.label('I Consent')).tap().catch(() => null);
+  }
   await waitFor(consentModal).not.toExist().withTimeout(15000);
   return true;
 }

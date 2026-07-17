@@ -393,6 +393,11 @@ function generateConversationId(): string {
 
 type UseChatControllerArgs = {
   isAnon: boolean;
+  onOptimisticUserMessage?: (payload: {
+    content: string;
+    messageIndex: number;
+  }) => void;
+  onSendAborted?: () => void;
   user: User | null;
 };
 
@@ -424,6 +429,8 @@ type UseChatControllerResult = {
 
 export function useChatController({
   isAnon,
+  onOptimisticUserMessage,
+  onSendAborted,
   user,
 }: UseChatControllerArgs): UseChatControllerResult {
   const { values: featureFlagValues } = useFeatureFlags();
@@ -452,7 +459,11 @@ export function useChatController({
   const chatLoadRequestIdRef = useRef(0);
   const currentIdRef = useRef<string | null>(null);
   const anonymousConversationUidRef = useRef<string | null>(null);
+  const optimisticUserMessageCallbackRef = useRef(onOptimisticUserMessage);
+  const sendAbortedCallbackRef = useRef(onSendAborted);
   currentIdRef.current = currentId;
+  optimisticUserMessageCallbackRef.current = onOptimisticUserMessage;
+  sendAbortedCallbackRef.current = onSendAborted;
 
   useEffect(() => {
     if (!user) {
@@ -905,6 +916,7 @@ export function useChatController({
         tokenResult = await getIdTokenWithAnonymousRecovery(user);
       } catch (error) {
         console.error(error);
+        sendAbortedCallbackRef.current?.();
 
         const message =
           error instanceof Error
@@ -944,6 +956,11 @@ export function useChatController({
       const title = shouldRename
         ? buildConversationTitle(text)
         : existingConversation?.title || "New Chat";
+
+      optimisticUserMessageCallbackRef.current?.({
+        content: text,
+        messageIndex: outgoingMessages.length - 1,
+      });
 
       setConversations((previous) => {
         const previousConversation = previous[conversationId];
