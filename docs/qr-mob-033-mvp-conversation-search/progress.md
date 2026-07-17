@@ -113,7 +113,7 @@ After the validation pass, a separate emulator pair was brought up so the existi
   - The deep-link launch may still require the simulator's normal “Open in Quiet Room QA?” confirmation to be accepted and then rechecked.
 - Existing devices were left in place: Android `emulator-15008` and iPhone 17 `7FC81BB9-2A0C-4F31-AEFD-3281BC112EFB`.
 - Local backend session is running on `127.0.0.1:5002`; its log is `/tmp/qr-mob-033-view-backend.log`.
-- The viewing-session feature flag is currently enabled only for the target QA UID, with percentage `0`:
+- The viewing-session feature flag is currently enabled only for the two target QA UIDs (`b71cO4Azg8Sx2YofK5UFblMLCMk2` and Emily `akPqnaK9XCTMnxtBvhq274MTHcI2`), with percentage `0`:
 
   `feature_flags/qa/flags/conversation_search`
 
