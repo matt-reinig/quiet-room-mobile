@@ -9,6 +9,7 @@ The focused test proved that:
 - no guest sign-in prompt exists before the first send;
 - the prompt appears immediately after the optimistic first guest message;
 - the copy is visible while the assistant response continues preparing;
+- the callout remains correctly positioned after the assistant response finishes;
 - tapping **Sign in** opens the existing sign-in sheet.
 
 ## Commands
@@ -32,7 +33,8 @@ git diff --check
 
 ## Evidence
 
-- Detox: 1 test passed, 1 test total in 18.630 seconds.
+- Detox follow-up: 1 test passed, 1 test total in 29.551 seconds.
+- Completed-response visual artifact: `artifacts/android.att.release.2026-07-18 18-21-28Z/✓ Quiet Room anonymous sign-in prompt offers sign in after the guest sends their first message/anonymous-sign-in-prompt-after-response.png`
 - Visual artifact: `artifacts/android.att.release.2026-07-18 17-50-59Z/✓ Quiet Room anonymous sign-in prompt offers sign in after the guest sends their first message/anonymous-sign-in-prompt-visible.png`
 - Final sign-in-sheet artifact: `artifacts/android.att.release.2026-07-18 17-50-59Z/✓ Quiet Room anonymous sign-in prompt offers sign in after the guest sends their first message/testDone.png`
 - `npm run typecheck`: passed.
