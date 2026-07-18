@@ -740,6 +740,7 @@ export default function QuietRoomScreen() {
 
   const showPromptCues =
     Boolean(isNewChat) && !chatLoading && messages.length === 0 && !isKeyboardVisible;
+  const firstUserMessageIndex = messages.findIndex((message) => message.role === "user");
 
   const hideNewestButton = useCallback(() => {
     if (newestButtonTimeoutRef.current) {
@@ -1707,6 +1708,39 @@ export default function QuietRoomScreen() {
                           }
                           testIndex={index === 0 ? undefined : index - 1}
                         />
+                        {isAnon && item.messageIndex === firstUserMessageIndex ? (
+                          <View
+                            accessibilityLabel="Guest sign-in prompt"
+                            style={styles.anonymousSignInPrompt}
+                            testID={testIds.anonymousSignInPrompt}
+                          >
+                            <View style={styles.anonymousSignInPromptCopy}>
+                              <Text style={styles.anonymousSignInPromptTitle}>
+                                Want another conversation?
+                              </Text>
+                              <Text style={styles.anonymousSignInPromptText}>
+                                To start another conversation, please sign in.
+                              </Text>
+                            </View>
+                            <Pressable
+                              accessibilityLabel="Sign in"
+                              accessibilityRole="button"
+                              onPress={() => {
+                                dismissKeyboard();
+                                setShowChatOptions(false);
+                                setShowProfileMenu(false);
+                                setShowLogin(true);
+                              }}
+                              style={({ pressed }) => [
+                                styles.anonymousSignInPromptButton,
+                                pressed && styles.anonymousSignInPromptButtonPressed,
+                              ]}
+                              testID={testIds.anonymousSignInPromptButton}
+                            >
+                              <Text style={styles.anonymousSignInPromptButtonLabel}>Sign in</Text>
+                            </Pressable>
+                          </View>
+                        ) : null}
                         {shouldShowSeparator ? <View style={styles.messageSeparator} /> : null}
                       </View>
                     );
@@ -2223,6 +2257,48 @@ export default function QuietRoomScreen() {
 }
 
 const styles = StyleSheet.create({
+  anonymousSignInPrompt: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    backgroundColor: mobileWeb.colors.blue50,
+    borderColor: mobileWeb.colors.blue200,
+    borderRadius: mobileWeb.radii.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 12,
+    padding: 12,
+  },
+  anonymousSignInPromptButton: {
+    alignItems: "center",
+    backgroundColor: mobileWeb.colors.blue600,
+    borderRadius: 10,
+    justifyContent: "center",
+    minHeight: 40,
+    paddingHorizontal: 14,
+  },
+  anonymousSignInPromptButtonLabel: {
+    color: mobileWeb.colors.white,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  anonymousSignInPromptButtonPressed: {
+    opacity: 0.82,
+  },
+  anonymousSignInPromptCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  anonymousSignInPromptText: {
+    color: mobileWeb.colors.gray600,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  anonymousSignInPromptTitle: {
+    color: mobileWeb.colors.gray700,
+    fontSize: 14,
+    fontWeight: "700",
+  },
   centeredWrap: {
     alignItems: "center",
     flex: 1,

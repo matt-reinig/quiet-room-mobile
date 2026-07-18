@@ -6,6 +6,8 @@ module.exports = {
   profileLogoutButton: 'quiet-room.profile.logout',
   profileDeleteButton: 'quiet-room.profile.delete',
   profileSignInButton: 'quiet-room.profile.signin',
+  anonymousSignInPrompt: 'quiet-room.anonymous-signin-prompt',
+  anonymousSignInPromptButton: 'quiet-room.anonymous-signin-prompt.signin',
   aiConsentModal: 'quiet-room.ai-consent.modal',
   aiConsentCancelButton: 'quiet-room.ai-consent.cancel',
   aiConsentAcceptButton: 'quiet-room.ai-consent.accept',
