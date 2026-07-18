@@ -60,6 +60,7 @@ import type {
 } from "../types/chat";
 
 const VOICE_MODE_STORAGE_KEY = "gabriel.voiceModeEnabled";
+const ANONYMOUS_SIGN_IN_PROMPT_STORAGE_PREFIX = "gabriel.anonymousSignInPrompt.dismissed";
 const USER_ANCHOR_TOP_OFFSET = 6;
 const MESSAGE_LIST_PADDING_TOP = 0;
 const MESSAGE_LIST_PADDING_BOTTOM = 104;
@@ -74,6 +75,10 @@ const ANDROID_KEYBOARD_FALLBACK_SCREEN_RATIO = 0.35;
 
 function androidRestingComposerBottomPadding(bottomInset: number): number {
   return Math.max(0, COMPOSER_RESTING_BOTTOM_PADDING - bottomInset);
+}
+
+function anonymousSignInPromptStorageKey(uid: string): string {
+  return `${ANONYMOUS_SIGN_IN_PROMPT_STORAGE_PREFIX}.${uid}`;
 }
 
 const QUIET_ROOM_OPENING_GREETING = `Welcome to Quiet Room.
@@ -207,6 +212,8 @@ export default function QuietRoomScreen() {
   const [aiConsentLoaded, setAiConsentLoaded] = useState(false);
   const [aiConsentPending, setAiConsentPending] = useState<string | null>(null);
   const [aiConsentSaving, setAiConsentSaving] = useState(false);
+  const [anonymousSignInPromptDismissed, setAnonymousSignInPromptDismissed] = useState(false);
+  const [anonymousSignInPromptHydrated, setAnonymousSignInPromptHydrated] = useState(false);
   const [voiceModeEnabled, setVoiceModeEnabled] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
@@ -403,6 +410,41 @@ export default function QuietRoomScreen() {
     };
 
     void hydrateAiConsent();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.isAnonymous, user?.uid]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setAnonymousSignInPromptHydrated(false);
+
+    if (!user?.isAnonymous) {
+      setAnonymousSignInPromptDismissed(false);
+      setAnonymousSignInPromptHydrated(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void AsyncStorage.getItem(anonymousSignInPromptStorageKey(user.uid))
+      .then((value) => {
+        if (!cancelled) {
+          setAnonymousSignInPromptDismissed(value === "1");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAnonymousSignInPromptDismissed(false);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAnonymousSignInPromptHydrated(true);
+        }
+      });
 
     return () => {
       cancelled = true;
@@ -741,6 +783,11 @@ export default function QuietRoomScreen() {
   const showPromptCues =
     Boolean(isNewChat) && !chatLoading && messages.length === 0 && !isKeyboardVisible;
   const firstUserMessageIndex = messages.findIndex((message) => message.role === "user");
+  const showAnonymousSignInPrompt =
+    Boolean(isAnon) &&
+    anonymousSignInPromptHydrated &&
+    !anonymousSignInPromptDismissed &&
+    firstUserMessageIndex >= 0;
 
   const hideNewestButton = useCallback(() => {
     if (newestButtonTimeoutRef.current) {
@@ -1708,39 +1755,6 @@ export default function QuietRoomScreen() {
                           }
                           testIndex={index === 0 ? undefined : index - 1}
                         />
-                        {isAnon && item.messageIndex === firstUserMessageIndex ? (
-                          <View
-                            accessibilityLabel="Guest sign-in prompt"
-                            style={styles.anonymousSignInPrompt}
-                            testID={testIds.anonymousSignInPrompt}
-                          >
-                            <View style={styles.anonymousSignInPromptCopy}>
-                              <Text style={styles.anonymousSignInPromptTitle}>
-                                Want another conversation?
-                              </Text>
-                              <Text style={styles.anonymousSignInPromptText}>
-                                To start another conversation, please sign in.
-                              </Text>
-                            </View>
-                            <Pressable
-                              accessibilityLabel="Sign in"
-                              accessibilityRole="button"
-                              onPress={() => {
-                                dismissKeyboard();
-                                setShowChatOptions(false);
-                                setShowProfileMenu(false);
-                                setShowLogin(true);
-                              }}
-                              style={({ pressed }) => [
-                                styles.anonymousSignInPromptButton,
-                                pressed && styles.anonymousSignInPromptButtonPressed,
-                              ]}
-                              testID={testIds.anonymousSignInPromptButton}
-                            >
-                              <Text style={styles.anonymousSignInPromptButtonLabel}>Sign in</Text>
-                            </Pressable>
-                          </View>
-                        ) : null}
                         {shouldShowSeparator ? <View style={styles.messageSeparator} /> : null}
                       </View>
                     );
@@ -1810,6 +1824,58 @@ export default function QuietRoomScreen() {
                   void requestSendWithConsent(prompt);
                 }}
               />
+            </View>
+          </View>
+        ) : null}
+
+        {showAnonymousSignInPrompt ? (
+          <View style={styles.anonymousSignInPromptDock}>
+            <View
+              accessibilityLabel="Guest sign-in prompt"
+              style={styles.anonymousSignInPrompt}
+              testID={testIds.anonymousSignInPrompt}
+            >
+              <View style={styles.anonymousSignInPromptCopy}>
+                <Text style={styles.anonymousSignInPromptTitle}>Want another conversation?</Text>
+                <Text style={styles.anonymousSignInPromptText}>Sign in to start one.</Text>
+              </View>
+              <Pressable
+                accessibilityLabel="Sign in"
+                accessibilityRole="button"
+                onPress={() => {
+                  dismissKeyboard();
+                  setShowChatOptions(false);
+                  setShowProfileMenu(false);
+                  setShowLogin(true);
+                }}
+                style={({ pressed }) => [
+                  styles.anonymousSignInPromptButton,
+                  pressed && styles.anonymousSignInPromptButtonPressed,
+                ]}
+                testID={testIds.anonymousSignInPromptButton}
+              >
+                <Text style={styles.anonymousSignInPromptButtonLabel}>Sign in</Text>
+              </Pressable>
+              <Pressable
+                accessibilityLabel="Dismiss sign-in prompt"
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={() => {
+                  setAnonymousSignInPromptDismissed(true);
+                  if (user?.isAnonymous) {
+                    void AsyncStorage.setItem(anonymousSignInPromptStorageKey(user.uid), "1").catch(() => {
+                      // Keep the prompt dismissed for this app session if persistence fails.
+                    });
+                  }
+                }}
+                style={({ pressed }) => [
+                  styles.anonymousSignInPromptDismiss,
+                  pressed && styles.anonymousSignInPromptDismissPressed,
+                ]}
+                testID={testIds.anonymousSignInPromptDismiss}
+              >
+                <Ionicons name="close" size={18} color={mobileWeb.colors.gray600} />
+              </Pressable>
             </View>
           </View>
         ) : null}
@@ -2262,20 +2328,20 @@ const styles = StyleSheet.create({
     alignSelf: "stretch",
     backgroundColor: mobileWeb.colors.blue50,
     borderColor: mobileWeb.colors.blue200,
-    borderRadius: mobileWeb.radii.lg,
+    borderRadius: 12,
     borderWidth: 1,
     flexDirection: "row",
     gap: 12,
-    marginTop: 12,
-    padding: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
   },
   anonymousSignInPromptButton: {
     alignItems: "center",
     backgroundColor: mobileWeb.colors.blue600,
-    borderRadius: 10,
+    borderRadius: 9,
     justifyContent: "center",
-    minHeight: 40,
-    paddingHorizontal: 14,
+    minHeight: 36,
+    paddingHorizontal: 12,
   },
   anonymousSignInPromptButtonLabel: {
     color: mobileWeb.colors.white,
@@ -2288,6 +2354,23 @@ const styles = StyleSheet.create({
   anonymousSignInPromptCopy: {
     flex: 1,
     gap: 2,
+  },
+  anonymousSignInPromptDismiss: {
+    alignItems: "center",
+    borderRadius: 999,
+    height: 32,
+    justifyContent: "center",
+    width: 32,
+  },
+  anonymousSignInPromptDismissPressed: {
+    backgroundColor: "rgba(120, 113, 108, 0.12)",
+  },
+  anonymousSignInPromptDock: {
+    backgroundColor: mobileWeb.colors.surface,
+    borderTopColor: mobileWeb.colors.gray200,
+    borderTopWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 8,
   },
   anonymousSignInPromptText: {
     color: mobileWeb.colors.gray600,

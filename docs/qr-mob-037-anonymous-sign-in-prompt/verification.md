@@ -10,7 +10,9 @@ The focused test proved that:
 - the prompt appears immediately after the optimistic first guest message;
 - the copy is visible while the assistant response continues preparing;
 - the callout remains correctly positioned after the assistant response finishes;
+- the callout is pinned above the composer rather than inserted into the transcript;
 - tapping **Sign in** opens the existing sign-in sheet.
+- tapping **×** hides the callout and it stays hidden for the same anonymous UID after a cold relaunch.
 
 ## Commands
 
@@ -33,6 +35,8 @@ git diff --check
 
 ## Evidence
 
+- Final pinned-banner matrix: 2 tests passed, 2 tests total in 40.474 seconds.
+- Final pinned-banner visual artifact: `artifacts/android.att.release.2026-07-18 18-36-05Z/✓ Quiet Room anonymous sign-in prompt offers sign in after the guest sends their first message/anonymous-sign-in-prompt-pinned-after-response.png`
 - Detox follow-up: 1 test passed, 1 test total in 29.551 seconds.
 - Completed-response visual artifact: `artifacts/android.att.release.2026-07-18 18-21-28Z/✓ Quiet Room anonymous sign-in prompt offers sign in after the guest sends their first message/anonymous-sign-in-prompt-after-response.png`
 - Visual artifact: `artifacts/android.att.release.2026-07-18 17-50-59Z/✓ Quiet Room anonymous sign-in prompt offers sign in after the guest sends their first message/anonymous-sign-in-prompt-visible.png`
