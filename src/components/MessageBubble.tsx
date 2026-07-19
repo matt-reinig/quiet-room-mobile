@@ -3,6 +3,7 @@ import * as Clipboard from "expo-clipboard";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { splitTextForSearchHighlight } from "../lib/conversationSearchNavigation";
+import { parseInlineMarkdown } from "../lib/inlineMarkdown";
 import type { ChatMessage } from "../types/chat";
 import { mobileWeb } from "../theme/mobileWeb";
 import {
@@ -15,12 +16,6 @@ import MessageVoiceButton from "./MessageVoiceButton";
 const COPY_RESET_MS = 1500;
 
 type CopyState = "copied" | "error" | "idle";
-
-type TextSegment = {
-  bold: boolean;
-  italic: boolean;
-  text: string;
-};
 
 type MessageBubbleProps = {
   autoPlayVoice?: boolean;
@@ -39,41 +34,6 @@ type MessageBubbleProps = {
   testID?: string;
   testIndex?: number;
 };
-
-function parseInlineMarkdown(content: string): TextSegment[] {
-  const segments: TextSegment[] = [];
-  const pattern = /(\*\*(.+?)\*\*|\*(.+?)\*)/gs;
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = pattern.exec(content))) {
-    if (match.index > cursor) {
-      segments.push({
-        bold: false,
-        italic: false,
-        text: content.slice(cursor, match.index),
-      });
-    }
-
-    segments.push({
-      bold: Boolean(match[2]),
-      italic: Boolean(match[3]),
-      text: match[2] || match[3],
-    });
-
-    cursor = match.index + match[0].length;
-  }
-
-  if (cursor < content.length) {
-    segments.push({
-      bold: false,
-      italic: false,
-      text: content.slice(cursor),
-    });
-  }
-
-  return segments.length > 0 ? segments : [{ bold: false, italic: false, text: content }];
-}
 
 export default function MessageBubble({
   autoPlayVoice = false,
