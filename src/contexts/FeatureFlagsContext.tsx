@@ -47,6 +47,7 @@ type FeatureFlagsState = {
   initialized: boolean;
   loading: boolean;
   reasons: FeatureFlagReasons;
+  uid: string | null;
   values: FeatureFlagValues;
 };
 
@@ -115,6 +116,7 @@ function parseFeatureFlagsFromUrl(url: string, source: string): FeatureFlagsOver
 function buildOverrideState(
   override: FeatureFlagsOverride,
   reason: string,
+  uid: string | null,
 ): FeatureFlagsState {
   const reasons: FeatureFlagReasons = {};
 
@@ -128,6 +130,7 @@ function buildOverrideState(
     initialized: true,
     loading: false,
     reasons,
+    uid,
     values: override.values,
   };
 }
@@ -289,6 +292,7 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
   const { user } = useAuth();
   const e2eOverrides = parseE2EFeatureFlags();
   const loadRequestIdRef = useRef(0);
+  const overrideRef = useRef<FeatureFlagsOverride | null>(e2eOverrides);
 
   const [state, setState] = useState<FeatureFlagsState>(() => ({
     env: null,
@@ -296,6 +300,7 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
     initialized: Boolean(e2eOverrides) || !user,
     loading: Boolean(user) && !e2eOverrides,
     reasons: {},
+    uid: user?.uid || null,
     values: {},
   }));
 
@@ -308,14 +313,15 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
     }
 
     if (launchUrlOverrides) {
-      setState(buildOverrideState(launchUrlOverrides, "launch_url_override"));
+      overrideRef.current = launchUrlOverrides;
+      setState(buildOverrideState(launchUrlOverrides, "launch_url_override", user?.uid || null));
       return;
     }
 
-    const overrides = parseE2EFeatureFlags();
+    const overrides = overrideRef.current;
 
     if (overrides) {
-      setState(buildOverrideState(overrides, "e2e_override"));
+      setState(buildOverrideState(overrides, "e2e_override", user?.uid || null));
       return;
     }
 
@@ -326,12 +332,21 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
         initialized: true,
         loading: false,
         reasons: {},
+        uid: null,
         values: {},
       });
       return;
     }
 
-    setState((prev) => ({ ...prev, loading: true, error: null }));
+    setState({
+      env: null,
+      error: null,
+      initialized: false,
+      loading: true,
+      reasons: {},
+      uid: user.uid,
+      values: {},
+    });
 
     try {
       let tokenResult: FeatureFlagTokenResult;
@@ -368,6 +383,7 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
         initialized: true,
         loading: false,
         reasons: data.reasons,
+        uid: tokenResult.user.uid,
         values: data.values,
       });
     } catch (error) {
@@ -376,7 +392,14 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
       }
 
       console.warn("Failed to load feature flags", error);
-      setState((prev) => ({ ...prev, initialized: true, loading: false, error }));
+      setState((prev) => ({
+        ...prev,
+        initialized: true,
+        loading: false,
+        error,
+        reasons: {},
+        values: {},
+      }));
     }
   }, [user]);
 
@@ -398,13 +421,14 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
       }
 
       loadRequestIdRef.current += 1;
-      setState(buildOverrideState(overrides, "url_event_override"));
+      overrideRef.current = overrides;
+      setState(buildOverrideState(overrides, "url_event_override", user?.uid || null));
     });
 
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [user?.uid]);
 
   const isEnabled = useCallback(
     (flag: string, defaultValue = false) => {
@@ -412,23 +436,31 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
         return defaultValue;
       }
 
+      if (state.uid !== (user?.uid || null)) {
+        return defaultValue;
+      }
+
       const value = state.values[flag];
       return typeof value === "boolean" ? value : defaultValue;
     },
-    [state.values]
+    [state.uid, state.values, user?.uid]
   );
 
   const value = useMemo<FeatureFlagsContextValue>(
-    () => ({
-      env: state.env,
-      error: state.error,
-      initialized: state.initialized,
-      isEnabled,
-      loading: state.loading,
-      reasons: state.reasons,
-      refresh,
-      values: state.values,
-    }),
+    () => {
+      const identityReady = state.uid === (user?.uid || null);
+
+      return {
+        env: identityReady ? state.env : null,
+        error: identityReady ? state.error : null,
+        initialized: state.initialized && identityReady,
+        isEnabled,
+        loading: state.loading || !identityReady,
+        reasons: identityReady ? state.reasons : {},
+        refresh,
+        values: identityReady ? state.values : {},
+      };
+    },
     [
       isEnabled,
       refresh,
@@ -437,7 +469,9 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
       state.initialized,
       state.loading,
       state.reasons,
+      state.uid,
       state.values,
+      user?.uid,
     ]
   );
 

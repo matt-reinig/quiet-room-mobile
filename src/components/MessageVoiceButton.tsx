@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   createAudioPlayer,
-  setAudioModeAsync,
   type AudioPlayer,
   type AudioSource,
 } from "expo-audio";
@@ -24,8 +23,11 @@ import { resolveVoiceUrl, VOICE_PLAYBACK_ENGINE } from "../config/env";
 import { mobileWeb } from "../theme/mobileWeb";
 import { useAuth } from "../contexts/AuthContext";
 import { getIdTokenWithAnonymousRecovery } from "../lib/firebase";
+import { configureQuietRoomAudioSession } from "../lib/audioSession";
 import {
+  isVoicePlaybackOwner,
   publishVoicePlayback,
+  publishVoicePlaybackStopped,
   subscribeVoicePlayback,
 } from "../lib/voicePlaybackBus";
 
@@ -44,14 +46,18 @@ function uniqueVoiceId(): string {
   return `voice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-async function setAudioMode() {
-  await setAudioModeAsync({
-    allowsRecording: false,
-    interruptionMode: "duckOthers",
-    playsInSilentMode: true,
-    shouldPlayInBackground: false,
-    shouldRouteThroughEarpiece: false,
-  });
+function removeVoicePlayer(player: AudioPlayer): void {
+  try {
+    player.pause();
+  } catch {
+    // The player may already have been released.
+  }
+
+  try {
+    player.remove();
+  } catch {
+    // The player may already have been released.
+  }
 }
 
 async function writeAudioToCache(bytes: Uint8Array): Promise<string> {
@@ -153,6 +159,7 @@ export default function MessageVoiceButton({
   const statusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileUriRef = useRef<string | null>(null);
   const instanceIdRef = useRef(uniqueVoiceId());
+  const playbackOperationRef = useRef(0);
   const trackPlayerActiveRef = useRef(false);
   const trackPlayerStatusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const trackPlayerSubscriptionsRef = useRef<Array<{ remove: () => void }>>([]);
@@ -191,6 +198,10 @@ export default function MessageVoiceButton({
 
     trackPlayerActiveRef.current = false;
 
+    if (!isVoicePlaybackOwner(instanceIdRef.current)) {
+      return;
+    }
+
     try {
       await TrackPlayer.stop();
       await TrackPlayer.reset();
@@ -199,7 +210,11 @@ export default function MessageVoiceButton({
     }
   }, [clearTrackPlayerWatchers]);
 
-  const cleanup = useCallback(async () => {
+  const cleanup = useCallback(async (invalidateOperation = true) => {
+    if (invalidateOperation) {
+      playbackOperationRef.current += 1;
+    }
+
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
@@ -237,19 +252,28 @@ export default function MessageVoiceButton({
         // Intentionally ignored.
       }
     }
+
+    publishVoicePlaybackStopped(instanceIdRef.current);
   }, [cleanupTrackPlayer]);
 
   const pausePlayback = useCallback(async () => {
+    playbackOperationRef.current += 1;
+
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
 
     if (trackPlayerActiveRef.current) {
-      try {
-        await TrackPlayer.pause();
-      } catch {
-        await cleanupTrackPlayer();
+      if (isVoicePlaybackOwner(instanceIdRef.current)) {
+        try {
+          await TrackPlayer.pause();
+        } catch {
+          await cleanupTrackPlayer();
+        }
+      } else {
+        trackPlayerActiveRef.current = false;
+        clearTrackPlayerWatchers();
       }
     }
 
@@ -262,11 +286,15 @@ export default function MessageVoiceButton({
     }
 
     setStatus("idle");
-  }, [cleanupTrackPlayer]);
+    publishVoicePlaybackStopped(instanceIdRef.current);
+  }, [cleanupTrackPlayer, clearTrackPlayerWatchers]);
 
   const loadAndPlayFromSource = useCallback(
-    async (source: AudioSource) => {
-      await setAudioMode();
+    async (source: AudioSource, operation: number) => {
+      await configureQuietRoomAudioSession();
+      if (operation !== playbackOperationRef.current) {
+        return false;
+      }
 
       if (statusIntervalRef.current) {
         clearInterval(statusIntervalRef.current);
@@ -277,6 +305,13 @@ export default function MessageVoiceButton({
         updateInterval: 1000,
       });
 
+      if (operation !== playbackOperationRef.current) {
+        removeVoicePlayer(player);
+        return false;
+      }
+
+      playerRef.current = player;
+
       statusIntervalRef.current = setInterval(() => {
         const playbackStatus = player.currentStatus;
         if (playbackStatus.didJustFinish) {
@@ -286,8 +321,16 @@ export default function MessageVoiceButton({
       }, 1000);
 
       player.play();
-      playerRef.current = player;
+      if (operation !== playbackOperationRef.current) {
+        removeVoicePlayer(player);
+        if (playerRef.current === player) {
+          playerRef.current = null;
+        }
+        return false;
+      }
+
       setStatus("playing");
+      return true;
     },
     [cleanup]
   );
@@ -302,7 +345,7 @@ export default function MessageVoiceButton({
   }, [user]);
 
   const startTrackPlayerConversationPlayback = useCallback(
-    async (authHeaders: Record<string, string>, remoteUri: string) => {
+    async (authHeaders: Record<string, string>, remoteUri: string, operation: number) => {
       let settled = false;
 
       const finish = async (error?: string) => {
@@ -314,23 +357,31 @@ export default function MessageVoiceButton({
         clearTrackPlayerWatchers();
         trackPlayerActiveRef.current = false;
 
-        try {
-          await TrackPlayer.stop();
-          await TrackPlayer.reset();
-        } catch {
-          // Intentionally ignored.
+        if (isVoicePlaybackOwner(instanceIdRef.current)) {
+          try {
+            await TrackPlayer.stop();
+            await TrackPlayer.reset();
+          } catch {
+            // Intentionally ignored.
+          }
         }
 
         if (error) {
           console.warn("TrackPlayer voice playback failed", error);
           setStatus("error");
           setError("Voice playback failed.");
+          publishVoicePlaybackStopped(instanceIdRef.current);
           return;
         }
 
         setStatus("idle");
         setError("");
+        publishVoicePlaybackStopped(instanceIdRef.current);
       };
+
+      const stillOwnsPlayback = () =>
+        operation === playbackOperationRef.current &&
+        isVoicePlaybackOwner(instanceIdRef.current);
 
       const pollStatus = async () => {
         try {
@@ -351,7 +402,13 @@ export default function MessageVoiceButton({
       };
 
       await ensureTrackPlayerSetup();
+      if (!stillOwnsPlayback()) {
+        return false;
+      }
       await TrackPlayer.reset();
+      if (!stillOwnsPlayback()) {
+        return false;
+      }
 
       trackPlayerSubscriptionsRef.current = [
         TrackPlayer.addEventListener(Event.PlaybackError, (event) => {
@@ -369,9 +426,16 @@ export default function MessageVoiceButton({
         title: "Quiet Room voice",
         url: remoteUri,
       });
-      await TrackPlayer.play();
-
+      if (!stillOwnsPlayback()) {
+        return false;
+      }
       trackPlayerActiveRef.current = true;
+      await TrackPlayer.play();
+      if (!stillOwnsPlayback()) {
+        trackPlayerActiveRef.current = false;
+        return false;
+      }
+
       trackPlayerStatusIntervalRef.current = setInterval(() => {
         void pollStatus();
       }, 1000);
@@ -379,12 +443,13 @@ export default function MessageVoiceButton({
       setStatus("playing");
       setError("");
       void pollStatus();
+      return true;
     },
     [clearTrackPlayerWatchers]
   );
 
   const startConversationPlayback = useCallback(
-    async (authHeaders: Record<string, string>) => {
+    async (authHeaders: Record<string, string>, operation: number) => {
       if (!hasConversationAudio) {
         return false;
       }
@@ -396,16 +461,16 @@ export default function MessageVoiceButton({
       );
 
       if (VOICE_PLAYBACK_ENGINE === "track-player") {
-        await startTrackPlayerConversationPlayback(authHeaders, remoteUri);
-        return true;
+        return startTrackPlayerConversationPlayback(authHeaders, remoteUri, operation);
       }
 
-      await loadAndPlayFromSource({
-        headers: authHeaders,
-        uri: remoteUri,
-      });
-
-      return true;
+      return loadAndPlayFromSource(
+        {
+          headers: authHeaders,
+          uri: remoteUri,
+        },
+        operation,
+      );
     },
     [
       conversationId,
@@ -422,11 +487,14 @@ export default function MessageVoiceButton({
       return;
     }
 
-    publishVoicePlayback(instanceIdRef.current);
-
-    if (trackPlayerActiveRef.current) {
+    if (trackPlayerActiveRef.current && isVoicePlaybackOwner(instanceIdRef.current)) {
+      const operation = ++playbackOperationRef.current;
       try {
+        publishVoicePlayback(instanceIdRef.current);
         await TrackPlayer.play();
+        if (operation !== playbackOperationRef.current || !isVoicePlaybackOwner(instanceIdRef.current)) {
+          return;
+        }
         setStatus("playing");
         setError("");
         return;
@@ -436,8 +504,13 @@ export default function MessageVoiceButton({
     }
 
     if (playerRef.current) {
+      const operation = ++playbackOperationRef.current;
       try {
+        publishVoicePlayback(instanceIdRef.current);
         playerRef.current.play();
+        if (operation !== playbackOperationRef.current || !isVoicePlaybackOwner(instanceIdRef.current)) {
+          return;
+        }
         setStatus("playing");
         setError("");
         return;
@@ -447,6 +520,8 @@ export default function MessageVoiceButton({
     }
 
     await cleanup();
+    const operation = ++playbackOperationRef.current;
+    publishVoicePlayback(instanceIdRef.current);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -456,16 +531,19 @@ export default function MessageVoiceButton({
 
     try {
       if (hasPresetAudio) {
-        await loadAndPlayFromSource({ uri: resolvedAudioSrc });
+        await loadAndPlayFromSource({ uri: resolvedAudioSrc }, operation);
         abortControllerRef.current = null;
         return;
       }
 
       const authHeaders = await resolveAuthHeaders();
+      if (operation !== playbackOperationRef.current || controller.signal.aborted) {
+        return;
+      }
 
       if (hasConversationAudio) {
         try {
-          const startedConversationPlayback = await startConversationPlayback(authHeaders);
+          const startedConversationPlayback = await startConversationPlayback(authHeaders, operation);
           if (startedConversationPlayback) {
             abortControllerRef.current = null;
             return;
@@ -475,11 +553,47 @@ export default function MessageVoiceButton({
             return;
           }
 
-          await cleanup();
-          abortControllerRef.current = controller;
+          await cleanup(false);
+          if (operation !== playbackOperationRef.current) {
+            return;
+          }
+          const fallbackController = new AbortController();
+          abortControllerRef.current = fallbackController;
+          publishVoicePlayback(instanceIdRef.current);
           setStatus("loading");
           console.warn("Conversation voice playback failed; falling back to text POST", conversationError);
+
+          const response = await fetch(voiceUrl, {
+            body: JSON.stringify({ text: trimmedText }),
+            headers: {
+              ...authHeaders,
+              "Content-Type": "application/json",
+            },
+            method: "POST",
+            signal: fallbackController.signal,
+          });
+
+          if (!response.ok) {
+            const detail = await response.text().catch(() => "");
+            throw new Error(`Voice stream failed: ${response.status} ${detail}`);
+          }
+
+          const audioBytes = new Uint8Array(await response.arrayBuffer());
+          const localUri = await writeAudioToCache(audioBytes);
+          fileUriRef.current = localUri;
+
+          if (operation !== playbackOperationRef.current || fallbackController.signal.aborted) {
+            return;
+          }
+
+          await loadAndPlayFromSource({ uri: localUri }, operation);
+          abortControllerRef.current = null;
+          return;
         }
+      }
+
+      if (operation !== playbackOperationRef.current || controller.signal.aborted) {
+        return;
       }
 
       const response = await fetch(voiceUrl, {
@@ -501,11 +615,11 @@ export default function MessageVoiceButton({
       const localUri = await writeAudioToCache(audioBytes);
       fileUriRef.current = localUri;
 
-      if (controller.signal.aborted) {
+      if (operation !== playbackOperationRef.current || controller.signal.aborted) {
         return;
       }
 
-      await loadAndPlayFromSource({ uri: localUri });
+      await loadAndPlayFromSource({ uri: localUri }, operation);
       abortControllerRef.current = null;
     } catch (rawError) {
       if ((rawError as Error | null)?.name === "AbortError") {
@@ -518,6 +632,7 @@ export default function MessageVoiceButton({
       console.warn("Voice playback failed", rawError);
       setStatus("error");
       setError(message);
+      publishVoicePlaybackStopped(instanceIdRef.current);
     }
   }, [
     cleanup,
@@ -548,7 +663,7 @@ export default function MessageVoiceButton({
 
   useEffect(() => {
     const unsubscribe = subscribeVoicePlayback((activeId) => {
-      if (activeId !== instanceIdRef.current) {
+      if (activeId && activeId !== instanceIdRef.current) {
         void pausePlayback();
       }
     });
@@ -686,11 +801,6 @@ const styles = StyleSheet.create({
     maxWidth: 180,
   },
 });
-
-
-
-
-
 
 
 

@@ -44,6 +44,8 @@ export const testIds = {
   modelMenu: "quiet-room.model.menu",
   modelMenuVoiceToggle: "quiet-room.model.voice-toggle",
   voiceModeIndicator: "quiet-room.voice-mode.indicator",
+  ambientAudioSelector: "quiet-room.ambient-audio.selector",
+  ambientAudioStatus: "quiet-room.ambient-audio.status",
   composerWrapper: "quiet-room.composer.wrapper",
   composerInput: "quiet-room.composer.input",
   composerExpand: "quiet-room.composer.expand",
@@ -147,4 +149,8 @@ export function conversationSearchHighlightTestId(
 
 export function modelOptionTestId(model: string): string {
   return `quiet-room.model.option.${model}`;
+}
+
+export function ambientAudioOptionTestId(environment: string): string {
+  return `quiet-room.ambient-audio.option.${environment}`;
 }

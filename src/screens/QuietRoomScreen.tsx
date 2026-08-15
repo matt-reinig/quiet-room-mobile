@@ -22,6 +22,7 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AboutModal from "../components/AboutModal";
+import AmbientAudioSelector from "../components/AmbientAudioSelector";
 import ConversationSearchMatchNavigator from "../components/ConversationSearchMatchNavigator";
 import ConversationsModal from "../components/ConversationsModal";
 import LoginModal from "../components/LoginModal";
@@ -32,6 +33,7 @@ import Spinner from "../components/Spinner";
 import { useAuth } from "../contexts/AuthContext";
 import { useFeatureFlag } from "../contexts/FeatureFlagsContext";
 import { useChatController } from "../hooks/useChatController";
+import { useAmbientAudio } from "../hooks/useAmbientAudio";
 import { useConversationSearch } from "../hooks/useConversationSearch";
 import { getAiConsentAccepted, setAiConsentAccepted } from "../lib/aiConsent";
 import {
@@ -143,6 +145,7 @@ function keyboardInsetFromScreenY(height: number | undefined, screenY: number | 
 export default function QuietRoomScreen() {
   const { deleteAccount, isAnon, logout, user } = useAuth();
   const voiceModeAvailable = useFeatureFlag("voice_mode", false);
+  const ambientAudioEnabled = useFeatureFlag("ambient_audio", false);
   const conversationSearchEnabled = useFeatureFlag("conversation_search", false);
   const insets = useSafeAreaInsets();
   const optimisticAnchorBindingRef = useRef<(payload: OptimisticAnchorBinding) => void>(() => {});
@@ -188,8 +191,14 @@ export default function QuietRoomScreen() {
     search: searchConversations,
     setQuery: setConversationSearchQuery,
   } = useConversationSearch({ enabled: conversationSearchEnabled, user });
+  const {
+    hydrated: ambientAudioHydrated,
+    playbackStatus: ambientAudioPlaybackStatus,
+    selectedEnvironment: ambientAudioEnvironment,
+    selectEnvironment: selectAmbientAudioEnvironment,
+  } = useAmbientAudio(ambientAudioEnabled);
   const showModelSection = modelOptions.length > 1;
-  const showChatOptionsButton = voiceModeAvailable || showModelSection;
+  const showChatOptionsButton = ambientAudioEnabled || voiceModeAvailable || showModelSection;
   const composerModelLabel = showChatOptionsButton
     ? labelForChatModel(currentModel, modelOptions)
     : "";
@@ -1900,6 +1909,7 @@ export default function QuietRoomScreen() {
                 <Pressable
                   disabled={loading}
                   onPress={() => {
+                    dismissKeyboard();
                     setShowProfileMenu(false);
                     setShowChatOptions((previous) => !previous);
                   }}
@@ -1919,71 +1929,93 @@ export default function QuietRoomScreen() {
 
                 {showChatOptions ? (
                   <View style={styles.modelMenu} testID={testIds.modelMenu}>
-                    {voiceModeAvailable ? (
-                      <>
-                        <Pressable
-                          onPress={() => {
-                            setVoiceModeEnabled((previous) => !previous);
-                          }}
-                          style={styles.modelMenuVoiceRow}
-                          testID={testIds.modelMenuVoiceToggle}
-                        >
-                          <View style={styles.modelMenuVoiceCopy}>
-                            <Text style={styles.modelMenuVoiceTitle}>Voice mode</Text>
-                            <Text style={styles.modelMenuVoiceSubtitle}>Auto-play replies</Text>
-                          </View>
-                          <View
-                            style={[
-                              styles.modelMenuSwitchTrack,
-                              voiceModeEnabled && styles.modelMenuSwitchTrackOn,
-                            ]}
+                    <ScrollView
+                      bounces={false}
+                      contentContainerStyle={styles.modelMenuScrollContent}
+                      showsVerticalScrollIndicator={false}
+                      style={styles.modelMenuScroll}
+                    >
+                      {ambientAudioEnabled ? (
+                        <AmbientAudioSelector
+                          hydrated={ambientAudioHydrated}
+                          onSelect={selectAmbientAudioEnvironment}
+                          playbackStatus={ambientAudioPlaybackStatus}
+                          selectedEnvironment={ambientAudioEnvironment}
+                        />
+                      ) : null}
+
+                      {ambientAudioEnabled && (voiceModeAvailable || showModelSection) ? (
+                        <View style={styles.modelMenuDivider} />
+                      ) : null}
+
+                      {voiceModeAvailable ? (
+                        <>
+                          <Pressable
+                            accessibilityRole="switch"
+                            accessibilityState={{ checked: voiceModeEnabled }}
+                            onPress={() => {
+                              setVoiceModeEnabled((previous) => !previous);
+                            }}
+                            style={styles.modelMenuVoiceRow}
+                            testID={testIds.modelMenuVoiceToggle}
                           >
+                            <View style={styles.modelMenuVoiceCopy}>
+                              <Text style={styles.modelMenuVoiceTitle}>Voice mode</Text>
+                              <Text style={styles.modelMenuVoiceSubtitle}>Auto-play replies</Text>
+                            </View>
                             <View
                               style={[
-                                styles.modelMenuSwitchThumb,
-                                voiceModeEnabled && styles.modelMenuSwitchThumbOn,
+                                styles.modelMenuSwitchTrack,
+                                voiceModeEnabled && styles.modelMenuSwitchTrackOn,
                               ]}
-                            />
-                          </View>
-                        </Pressable>
-                        {showModelSection ? <View style={styles.modelMenuDivider} /> : null}
-                      </>
-                    ) : null}
-
-                    {showModelSection ? (
-                      <>
-                        <Text style={styles.modelMenuSectionLabel}>MODEL</Text>
-
-                        {modelOptions.map((option) => {
-                          const active = option.key === currentModel;
-
-                          return (
-                            <Pressable
-                              key={option.key}
-                              onPress={() => {
-                                setCurrentModel(option.key);
-                                setShowChatOptions(false);
-                              }}
-                              style={[
-                                styles.modelMenuOption,
-                                active && styles.modelMenuOptionActive,
-                              ]}
-                              testID={modelOptionTestId(option.key)}
                             >
-                              <Text
+                              <View
                                 style={[
-                                  styles.modelMenuOptionLabel,
-                                  active && styles.modelMenuOptionLabelActive,
+                                  styles.modelMenuSwitchThumb,
+                                  voiceModeEnabled && styles.modelMenuSwitchThumbOn,
                                 ]}
+                              />
+                            </View>
+                          </Pressable>
+                          {showModelSection ? <View style={styles.modelMenuDivider} /> : null}
+                        </>
+                      ) : null}
+
+                      {showModelSection ? (
+                        <>
+                          <Text style={styles.modelMenuSectionLabel}>MODEL</Text>
+
+                          {modelOptions.map((option) => {
+                            const active = option.key === currentModel;
+
+                            return (
+                              <Pressable
+                                key={option.key}
+                                onPress={() => {
+                                  setCurrentModel(option.key);
+                                  setShowChatOptions(false);
+                                }}
+                                style={[
+                                  styles.modelMenuOption,
+                                  active && styles.modelMenuOptionActive,
+                                ]}
+                                testID={modelOptionTestId(option.key)}
                               >
-                                {option.shortLabel || option.label}
-                              </Text>
-                              {active ? <Text style={styles.modelMenuOptionBadge}>Active</Text> : null}
-                            </Pressable>
-                          );
-                        })}
-                      </>
-                    ) : null}
+                                <Text
+                                  style={[
+                                    styles.modelMenuOptionLabel,
+                                    active && styles.modelMenuOptionLabelActive,
+                                  ]}
+                                >
+                                  {option.shortLabel || option.label}
+                                </Text>
+                                {active ? <Text style={styles.modelMenuOptionBadge}>Active</Text> : null}
+                              </Pressable>
+                            );
+                          })}
+                        </>
+                      ) : null}
+                    </ScrollView>
                   </View>
                 ) : null}
               </View>
@@ -2791,8 +2823,6 @@ const styles = StyleSheet.create({
     bottom: 56,
     elevation: 20,
     left: 0,
-    paddingBottom: 8,
-    paddingTop: 0,
     position: "absolute",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
@@ -2800,6 +2830,13 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     width: 272,
     zIndex: 45,
+  },
+  modelMenuScroll: {
+    maxHeight: Dimensions.get("window").height * 0.62,
+  },
+  modelMenuScrollContent: {
+    paddingBottom: 8,
+    paddingTop: 0,
   },
   modelMenuDivider: {
     backgroundColor: mobileWeb.colors.border,

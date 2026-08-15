@@ -35,6 +35,8 @@ module.exports = {
   composerFullscreenInput: 'quiet-room.composer.fullscreen.input',
   modelMenuButton: 'quiet-room.model.toggle',
   voiceModeIndicator: 'quiet-room.voice-mode.indicator',
+  ambientAudioSelector: 'quiet-room.ambient-audio.selector',
+  ambientAudioStatus: 'quiet-room.ambient-audio.status',
   sendButton: 'quiet-room.send',
   fullscreenSendButton: 'quiet-room.send.fullscreen',
   scrollTopButton: 'quiet-room.scroll.top',
@@ -112,5 +114,8 @@ module.exports = {
   },
   modelOption(model) {
     return `quiet-room.model.option.${model}`;
+  },
+  ambientAudioOption(environment) {
+    return `quiet-room.ambient-audio.option.${environment}`;
   },
 };
