@@ -15,6 +15,7 @@ async function launchWithAmbientAudio(enabled, options = {}) {
       ambient_audio: enabled,
       chat_model_gpt_5_1: true,
       voice_mode: false,
+      ...(options.featureFlags || {}),
     },
   });
 
@@ -74,6 +75,25 @@ describe('Quiet Room ambient audio', () => {
 
     await element(by.id(ids.ambientAudioOption('off'))).tap();
     await expect(element(by.id(ids.ambientAudioStatus))).not.toExist();
+  });
+
+  it('scrolls to choices below the visible menu area', async () => {
+    await launchWithAmbientAudio(true, {
+      featureFlags: {
+        chat_model_gpt_5_3: true,
+        chat_model_gpt_5_5_reasoning_none: true,
+        voice_mode: true,
+      },
+    });
+    await openAmbientAudioSelector();
+
+    await waitFor(element(by.id(ids.modelOption('anthropic_fast_chat'))))
+      .toExist()
+      .withTimeout(10000);
+    await element(by.id(ids.modelMenu)).scrollTo('bottom');
+    await waitFor(element(by.id(ids.modelOption('anthropic_fast_chat'))))
+      .toBeVisible()
+      .withTimeout(10000);
   });
 
   it('removes the UI immediately when the live feature flag is disabled', async () => {

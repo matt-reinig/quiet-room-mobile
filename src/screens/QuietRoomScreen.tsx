@@ -1494,7 +1494,7 @@ export default function QuietRoomScreen() {
       <StatusBar style="dark" />
 
       <View style={styles.root}>
-        {(showProfileMenu || showChatOptions) ? (
+        {showProfileMenu ? (
           <Pressable
             onPress={() => {
               setShowProfileMenu(false);
@@ -1928,13 +1928,36 @@ export default function QuietRoomScreen() {
                 </Pressable>
 
                 {showChatOptions ? (
-                  <View style={styles.modelMenu} testID={testIds.modelMenu}>
-                    <ScrollView
-                      bounces={false}
-                      contentContainerStyle={styles.modelMenuScrollContent}
-                      showsVerticalScrollIndicator={false}
-                      style={styles.modelMenuScroll}
-                    >
+                  <Modal
+                    animationType="none"
+                    onRequestClose={() => setShowChatOptions(false)}
+                    presentationStyle="overFullScreen"
+                    statusBarTranslucent
+                    transparent
+                    visible
+                  >
+                    <View style={styles.modelMenuOverlay}>
+                      <Pressable
+                        onPress={() => setShowChatOptions(false)}
+                        style={StyleSheet.absoluteFill}
+                      />
+                      <View
+                        style={[
+                          styles.modelMenu,
+                          {
+                            bottom: composerKeyboardOffset + composerBottomPadding + 56,
+                          },
+                        ]}
+                      >
+                        <ScrollView
+                          bounces={false}
+                          contentContainerStyle={styles.modelMenuScrollContent}
+                          directionalLockEnabled
+                          nestedScrollEnabled
+                          showsVerticalScrollIndicator
+                          style={styles.modelMenuScroll}
+                          testID={testIds.modelMenu}
+                        >
                       {ambientAudioEnabled ? (
                         <AmbientAudioSelector
                           hydrated={ambientAudioHydrated}
@@ -2015,8 +2038,10 @@ export default function QuietRoomScreen() {
                           })}
                         </>
                       ) : null}
-                    </ScrollView>
-                  </View>
+                        </ScrollView>
+                      </View>
+                    </View>
+                  </Modal>
                 ) : null}
               </View>
             ) : null}
@@ -2822,7 +2847,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     bottom: 56,
     elevation: 20,
-    left: 0,
+    left: 16,
+    maxHeight: Dimensions.get("window").height * 0.62,
+    overflow: "hidden",
     position: "absolute",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
@@ -2831,12 +2858,16 @@ const styles = StyleSheet.create({
     width: 272,
     zIndex: 45,
   },
-  modelMenuScroll: {
-    maxHeight: Dimensions.get("window").height * 0.62,
-  },
   modelMenuScrollContent: {
     paddingBottom: 8,
     paddingTop: 0,
+  },
+  modelMenuScroll: {
+    flexShrink: 1,
+    maxHeight: Dimensions.get("window").height * 0.62,
+  },
+  modelMenuOverlay: {
+    ...StyleSheet.absoluteFillObject,
   },
   modelMenuDivider: {
     backgroundColor: mobileWeb.colors.border,
