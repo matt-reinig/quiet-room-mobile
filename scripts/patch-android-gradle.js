@@ -46,6 +46,20 @@ function ensureLineAfter(anchor, line) {
   appSource = appSource.replace(anchor, `${anchor}\n        ${line}`);
 }
 
+function ensureLineAfterMatch(pattern, line) {
+  if (appSource.includes(line)) {
+    return;
+  }
+
+  const match = appSource.match(pattern);
+  if (!match) {
+    throw new Error(`Unable to find regex anchor: ${pattern}`);
+  }
+
+  const anchor = match[0];
+  appSource = appSource.replace(anchor, `${anchor}\n        ${line}`);
+}
+
 function ensureBlockAfter(anchor, block) {
   const normalizedBlock = block.replace(/\s+$/, "");
   if (appSource.includes(normalizedBlock)) {
@@ -240,7 +254,10 @@ ext.quietRoomHasReleaseSigning = [
     ext.quietRoomReleaseSigningKeyPassword,
 ].every { value -> value != null && !value.toString().trim().isEmpty() }`
 );
-ensureLineAfter(`        versionName "1.0.0"`, `testBuildType System.getProperty('testBuildType', 'debug')`);
+ensureLineAfterMatch(
+  /^\s*versionName\s+"[^"]+"\s*$/m,
+  `testBuildType System.getProperty('testBuildType', 'debug')`
+);
 ensureLineAfter(
   `        testBuildType System.getProperty('testBuildType', 'debug')`,
   `testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'`
