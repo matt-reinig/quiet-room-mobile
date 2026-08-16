@@ -10,13 +10,13 @@ type FeatureFlagsGateProps = {
 
 export default function FeatureFlagsGate({ children }: FeatureFlagsGateProps) {
   const { user } = useAuth();
-  const { loading } = useFeatureFlags();
+  const { initialized, loading } = useFeatureFlags();
 
   if (!user) {
     return children;
   }
 
-  if (loading) {
+  if (loading && !initialized) {
     return (
       <View style={styles.centered}>
         <Spinner label="Loading settings..." size="lg" tone="accent" />
@@ -38,4 +38,3 @@ const styles = StyleSheet.create({
     padding: 24,
   },
 });
-

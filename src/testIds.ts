@@ -7,6 +7,9 @@ export const testIds = {
   profileLogoutButton: "quiet-room.profile.logout",
   profileDeleteButton: "quiet-room.profile.delete",
   profileSignInButton: "quiet-room.profile.signin",
+  anonymousSignInPrompt: "quiet-room.anonymous-signin-prompt",
+  anonymousSignInPromptButton: "quiet-room.anonymous-signin-prompt.signin",
+  anonymousSignInPromptDismiss: "quiet-room.anonymous-signin-prompt.dismiss",
   aiConsentModal: "quiet-room.ai-consent.modal",
   aiConsentCancelButton: "quiet-room.ai-consent.cancel",
   aiConsentAcceptButton: "quiet-room.ai-consent.accept",
@@ -41,6 +44,8 @@ export const testIds = {
   modelMenu: "quiet-room.model.menu",
   modelMenuVoiceToggle: "quiet-room.model.voice-toggle",
   voiceModeIndicator: "quiet-room.voice-mode.indicator",
+  ambientAudioSelector: "quiet-room.ambient-audio.selector",
+  ambientAudioStatus: "quiet-room.ambient-audio.status",
   composerWrapper: "quiet-room.composer.wrapper",
   composerInput: "quiet-room.composer.input",
   composerExpand: "quiet-room.composer.expand",
@@ -55,6 +60,17 @@ export const testIds = {
   conversationsNew: "quiet-room.conversations.new",
   conversationsList: "quiet-room.conversations.list",
   conversationsLoadingMore: "quiet-room.conversations.loading-more",
+  conversationsSearchInput: "quiet-room.conversations.search.input",
+  conversationsSearchSubmit: "quiet-room.conversations.search.submit",
+  conversationsSearchClear: "quiet-room.conversations.search.clear",
+  conversationsSearchLoading: "quiet-room.conversations.search.loading",
+  conversationsSearchError: "quiet-room.conversations.search.error",
+  conversationsSearchNoResults: "quiet-room.conversations.search.no-results",
+  conversationSearchNavigator: "quiet-room.conversation-search.navigator",
+  conversationSearchOrdinal: "quiet-room.conversation-search.ordinal",
+  conversationSearchPrevious: "quiet-room.conversation-search.previous",
+  conversationSearchNext: "quiet-room.conversation-search.next",
+  conversationSearchDismiss: "quiet-room.conversation-search.dismiss",
   conversationsRenameInput: "quiet-room.conversations.rename.input",
   conversationsRenameCancel: "quiet-room.conversations.rename.cancel",
   conversationsRenameSave: "quiet-room.conversations.rename.save",
@@ -109,6 +125,32 @@ export function conversationDeleteButtonTestId(id: string): string {
   return `quiet-room.conversation.${id}.delete`;
 }
 
+export function conversationSearchResultRowTestId(id: string): string {
+  return `quiet-room.conversation-search.${id}.row`;
+}
+
+export function conversationSearchSnippetTestId(id: string): string {
+  return `quiet-room.conversation-search.${id}.snippet`;
+}
+
+export function conversationSearchActiveMessageTestId(
+  conversationId: string,
+  messageIndex: number,
+): string {
+  return `quiet-room.conversation-search.${conversationId}.message.${messageIndex}`;
+}
+
+export function conversationSearchHighlightTestId(
+  conversationId: string,
+  messageIndex: number,
+): string {
+  return `quiet-room.conversation-search.${conversationId}.highlight.${messageIndex}`;
+}
+
 export function modelOptionTestId(model: string): string {
   return `quiet-room.model.option.${model}`;
+}
+
+export function ambientAudioOptionTestId(environment: string): string {
+  return `quiet-room.ambient-audio.option.${environment}`;
 }

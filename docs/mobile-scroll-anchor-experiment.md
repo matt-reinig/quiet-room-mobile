@@ -96,6 +96,19 @@ Questions to answer next time:
 
 ## Current status
 
-- experiment reverted
-- mobile behavior restored
+- the timing experiment is reverted
+- the original mobile behavior was restored rather than forcing browser-style motion into React Native
 - app refreshed on simulator and phone after the revert
+
+## Follow-through: QR-MOB-034 reliability fix
+
+The timing experiment and the first-message reliability problem are separate concerns. QR-MOB-034 does **not** reintroduce JS-driven scrolling, arbitrary delays, or a custom duration. It makes the existing native anchor reliable by treating each send as a durable transaction:
+
+- bind the anchor to the exact optimistic user message before the conversation-ID transition
+- keep the transaction pending when the message has not been exposed or measured yet
+- retry from layout, content-size, and scroll events until the requested offset is reachable and observed
+- retry again on keyboard show/hide, message/render commits, loading/conversation-ID changes, and reply completion so a missed native layout callback cannot leave the transaction idle
+- retain the minimum scroll-content height through reply completion so React Native cannot clamp the settled anchor back down
+- release automatic pinning only after deliberate user interaction or a send failure
+
+The shared lesson with the web fix is that first-send anchoring is a layout/state-readiness problem, not primarily a scroll-speed problem. Mobile still intentionally uses native scrolling; the reliability fix lives in `docs/qr-mob-034-first-message-scroll-anchor/implementation-notes.md` and does not claim desktop motion parity.

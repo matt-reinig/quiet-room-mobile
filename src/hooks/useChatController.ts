@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { User } from "firebase/auth";
 import {
   API_BASE,
@@ -15,11 +16,24 @@ import {
   resolveEnabledChatModelOptions,
   type ChatModelOption,
 } from "../lib/chatModels";
-import type { ChatMessage, Conversation, ConversationsById } from "../types/chat";
+import { getIdTokenWithAnonymousRecovery } from "../lib/firebase";
+import {
+  invalidateConversationQueries,
+  queryClient,
+  queryKeys,
+  removeConversationQuery,
+} from "../lib/queryClient";
+import type {
+  ChatMessage,
+  Conversation,
+  ConversationSearchResult,
+  ConversationsById,
+} from "../types/chat";
 
 const STREAM_FLUSH_INTERVAL_MS = 120;
 const CONVERSATIONS_PAGE_SIZE = 20;
 const MIN_LOADING_MORE_VISIBLE_MS = 800;
+const ACTIVE_CONVERSATION_STORAGE_PREFIX = "quiet-room.active-conversation";
 
 type ConversationListPage = {
   items: Record<string, unknown>[];
@@ -122,31 +136,59 @@ function mergeConversationPage(
   return next;
 }
 
-async function fetchChatModelCatalog(user: User): Promise<ChatModelOption[]> {
-  let idToken: string;
+function activeConversationStorageKey(uid: string): string {
+  return `${ACTIVE_CONVERSATION_STORAGE_PREFIX}.${uid}`;
+}
 
-  try {
-    idToken = await user.getIdToken();
-  } catch {
-    idToken = await user.getIdToken(true);
+function compareConversations(a: Conversation, b: Conversation): number {
+  const updatedAtDifference = (b.updatedAt || 0) - (a.updatedAt || 0);
+
+  if (updatedAtDifference !== 0) {
+    return updatedAtDifference;
   }
 
-  let response = await fetch(`${API_BASE}/api/model_catalog`, {
-    headers: { Authorization: `Bearer ${idToken}` },
+  const createdAtDifference = (b.createdAt || 0) - (a.createdAt || 0);
+
+  if (createdAtDifference !== 0) {
+    return createdAtDifference;
+  }
+
+  return b.id.localeCompare(a.id);
+}
+
+async function fetchChatModelCatalog(
+  user: User,
+  isCancelled: () => boolean,
+): Promise<ChatModelOption[]> {
+  let tokenResult = await getIdTokenWithAnonymousRecovery(user);
+
+  if (isCancelled()) {
+    return [];
+  }
+
+  return queryClient.fetchQuery({
+    queryKey: queryKeys.modelCatalog(tokenResult.user.uid),
+    queryFn: async ({ signal }) => {
+      let response = await fetch(`${API_BASE}/api/model_catalog`, {
+        headers: { Authorization: `Bearer ${tokenResult.idToken}` },
+        signal,
+      });
+
+      if (response.status === 401) {
+        tokenResult = await getIdTokenWithAnonymousRecovery(tokenResult.user, true);
+        response = await fetch(`${API_BASE}/api/model_catalog`, {
+          headers: { Authorization: `Bearer ${tokenResult.idToken}` },
+          signal,
+        });
+      }
+
+      if (!response.ok) {
+        throw new Error(`Failed to load model catalog: ${response.status}`);
+      }
+
+      return parseChatModelCatalog((await response.json()) as unknown);
+    },
   });
-
-  if (response.status === 401) {
-    const refreshedToken = await user.getIdToken(true);
-    response = await fetch(`${API_BASE}/api/model_catalog`, {
-      headers: { Authorization: `Bearer ${refreshedToken}` },
-    });
-  }
-
-  if (!response.ok) {
-    throw new Error(`Failed to load model catalog: ${response.status}`);
-  }
-
-  return parseChatModelCatalog((await response.json()) as unknown);
 }
 
 function decodeSseChunk(data: string): string {
@@ -351,6 +393,11 @@ function generateConversationId(): string {
 
 type UseChatControllerArgs = {
   isAnon: boolean;
+  onOptimisticUserMessage?: (payload: {
+    content: string;
+    messageIndex: number;
+  }) => void;
+  onSendAborted?: () => void;
   user: User | null;
 };
 
@@ -369,6 +416,7 @@ type UseChatControllerResult = {
   loadingMoreConversations: boolean;
   messages: ChatMessage[];
   modelOptions: ChatModelOption[];
+  openConversation: (conversation: Conversation | ConversationSearchResult | string) => void;
   renameConversation: (conversationId: string, title: string) => Promise<void>;
   sendMessage: (overrideText?: string) => Promise<void>;
   setCurrentId: (id: string | null) => void;
@@ -381,6 +429,8 @@ type UseChatControllerResult = {
 
 export function useChatController({
   isAnon,
+  onOptimisticUserMessage,
+  onSendAborted,
   user,
 }: UseChatControllerArgs): UseChatControllerResult {
   const { values: featureFlagValues } = useFeatureFlags();
@@ -408,7 +458,12 @@ export function useChatController({
 
   const chatLoadRequestIdRef = useRef(0);
   const currentIdRef = useRef<string | null>(null);
+  const anonymousConversationUidRef = useRef<string | null>(null);
+  const optimisticUserMessageCallbackRef = useRef(onOptimisticUserMessage);
+  const sendAbortedCallbackRef = useRef(onSendAborted);
   currentIdRef.current = currentId;
+  optimisticUserMessageCallbackRef.current = onOptimisticUserMessage;
+  sendAbortedCallbackRef.current = onSendAborted;
 
   useEffect(() => {
     if (!user) {
@@ -420,7 +475,7 @@ export function useChatController({
 
     const loadCatalog = async () => {
       try {
-        const nextOptions = await fetchChatModelCatalog(user);
+        const nextOptions = await fetchChatModelCatalog(user, () => cancelled);
 
         if (!cancelled) {
           setCatalogModelOptions(nextOptions.length > 0 ? nextOptions : null);
@@ -487,17 +542,16 @@ export function useChatController({
       return;
     }
 
-    if (isAnon) {
-      setConversations({});
-      setCurrentId(null);
-      setCurrentModelState(normalizeChatModelKey(DEFAULT_MODEL, modelOptions));
-      setSidebarLoading(false);
-      setLoadingMoreConversations(false);
-      setNextConversationCursor(null);
+    // A recovered anonymous UID already has the triggering conversation in
+    // local state. Let the send complete before a UID-change render reloads
+    // the list; ordinary anonymous startup still loads persisted history.
+    if (isAnon && anonymousConversationUidRef.current === user.uid) {
+      anonymousConversationUidRef.current = null;
       setConversationsHydrated(true);
       return;
     }
 
+    anonymousConversationUidRef.current = null;
     let cancelled = false;
 
     setConversationsHydrated(false);
@@ -505,30 +559,48 @@ export function useChatController({
 
     const loadConversations = async () => {
       try {
-        const idToken = await user.getIdToken(true);
-
-        const response = await fetch(`${API_BASE}/api/conversations`, {
-          headers: { Authorization: `Bearer ${idToken}` },
-        });
-
-        if (!response.ok) {
-          console.error("Failed to load conversations:", response.status);
-          return;
-        }
+        const tokenResult = await getIdTokenWithAnonymousRecovery(user, true);
 
         if (cancelled) {
           return;
         }
 
-        const payload = normalizeConversationListPayload((await response.json()) as unknown);
+        const result = await queryClient.fetchQuery({
+          queryKey: queryKeys.conversationPage(tokenResult.user.uid, null),
+          queryFn: async ({ signal }) => {
+            const response = await fetch(`${API_BASE}/api/conversations`, {
+              headers: { Authorization: `Bearer ${tokenResult.idToken}` },
+              signal,
+            });
+
+            if (!response.ok) {
+              throw new Error(`Failed to load conversations: ${response.status}`);
+            }
+
+            return {
+              payload: normalizeConversationListPayload((await response.json()) as unknown),
+            };
+          },
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        const payload = result.payload;
         const mapped = mergeConversationPage({}, payload.items, modelOptions);
-        const sorted = Object.values(mapped).sort(
-          (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)
-        );
+        const sorted = Object.values(mapped).sort(compareConversations);
+        const rememberedConversationId = isAnon
+          ? await AsyncStorage.getItem(activeConversationStorageKey(tokenResult.user.uid)).catch(() => null)
+          : null;
 
         setConversations(mapped);
         setNextConversationCursor(payload.nextCursor);
         setCurrentId((previous) => {
+          if (rememberedConversationId && mapped[rememberedConversationId]) {
+            return rememberedConversationId;
+          }
+
           if (previous && mapped[previous]) {
             return previous;
           }
@@ -551,6 +623,20 @@ export function useChatController({
       cancelled = true;
     };
   }, [isAnon, modelOptions, user]);
+
+  useEffect(() => {
+    if (!user?.isAnonymous) {
+      return;
+    }
+
+    const storageKey = activeConversationStorageKey(user.uid);
+
+    if (!currentId) {
+      return;
+    }
+
+    void AsyncStorage.setItem(storageKey, currentId).catch(() => null);
+  }, [currentId, user]);
 
   const setCurrentModel = useCallback(
     (model: string) => {
@@ -595,7 +681,7 @@ export function useChatController({
   );
 
   useEffect(() => {
-    if (!user || isAnon || !currentId) {
+    if (!user || !currentId) {
       return;
     }
 
@@ -606,40 +692,17 @@ export function useChatController({
     }
 
     const requestId = (chatLoadRequestIdRef.current += 1);
-    const abortController = new AbortController();
+    const conversationQueryKey = queryKeys.conversation(user.uid, currentId);
 
     setChatLoading(true);
 
     const loadConversation = async () => {
       try {
-        const idToken = await user.getIdToken(true);
+        const tokenResult = await getIdTokenWithAnonymousRecovery(user, true);
 
-        const response = await fetch(`${API_BASE}/api/conversations/${currentId}`, {
-          headers: { Authorization: `Bearer ${idToken}` },
-          signal: abortController.signal,
-        });
-
-        if (!response.ok) {
-          console.error("Failed to load conversation:", currentId, response.status);
-
-          if (requestId === chatLoadRequestIdRef.current) {
-            setConversations((previous) => {
-              const previousConversation = previous[currentId];
-
-              if (!previousConversation) {
-                return previous;
-              }
-
-              return {
-                ...previous,
-                [currentId]: {
-                  ...previousConversation,
-                  messagesLoaded: true,
-                },
-              };
-            });
-          }
-
+        if (tokenResult.recovered) {
+          setConversations({});
+          setCurrentId(null);
           return;
         }
 
@@ -647,7 +710,31 @@ export function useChatController({
           return;
         }
 
-        const dataRaw = (await response.json()) as unknown;
+        const resolvedConversationQueryKey = queryKeys.conversation(
+          tokenResult.user.uid,
+          currentId,
+        );
+        const dataRaw = await queryClient.fetchQuery({
+          queryKey: resolvedConversationQueryKey,
+          retry: false,
+          queryFn: async ({ signal }) => {
+            const response = await fetch(`${API_BASE}/api/conversations/${currentId}`, {
+              headers: { Authorization: `Bearer ${tokenResult.idToken}` },
+              signal,
+            });
+
+            if (!response.ok) {
+              throw new Error(`Failed to load conversation ${currentId}: ${response.status}`);
+            }
+
+            return (await response.json()) as unknown;
+          },
+        });
+
+        if (requestId !== chatLoadRequestIdRef.current) {
+          return;
+        }
+
         const data = isRecord(dataRaw) ? dataRaw : {};
 
         const fetchedMessagesRaw = Array.isArray(data.messages) ? data.messages : [];
@@ -731,9 +818,12 @@ export function useChatController({
     void loadConversation();
 
     return () => {
-      abortController.abort();
+      void queryClient.cancelQueries({
+        exact: true,
+        queryKey: conversationQueryKey,
+      });
     };
-  }, [conversations, currentId, isAnon, modelOptions, user]);
+  }, [conversations, currentId, modelOptions, user]);
 
   useEffect(() => {
     if (!currentId) {
@@ -775,6 +865,43 @@ export function useChatController({
     setStreamingModel(null);
   }, []);
 
+  const openConversation = useCallback(
+    (selection: Conversation | ConversationSearchResult | string) => {
+      const conversationId = typeof selection === "string" ? selection : selection.id;
+
+      if (!conversationId) {
+        return;
+      }
+
+      if (typeof selection !== "string") {
+        setConversations((previous) => {
+          const existing = previous[conversationId];
+          return {
+            ...previous,
+            [conversationId]: {
+              ...existing,
+              createdAt: selection.createdAt ?? existing?.createdAt,
+              currentModel:
+                existing?.currentModel ||
+                ("messages" in selection ? selection.currentModel : undefined),
+              id: conversationId,
+              logicalModelKey:
+                existing?.logicalModelKey ||
+                ("messages" in selection ? selection.logicalModelKey : undefined),
+              messages: existing?.messages || ("messages" in selection ? selection.messages : []),
+              messagesLoaded: existing?.messagesLoaded ?? false,
+              title: selection.title || existing?.title || "New Chat",
+              updatedAt: selection.updatedAt ?? existing?.updatedAt,
+            },
+          };
+        });
+      }
+
+      setCurrentId(conversationId);
+    },
+    [],
+  );
+
   const sendMessage = useCallback(
     async (overrideText?: string) => {
       const text = (typeof overrideText === "string" ? overrideText : input).trim();
@@ -783,12 +910,35 @@ export function useChatController({
         return;
       }
 
+      let tokenResult: Awaited<ReturnType<typeof getIdTokenWithAnonymousRecovery>>;
+
+      try {
+        tokenResult = await getIdTokenWithAnonymousRecovery(user);
+      } catch (error) {
+        console.error(error);
+        sendAbortedCallbackRef.current?.();
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Something went wrong talking to Quiet Room.";
+
+        Alert.alert("Quiet Room", message);
+        return;
+      }
+
+      if (tokenResult.user.isAnonymous) {
+        // Claim the recovered UID before AuthContext's token-change render so
+        // the identity reset does not erase the fresh recovery conversation.
+        anonymousConversationUidRef.current = tokenResult.user.uid;
+      }
+
       const now = Date.now();
-      const conversationId = currentId || generateConversationId();
+      const conversationId = tokenResult.recovered ? generateConversationId() : currentId || generateConversationId();
       const requestModel = requestModelForChatModel(currentModel, modelOptions);
       const requestLogicalKey = logicalKeyForChatModel(currentModel, modelOptions);
 
-      const previousMessages = conversations[conversationId]?.messages || [];
+      const previousMessages = tokenResult.recovered ? [] : conversations[conversationId]?.messages || [];
       const userMessage: ChatMessage = {
         content: text,
         logicalModelKey: requestLogicalKey,
@@ -797,7 +947,7 @@ export function useChatController({
       };
 
       const outgoingMessages = [...previousMessages, userMessage];
-      const existingConversation = conversations[conversationId];
+      const existingConversation = tokenResult.recovered ? null : conversations[conversationId];
 
       const shouldRename =
         (!existingConversation || existingConversation.title === "New Chat") &&
@@ -807,21 +957,32 @@ export function useChatController({
         ? buildConversationTitle(text)
         : existingConversation?.title || "New Chat";
 
+      optimisticUserMessageCallbackRef.current?.({
+        content: text,
+        messageIndex: outgoingMessages.length - 1,
+      });
+
       setConversations((previous) => {
         const previousConversation = previous[conversationId];
 
+        const nextConversation = {
+          createdAt: previousConversation?.createdAt || now,
+          currentModel,
+          id: conversationId,
+          logicalModelKey: requestLogicalKey,
+          messages: outgoingMessages,
+          messagesLoaded: true,
+          title,
+          updatedAt: now,
+        };
+
+        if (tokenResult.recovered) {
+          return { [conversationId]: nextConversation };
+        }
+
         return {
           ...previous,
-          [conversationId]: {
-            createdAt: previousConversation?.createdAt || now,
-            currentModel,
-            id: conversationId,
-            logicalModelKey: requestLogicalKey,
-            messages: outgoingMessages,
-            messagesLoaded: true,
-            title,
-            updatedAt: now,
-          },
+          [conversationId]: nextConversation,
         };
       });
 
@@ -835,8 +996,6 @@ export function useChatController({
       let flushTimer: ReturnType<typeof setTimeout> | null = null;
 
       try {
-        const idToken = await user.getIdToken();
-
         const payload: Record<string, unknown> = {
           conversation_id: conversationId,
           messages: outgoingMessages,
@@ -849,7 +1008,7 @@ export function useChatController({
 
         const requestBody = JSON.stringify(payload);
         const requestHeaders = {
-          Authorization: `Bearer ${idToken}`,
+          Authorization: `Bearer ${tokenResult.idToken}`,
           "Content-Type": "application/json",
         };
 
@@ -954,6 +1113,7 @@ export function useChatController({
         });
 
         setPartial("");
+        await invalidateConversationQueries(tokenResult.user.uid, conversationId);
       } catch (error) {
         console.error(error);
 
@@ -991,18 +1151,32 @@ export function useChatController({
     setLoadingMoreConversations(true);
 
     try {
-      const idToken = await user.getIdToken(true);
-      const query = `limit=${CONVERSATIONS_PAGE_SIZE}&cursor=${encodeURIComponent(nextConversationCursor)}`;
-      const response = await fetch(`${API_BASE}/api/conversations?${query}`, {
-        headers: { Authorization: `Bearer ${idToken}` },
-      });
+      const tokenResult = await getIdTokenWithAnonymousRecovery(user, true);
 
-      if (!response.ok) {
-        console.error("Failed to load more conversations:", response.status);
+      if (tokenResult.recovered) {
+        setConversations({});
+        setCurrentId(null);
+        setNextConversationCursor(null);
         return;
       }
 
-      const payload = normalizeConversationListPayload((await response.json()) as unknown);
+      const cursor = nextConversationCursor;
+      const payload = await queryClient.fetchQuery({
+        queryKey: queryKeys.conversationPage(tokenResult.user.uid, cursor),
+        queryFn: async ({ signal }) => {
+          const query = `limit=${CONVERSATIONS_PAGE_SIZE}&cursor=${encodeURIComponent(cursor)}`;
+          const response = await fetch(`${API_BASE}/api/conversations?${query}`, {
+            headers: { Authorization: `Bearer ${tokenResult.idToken}` },
+            signal,
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to load more conversations: ${response.status}`);
+          }
+
+          return normalizeConversationListPayload((await response.json()) as unknown);
+        },
+      });
 
       setConversations((previous) => mergeConversationPage(previous, payload.items, modelOptions));
       setNextConversationCursor(payload.nextCursor);
@@ -1032,12 +1206,19 @@ export function useChatController({
         throw new Error("Title cannot be empty");
       }
 
-      const idToken = await user.getIdToken(true);
+      const tokenResult = await getIdTokenWithAnonymousRecovery(user, true);
+
+      if (tokenResult.recovered) {
+        setConversations({});
+        setCurrentId(null);
+        setNextConversationCursor(null);
+        return;
+      }
 
       const response = await fetch(`${API_BASE}/api/conversations/${conversationId}`, {
         body: JSON.stringify({ title: trimmed }),
         headers: {
-          Authorization: `Bearer ${idToken}`,
+          Authorization: `Bearer ${tokenResult.idToken}`,
           "Content-Type": "application/json",
         },
         method: "PATCH",
@@ -1067,6 +1248,7 @@ export function useChatController({
           },
         };
       });
+      await invalidateConversationQueries(tokenResult.user.uid, conversationId);
     },
     [user]
   );
@@ -1077,10 +1259,17 @@ export function useChatController({
         return;
       }
 
-      const idToken = await user.getIdToken(true);
+      const tokenResult = await getIdTokenWithAnonymousRecovery(user, true);
+
+      if (tokenResult.recovered) {
+        setConversations({});
+        setCurrentId(null);
+        setNextConversationCursor(null);
+        return;
+      }
 
       const response = await fetch(`${API_BASE}/api/conversations/${conversationId}`, {
-        headers: { Authorization: `Bearer ${idToken}` },
+        headers: { Authorization: `Bearer ${tokenResult.idToken}` },
         method: "DELETE",
       });
 
@@ -1103,15 +1292,15 @@ export function useChatController({
             return previousCurrent;
           }
 
-          const nextConversation = Object.values(rest).sort(
-            (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)
-          )[0];
+          const nextConversation = Object.values(rest).sort(compareConversations)[0];
 
           return nextConversation?.id || null;
         });
 
         return rest;
       });
+      removeConversationQuery(tokenResult.user.uid, conversationId);
+      await invalidateConversationQueries(tokenResult.user.uid);
     },
     [user]
   );
@@ -1130,9 +1319,9 @@ export function useChatController({
   const resolvedChatLoading =
     sidebarLoading ||
     chatLoading ||
-    (Boolean(user) && !isAnon && Boolean(currentId) && !activeConversationLoaded);
+    (Boolean(user) && Boolean(currentId) && !activeConversationLoaded);
 
-  const shouldBlockForConversations = Boolean(user) && !isAnon && !conversationsHydrated;
+  const shouldBlockForConversations = Boolean(user) && !conversationsHydrated;
 
   const baseMessages = activeConversation?.messages || [];
 
@@ -1167,6 +1356,7 @@ export function useChatController({
     loadingMoreConversations,
     messages,
     modelOptions,
+    openConversation,
     renameConversation,
     sendMessage,
     setCurrentId,

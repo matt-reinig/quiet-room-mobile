@@ -1,5 +1,6 @@
 import type { User } from "firebase/auth";
 import { API_BASE } from "../config/env";
+import { getIdTokenWithAnonymousRecovery } from "./firebase";
 
 export const REPORT_RESPONSE_REASONS = [
   { label: "Harmful or unsafe", value: "harmful_or_unsafe" },
@@ -55,7 +56,12 @@ export async function submitResponseReport({
   reason,
   user,
 }: SubmitResponseReportArgs): Promise<void> {
-  const idToken = await user.getIdToken();
+  const tokenResult = await getIdTokenWithAnonymousRecovery(user);
+
+  if (tokenResult.recovered) {
+    throw new Error("Your anonymous session was refreshed. Please try again.");
+  }
+
   const response = await fetch(`${API_BASE}/api/report-response`, {
     body: JSON.stringify({
       assistantMessageId,
@@ -66,7 +72,7 @@ export async function submitResponseReport({
       reason,
     }),
     headers: {
-      Authorization: `Bearer ${idToken}`,
+      Authorization: `Bearer ${tokenResult.idToken}`,
       "Content-Type": "application/json",
     },
     method: "POST",

@@ -2,6 +2,8 @@ export const SUPPORTED_FEATURE_FLAGS = new Set([
   "chat_model_gpt_5_1",
   "chat_model_gpt_5_3",
   "chat_model_gpt_5_5_reasoning_none",
+  "ambient_audio",
+  "conversation_search",
   "voice_mode",
 ]);
 

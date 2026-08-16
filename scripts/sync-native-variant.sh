@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RELEASE_ASSET_ROOT="${MOBILE_RELEASE_ASSET_ROOT:-$ROOT_DIR}"
 APP_VARIANT="${1:-qa}"
 RELEASE_ENV="${2:-qa}"
 PLATFORM="${3:-all}"
@@ -47,6 +48,18 @@ echo "  app variant: $APP_VARIANT"
 echo "  release env: $RELEASE_ENV"
 echo "  platform: $PLATFORM"
 echo
+
+if [[ -z "${EXPO_PUBLIC_GOOGLE_SERVICES_FILE:-}" ]]; then
+  case "$APP_VARIANT" in
+    qa) android_google_services_file="$RELEASE_ASSET_ROOT/google-services.qa.json" ;;
+    prod) android_google_services_file="$RELEASE_ASSET_ROOT/google-services.prod.json" ;;
+  esac
+  if [[ -f "${android_google_services_file:-}" ]]; then
+    export EXPO_PUBLIC_GOOGLE_SERVICES_FILE="$android_google_services_file"
+    echo "Using Android Google services from $EXPO_PUBLIC_GOOGLE_SERVICES_FILE"
+    echo
+  fi
+fi
 
 (
   cd "$ROOT_DIR"

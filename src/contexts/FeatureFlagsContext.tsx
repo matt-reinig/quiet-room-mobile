@@ -4,15 +4,19 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+import type { User } from "firebase/auth";
 import { Linking } from "react-native";
 import { API_BASE } from "../config/env";
 import {
   filterSupportedFlagReasons,
   filterSupportedFlagValues,
 } from "../lib/featureFlags";
+import { getIdTokenWithAnonymousRecovery } from "../lib/firebase";
+import { queryClient, queryKeys } from "../lib/queryClient";
 import { useAuth } from "./AuthContext";
 
 type FeatureFlagReasons = Record<string, string>;
@@ -25,6 +29,7 @@ type E2EFeatureFlagsPayload = {
 type FeatureFlagsContextValue = {
   env: string | null;
   error: unknown;
+  initialized: boolean;
   isEnabled: (flag: string, defaultValue?: boolean) => boolean;
   loading: boolean;
   reasons: FeatureFlagReasons;
@@ -39,8 +44,10 @@ type FeatureFlagsProviderProps = {
 type FeatureFlagsState = {
   env: string | null;
   error: unknown;
+  initialized: boolean;
   loading: boolean;
   reasons: FeatureFlagReasons;
+  uid: string | null;
   values: FeatureFlagValues;
 };
 
@@ -49,9 +56,16 @@ type FeatureFlagsOverride = {
   values: FeatureFlagValues;
 };
 
+type RemoteFeatureFlags = Pick<FeatureFlagsState, "env" | "reasons" | "values">;
+type FeatureFlagTokenResult = {
+  idToken: string;
+  user: User;
+};
+
 const FeatureFlagsContext = createContext<FeatureFlagsContextValue>({
   env: null,
   error: null,
+  initialized: false,
   isEnabled: (_flag, defaultValue = false) => defaultValue,
   loading: false,
   reasons: {},
@@ -102,6 +116,7 @@ function parseFeatureFlagsFromUrl(url: string, source: string): FeatureFlagsOver
 function buildOverrideState(
   override: FeatureFlagsOverride,
   reason: string,
+  uid: string | null,
 ): FeatureFlagsState {
   const reasons: FeatureFlagReasons = {};
 
@@ -112,8 +127,10 @@ function buildOverrideState(
   return {
     env: override.env,
     error: null,
+    initialized: true,
     loading: false,
     reasons,
+    uid,
     values: override.values,
   };
 }
@@ -199,8 +216,18 @@ async function withTimeout<T>(
   }
 }
 
-async function fetchFeatureFlags(userToken: string): Promise<Response> {
+async function fetchFeatureFlags(
+  userToken: string,
+  querySignal?: AbortSignal,
+): Promise<Response> {
   const controller = new AbortController();
+  const abortFromQuery = () => controller.abort();
+
+  if (querySignal?.aborted) {
+    controller.abort();
+  } else {
+    querySignal?.addEventListener("abort", abortFromQuery, { once: true });
+  }
   const timer = setTimeout(() => {
     controller.abort();
   }, FEATURE_FLAGS_TIMEOUT_MS);
@@ -218,44 +245,83 @@ async function fetchFeatureFlags(userToken: string): Promise<Response> {
     throw error;
   } finally {
     clearTimeout(timer);
+    querySignal?.removeEventListener("abort", abortFromQuery);
   }
 }
 
 async function getIdTokenWithTimeout(
-  getIdToken: (forceRefresh?: boolean) => Promise<string>,
+  user: User,
   forceRefresh = false,
-): Promise<string> {
+): Promise<FeatureFlagTokenResult> {
   return withTimeout(
-    getIdToken(forceRefresh),
+    getIdTokenWithAnonymousRecovery(user, forceRefresh),
     FEATURE_FLAGS_TIMEOUT_MS,
     forceRefresh ? "Firebase ID token refresh" : "Firebase ID token",
   );
 }
 
+async function requestRemoteFeatureFlags(
+  tokenResult: FeatureFlagTokenResult,
+  signal?: AbortSignal,
+): Promise<RemoteFeatureFlags> {
+  let response = await fetchFeatureFlags(tokenResult.idToken, signal);
+
+  if (response.status === 401) {
+    tokenResult = await getIdTokenWithTimeout(tokenResult.user, true);
+    response = await fetchFeatureFlags(tokenResult.idToken, signal);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Failed to load feature flags: ${response.status}`);
+  }
+
+  const data = (await response.json()) as Partial<{
+    env: string;
+    reasons: FeatureFlagReasons;
+    values: FeatureFlagValues;
+  }>;
+
+  return {
+    env: typeof data.env === "string" ? data.env : null,
+    reasons: filterSupportedFlagReasons(data.reasons),
+    values: filterSupportedFlagValues(data.values),
+  };
+}
+
 export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
   const { user } = useAuth();
   const e2eOverrides = parseE2EFeatureFlags();
+  const loadRequestIdRef = useRef(0);
+  const overrideRef = useRef<FeatureFlagsOverride | null>(e2eOverrides);
 
   const [state, setState] = useState<FeatureFlagsState>(() => ({
     env: null,
     error: null,
+    initialized: Boolean(e2eOverrides) || !user,
     loading: Boolean(user) && !e2eOverrides,
     reasons: {},
+    uid: user?.uid || null,
     values: {},
   }));
 
-  const refresh = useCallback(async () => {
+  const loadFeatureFlags = useCallback(async (forceRefresh = false) => {
+    const requestId = (loadRequestIdRef.current += 1);
     const launchUrlOverrides = await readLaunchFeatureFlags();
 
-    if (launchUrlOverrides) {
-      setState(buildOverrideState(launchUrlOverrides, "launch_url_override"));
+    if (requestId !== loadRequestIdRef.current) {
       return;
     }
 
-    const overrides = parseE2EFeatureFlags();
+    if (launchUrlOverrides) {
+      overrideRef.current = launchUrlOverrides;
+      setState(buildOverrideState(launchUrlOverrides, "launch_url_override", user?.uid || null));
+      return;
+    }
+
+    const overrides = overrideRef.current;
 
     if (overrides) {
-      setState(buildOverrideState(overrides, "e2e_override"));
+      setState(buildOverrideState(overrides, "e2e_override", user?.uid || null));
       return;
     }
 
@@ -263,57 +329,88 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
       setState({
         env: null,
         error: null,
+        initialized: true,
         loading: false,
         reasons: {},
+        uid: null,
         values: {},
       });
       return;
     }
 
-    setState((prev) => ({ ...prev, loading: true, error: null }));
+    setState({
+      env: null,
+      error: null,
+      initialized: false,
+      loading: true,
+      reasons: {},
+      uid: user.uid,
+      values: {},
+    });
 
     try {
-      let idToken: string;
+      let tokenResult: FeatureFlagTokenResult;
 
       try {
-        idToken = await getIdTokenWithTimeout(user.getIdToken.bind(user));
+        tokenResult = await getIdTokenWithTimeout(user);
       } catch {
-        idToken = await getIdTokenWithTimeout(user.getIdToken.bind(user), true);
+        tokenResult = await getIdTokenWithTimeout(user, true);
       }
 
-      let response = await fetchFeatureFlags(idToken);
-
-      if (response.status === 401) {
-        const refreshedToken = await getIdTokenWithTimeout(user.getIdToken.bind(user), true);
-        response = await fetchFeatureFlags(refreshedToken);
+      if (requestId !== loadRequestIdRef.current) {
+        return;
       }
 
-      if (!response.ok) {
-        throw new Error(`Failed to load feature flags: ${response.status}`);
+      if (forceRefresh) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: queryKeys.featureFlags(tokenResult.user.uid) }),
+          queryClient.invalidateQueries({ queryKey: queryKeys.modelCatalog(tokenResult.user.uid) }),
+        ]);
       }
 
-      const data = (await response.json()) as Partial<{
-        env: string;
-        reasons: FeatureFlagReasons;
-        values: FeatureFlagValues;
-      }>;
+      const data = await queryClient.fetchQuery({
+        queryKey: queryKeys.featureFlags(tokenResult.user.uid),
+        queryFn: ({ signal }) => requestRemoteFeatureFlags(tokenResult, signal),
+      });
+
+      if (requestId !== loadRequestIdRef.current) {
+        return;
+      }
 
       setState({
-        env: typeof data.env === "string" ? data.env : null,
+        env: data.env,
         error: null,
+        initialized: true,
         loading: false,
-        reasons: filterSupportedFlagReasons(data.reasons),
-        values: filterSupportedFlagValues(data.values),
+        reasons: data.reasons,
+        uid: tokenResult.user.uid,
+        values: data.values,
       });
     } catch (error) {
+      if (requestId !== loadRequestIdRef.current) {
+        return;
+      }
+
       console.warn("Failed to load feature flags", error);
-      setState((prev) => ({ ...prev, loading: false, error }));
+      setState((prev) => ({
+        ...prev,
+        initialized: true,
+        loading: false,
+        error,
+        reasons: {},
+        values: {},
+      }));
     }
   }, [user]);
 
+  const refresh = useCallback(
+    () => loadFeatureFlags(true),
+    [loadFeatureFlags],
+  );
+
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void loadFeatureFlags();
+  }, [loadFeatureFlags]);
 
   useEffect(() => {
     const subscription = Linking.addEventListener("url", ({ url }) => {
@@ -323,13 +420,15 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
         return;
       }
 
-      setState(buildOverrideState(overrides, "url_event_override"));
+      loadRequestIdRef.current += 1;
+      overrideRef.current = overrides;
+      setState(buildOverrideState(overrides, "url_event_override", user?.uid || null));
     });
 
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [user?.uid]);
 
   const isEnabled = useCallback(
     (flag: string, defaultValue = false) => {
@@ -337,23 +436,43 @@ export function FeatureFlagsProvider({ children }: FeatureFlagsProviderProps) {
         return defaultValue;
       }
 
+      if (state.uid !== (user?.uid || null)) {
+        return defaultValue;
+      }
+
       const value = state.values[flag];
       return typeof value === "boolean" ? value : defaultValue;
     },
-    [state.values]
+    [state.uid, state.values, user?.uid]
   );
 
   const value = useMemo<FeatureFlagsContextValue>(
-    () => ({
-      env: state.env,
-      error: state.error,
+    () => {
+      const identityReady = state.uid === (user?.uid || null);
+
+      return {
+        env: identityReady ? state.env : null,
+        error: identityReady ? state.error : null,
+        initialized: state.initialized && identityReady,
+        isEnabled,
+        loading: state.loading || !identityReady,
+        reasons: identityReady ? state.reasons : {},
+        refresh,
+        values: identityReady ? state.values : {},
+      };
+    },
+    [
       isEnabled,
-      loading: state.loading,
-      reasons: state.reasons,
       refresh,
-      values: state.values,
-    }),
-    [isEnabled, refresh, state.env, state.error, state.loading, state.reasons, state.values]
+      state.env,
+      state.error,
+      state.initialized,
+      state.loading,
+      state.reasons,
+      state.uid,
+      state.values,
+      user?.uid,
+    ]
   );
 
   return (

@@ -6,7 +6,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_JSON="$ROOT_DIR/app.json"
 APP_CONFIG_JS="$ROOT_DIR/app.config.js"
 APP_BUILD_GRADLE="$ROOT_DIR/android/app/build.gradle"
-SIGNING_ENV_FILE="$ROOT_DIR/.env.android.signing"
+SIGNING_ENV_FILE="${MOBILE_ANDROID_SIGNING_ENV_FILE:-$ROOT_DIR/.env.android.signing}"
+SIGNING_ENV_ROOT="$(dirname "$SIGNING_ENV_FILE")"
+RELEASE_ASSET_ROOT="${MOBILE_RELEASE_ASSET_ROOT:-$ROOT_DIR}"
 expected_variant="${1:-}"
 expected_release_env="${2:-}"
 
@@ -66,7 +68,7 @@ resolve_repo_relative_path() {
     return 0
   fi
 
-  printf '%s/%s\n' "$ROOT_DIR" "$value"
+  printf '%s/%s\n' "$SIGNING_ENV_ROOT" "$value"
 }
 
 if [[ -z "$expected_variant" || -z "$expected_release_env" ]]; then
@@ -111,6 +113,10 @@ fi
 app_version="$(node -p "require(process.argv[1]).expo.version" "$APP_JSON")"
 app_version_code="$(node -e "const app=require(process.argv[1]); const value=app.expo?.android?.versionCode ?? ''; process.stdout.write(String(value));" "$APP_JSON")"
 selected_android_google_services_file="$(node -p "require(process.argv[1]).expo.android?.googleServicesFile ?? ''" "$APP_CONFIG_JS")"
+resolved_android_google_services_file="$selected_android_google_services_file"
+if [[ -n "$resolved_android_google_services_file" && "$resolved_android_google_services_file" != /* ]]; then
+  resolved_android_google_services_file="$RELEASE_ASSET_ROOT/$resolved_android_google_services_file"
+fi
 
 if [[ "$app_version" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]; then
   pass "Expo version is set: $app_version"
@@ -124,7 +130,7 @@ else
   fail "Android versionCode is missing or invalid in app.json"
 fi
 
-if [[ -n "$selected_android_google_services_file" && -f "$ROOT_DIR/$selected_android_google_services_file" ]]; then
+if [[ -n "$selected_android_google_services_file" && -f "$resolved_android_google_services_file" ]]; then
   pass "Found selected Android Google services file: $selected_android_google_services_file"
 else
   fail "Missing the Android Google services file selected by app.config.js"

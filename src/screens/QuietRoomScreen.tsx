@@ -22,6 +22,8 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AboutModal from "../components/AboutModal";
+import AmbientAudioSelector from "../components/AmbientAudioSelector";
+import ConversationSearchMatchNavigator from "../components/ConversationSearchMatchNavigator";
 import ConversationsModal from "../components/ConversationsModal";
 import LoginModal from "../components/LoginModal";
 import MessageBubble from "../components/MessageBubble";
@@ -31,7 +33,14 @@ import Spinner from "../components/Spinner";
 import { useAuth } from "../contexts/AuthContext";
 import { useFeatureFlag } from "../contexts/FeatureFlagsContext";
 import { useChatController } from "../hooks/useChatController";
+import { useAmbientAudio } from "../hooks/useAmbientAudio";
+import { useConversationSearch } from "../hooks/useConversationSearch";
 import { getAiConsentAccepted, setAiConsentAccepted } from "../lib/aiConsent";
+import {
+  clampSearchPosition,
+  findMatchingMessageIndexes,
+  selectedSearchPosition,
+} from "../lib/conversationSearchNavigation";
 import { labelForChatModel } from "../lib/chatModels";
 import {
   submitResponseReport,
@@ -39,10 +48,21 @@ import {
   type ReportResponseReason,
 } from "../lib/reportResponse";
 import { mobileWeb } from "../theme/mobileWeb";
-import { messageBubbleTestId, modelOptionTestId, testIds } from "../testIds";
-import type { ChatMessage } from "../types/chat";
+import {
+  conversationSearchActiveMessageTestId,
+  conversationSearchHighlightTestId,
+  messageBubbleTestId,
+  modelOptionTestId,
+  testIds,
+} from "../testIds";
+import type {
+  ChatMessage,
+  ConversationSearchNavigationTarget,
+  ConversationSearchResult,
+} from "../types/chat";
 
 const VOICE_MODE_STORAGE_KEY = "gabriel.voiceModeEnabled";
+const ANONYMOUS_SIGN_IN_PROMPT_STORAGE_PREFIX = "gabriel.anonymousSignInPrompt.dismissed";
 const USER_ANCHOR_TOP_OFFSET = 6;
 const MESSAGE_LIST_PADDING_TOP = 0;
 const MESSAGE_LIST_PADDING_BOTTOM = 104;
@@ -57,6 +77,10 @@ const ANDROID_KEYBOARD_FALLBACK_SCREEN_RATIO = 0.35;
 
 function androidRestingComposerBottomPadding(bottomInset: number): number {
   return Math.max(0, COMPOSER_RESTING_BOTTOM_PADDING - bottomInset);
+}
+
+function anonymousSignInPromptStorageKey(uid: string): string {
+  return `${ANONYMOUS_SIGN_IN_PROMPT_STORAGE_PREFIX}.${uid}`;
 }
 
 const QUIET_ROOM_OPENING_GREETING = `Welcome to Quiet Room.
@@ -77,6 +101,11 @@ type RenderMessage = {
   id: string;
   message: ChatMessage;
   messageIndex: number | null;
+};
+
+type OptimisticAnchorBinding = {
+  content: string;
+  messageIndex: number;
 };
 
 type ReportResponseTarget = {
@@ -116,7 +145,12 @@ function keyboardInsetFromScreenY(height: number | undefined, screenY: number | 
 export default function QuietRoomScreen() {
   const { deleteAccount, isAnon, logout, user } = useAuth();
   const voiceModeAvailable = useFeatureFlag("voice_mode", false);
+  const ambientAudioEnabled = useFeatureFlag("ambient_audio", false);
+  const conversationSearchEnabled = useFeatureFlag("conversation_search", false);
   const insets = useSafeAreaInsets();
+  const optimisticAnchorBindingRef = useRef<(payload: OptimisticAnchorBinding) => void>(() => {});
+  const clearAnchorStateRef = useRef<() => void>(() => {});
+  const refreshResolvedAnchorTargetRef = useRef<() => boolean>(() => false);
 
   const {
     chatLoading,
@@ -133,20 +167,46 @@ export default function QuietRoomScreen() {
     loadingMoreConversations,
     messages,
     modelOptions,
+    openConversation,
     renameConversation,
     sendMessage,
-    setCurrentId,
     setCurrentModel,
     setInput,
     shouldBlockForConversations,
     showThinking,
     sidebarLoading,
-  } = useChatController({ isAnon, user });
+  } = useChatController({
+    isAnon,
+    onOptimisticUserMessage: (payload) => optimisticAnchorBindingRef.current(payload),
+    onSendAborted: () => clearAnchorStateRef.current(),
+    user,
+  });
+  const {
+    clearSearch,
+    error: conversationSearchError,
+    hasSearched: conversationSearchHasSearched,
+    loading: conversationSearchLoading,
+    query: conversationSearchQuery,
+    results: conversationSearchResults,
+    search: searchConversations,
+    setQuery: setConversationSearchQuery,
+  } = useConversationSearch({ enabled: conversationSearchEnabled, user });
+  const {
+    hydrated: ambientAudioHydrated,
+    playbackStatus: ambientAudioPlaybackStatus,
+    selectedEnvironment: ambientAudioEnvironment,
+    selectEnvironment: selectAmbientAudioEnvironment,
+  } = useAmbientAudio(ambientAudioEnabled);
   const showModelSection = modelOptions.length > 1;
-  const showChatOptionsButton = voiceModeAvailable || showModelSection;
+  const showChatOptionsButton = ambientAudioEnabled || voiceModeAvailable || showModelSection;
   const composerModelLabel = showChatOptionsButton
     ? labelForChatModel(currentModel, modelOptions)
     : "";
+
+  const closeConversations = useCallback(() => {
+    clearSearch();
+    setShowConversations(false);
+  }, [clearSearch]);
 
   const [showAbout, setShowAbout] = useState(false);
   const [showCrucifix, setShowCrucifix] = useState(false);
@@ -161,6 +221,8 @@ export default function QuietRoomScreen() {
   const [aiConsentLoaded, setAiConsentLoaded] = useState(false);
   const [aiConsentPending, setAiConsentPending] = useState<string | null>(null);
   const [aiConsentSaving, setAiConsentSaving] = useState(false);
+  const [anonymousSignInPromptDismissed, setAnonymousSignInPromptDismissed] = useState(false);
+  const [anonymousSignInPromptHydrated, setAnonymousSignInPromptHydrated] = useState(false);
   const [voiceModeEnabled, setVoiceModeEnabled] = useState(false);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
@@ -174,6 +236,8 @@ export default function QuietRoomScreen() {
   const [reportResponseSubmitted, setReportResponseSubmitted] = useState(false);
 
   const [voiceAutoPlayTarget, setVoiceAutoPlayTarget] = useState<VoiceAutoPlayTarget | null>(null);
+  const [searchNavigationTarget, setSearchNavigationTarget] =
+    useState<ConversationSearchNavigationTarget | null>(null);
 
   const [composerVisibleLines, setComposerVisibleLines] = useState(1);
   const [anchorContentMinHeight, setAnchorContentMinHeight] = useState(0);
@@ -190,8 +254,15 @@ export default function QuietRoomScreen() {
   const scrollAnchorTopRef = useRef<number | null>(null);
   const pendingAnchorScrollRef = useRef(false);
   const pendingSendScrollRef = useRef(false);
-  const lastSendScrollKeyRef = useRef<string | null>(null);
+  const pendingSendTextRef = useRef<string | null>(null);
+  const pendingSendMessageIndexRef = useRef<number | null>(null);
+  const scrollAnchorRenderIdRef = useRef<string | null>(null);
   const messageOffsetsRef = useRef<Record<string, number>>({});
+  const searchMessageOffsetsRef = useRef<Record<string, number>>({});
+  const pendingSearchJumpRef = useRef(false);
+  const searchJumpRetryCountRef = useRef(0);
+  const previousCurrentIdRef = useRef<string | null>(currentId);
+  const previousSearchUidRef = useRef<string | null>(user?.uid || null);
   const anchorScrollRetryCountRef = useRef(0);
   const currentScrollOffsetRef = useRef(0);
   const listViewportHeightRef = useRef(0);
@@ -200,6 +271,83 @@ export default function QuietRoomScreen() {
   const newestButtonTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const keyboardFocusFallbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const clearSearchNavigation = useCallback(() => {
+    pendingSearchJumpRef.current = false;
+    searchJumpRetryCountRef.current = 0;
+    searchMessageOffsetsRef.current = {};
+    setSearchNavigationTarget(null);
+  }, []);
+
+  const selectSearchResult = useCallback(
+    (result: ConversationSearchResult) => {
+      const query = conversationSearchQuery.trim();
+      const selectedPosition = selectedSearchPosition(
+        result.messageIndexes || [],
+        result.messageIndex,
+      );
+
+      if (query && selectedPosition !== null && result.messageIndexes?.length) {
+        pendingSearchJumpRef.current = true;
+        searchJumpRetryCountRef.current = 0;
+        isNearBottomRef.current = false;
+        setSearchNavigationTarget({
+          conversationId: result.id,
+          messageIndexes: result.messageIndexes,
+          query,
+          selectedPosition,
+        });
+      } else {
+        clearSearchNavigation();
+      }
+
+      openConversation(result);
+      clearSearch();
+      setShowConversations(false);
+    },
+    [clearSearch, clearSearchNavigation, conversationSearchQuery, openConversation],
+  );
+
+  const moveSearchMatch = useCallback(
+    (delta: number) => {
+      if (!searchNavigationTarget) {
+        return;
+      }
+
+      const nextPosition = clampSearchPosition(
+        searchNavigationTarget.selectedPosition + delta,
+        searchNavigationTarget.messageIndexes.length,
+      );
+
+      if (nextPosition === searchNavigationTarget.selectedPosition) {
+        return;
+      }
+
+      pendingSearchJumpRef.current = true;
+      searchJumpRetryCountRef.current = 0;
+      isNearBottomRef.current = false;
+      setSearchNavigationTarget({
+        ...searchNavigationTarget,
+        selectedPosition: nextPosition,
+      });
+    },
+    [searchNavigationTarget],
+  );
+
+  useEffect(() => {
+    if (!conversationSearchEnabled) {
+      clearSearchNavigation();
+    }
+  }, [clearSearchNavigation, conversationSearchEnabled]);
+
+  useEffect(() => {
+    const nextUid = user?.uid || null;
+
+    if (previousSearchUidRef.current !== nextUid) {
+      previousSearchUidRef.current = nextUid;
+      clearSearchNavigation();
+    }
+  }, [clearSearchNavigation, user?.uid]);
+
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
     const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
@@ -207,6 +355,7 @@ export default function QuietRoomScreen() {
     const maybeKeepLatestVisible = () => {
       if (
         !isNearBottomRef.current ||
+        pendingSearchJumpRef.current ||
         pendingSendScrollRef.current ||
         pendingAnchorScrollRef.current ||
         typeof scrollAnchorTopRef.current === "number" ||
@@ -270,6 +419,41 @@ export default function QuietRoomScreen() {
     };
 
     void hydrateAiConsent();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.isAnonymous, user?.uid]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setAnonymousSignInPromptHydrated(false);
+
+    if (!user?.isAnonymous) {
+      setAnonymousSignInPromptDismissed(false);
+      setAnonymousSignInPromptHydrated(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void AsyncStorage.getItem(anonymousSignInPromptStorageKey(user.uid))
+      .then((value) => {
+        if (!cancelled) {
+          setAnonymousSignInPromptDismissed(value === "1");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAnonymousSignInPromptDismissed(false);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAnonymousSignInPromptHydrated(true);
+        }
+      });
 
     return () => {
       cancelled = true;
@@ -370,6 +554,7 @@ export default function QuietRoomScreen() {
     setVoiceAutoPlayTarget(null);
     prevLoadingRef.current = loading;
     prevMessagesRef.current = messages;
+    searchMessageOffsetsRef.current = {};
 
     const preservePendingSendAnchor =
       pendingSendScrollRef.current ||
@@ -388,8 +573,9 @@ export default function QuietRoomScreen() {
     scrollAnchorTopRef.current = null;
     pendingAnchorScrollRef.current = false;
     pendingSendScrollRef.current = false;
-    lastSendScrollKeyRef.current = null;
-    anchorScrollRetryCountRef.current = 0;
+    pendingSendTextRef.current = null;
+    pendingSendMessageIndexRef.current = null;
+    scrollAnchorRenderIdRef.current = null;
     anchorContentMinHeightRef.current = 0;
     setAnchorContentMinHeight(0);
     setShowScrollTopButton(false);
@@ -401,6 +587,19 @@ export default function QuietRoomScreen() {
 
     setShowNewestButton(false);
   }, [currentId]);
+
+  useEffect(() => {
+    const previousId = previousCurrentIdRef.current;
+    previousCurrentIdRef.current = currentId;
+
+    if (
+      previousId !== currentId &&
+      searchNavigationTarget &&
+      searchNavigationTarget.conversationId !== currentId
+    ) {
+      clearSearchNavigation();
+    }
+  }, [clearSearchNavigation, currentId, searchNavigationTarget]);
 
   useEffect(() => {
     const prevLoading = prevLoadingRef.current;
@@ -420,16 +619,14 @@ export default function QuietRoomScreen() {
       !lastMessage?.isStreaming;
 
     const finishedReply = finishedLoading || finishedStreaming;
-    const shouldReleaseSendAnchor =
-      finishedReply &&
-      (pendingSendScrollRef.current ||
-        pendingAnchorScrollRef.current ||
-        typeof scrollAnchorTopRef.current === "number" ||
-        anchorContentMinHeightRef.current > 0);
+    const hasActiveSendAnchor =
+      pendingSendScrollRef.current ||
+      pendingAnchorScrollRef.current ||
+      typeof scrollAnchorTopRef.current === "number" ||
+      anchorContentMinHeightRef.current > 0;
+    const shouldUpdateReplyScrollState = finishedReply && hasActiveSendAnchor;
 
-    if (shouldReleaseSendAnchor) {
-      clearAnchorState();
-
+    if (shouldUpdateReplyScrollState) {
       const hasMeasuredViewport =
         listContentHeightRef.current > 0 && listViewportHeightRef.current > 0;
       const nearBottom = hasMeasuredViewport
@@ -445,6 +642,10 @@ export default function QuietRoomScreen() {
       }
 
       setShowNewestButton(!nearBottom);
+      pendingAnchorScrollRef.current = true;
+      requestAnimationFrame(() => {
+        refreshResolvedAnchorTargetRef.current();
+      });
     }
 
     if (
@@ -471,7 +672,15 @@ export default function QuietRoomScreen() {
 
     prevLoadingRef.current = loading;
     prevMessagesRef.current = currentMessages;
-  }, [clearAnchorState, currentId, loading, messages, scrollToLatest, voiceModeAvailable, voiceModeEnabled]);
+  }, [
+    clearAnchorState,
+    currentId,
+    loading,
+    messages,
+    scrollToLatest,
+    voiceModeAvailable,
+    voiceModeEnabled,
+  ]);
 
   const renderedMessages = useMemo<RenderMessage[]>(() => {
     const opening: RenderMessage = {
@@ -505,8 +714,89 @@ export default function QuietRoomScreen() {
     return [opening, ...mapped];
   }, [currentId, messages, voiceAutoPlayTarget, voiceModeAvailable, voiceModeEnabled]);
 
+  const attemptSearchJump = useCallback(() => {
+    const target = searchNavigationTarget;
+
+    if (
+      !pendingSearchJumpRef.current ||
+      !target ||
+      currentId !== target.conversationId ||
+      chatLoading
+    ) {
+      return false;
+    }
+
+    const loadedIndexes = findMatchingMessageIndexes(messages, target.query);
+
+    if (loadedIndexes.length === 0) {
+      clearSearchNavigation();
+      return true;
+    }
+
+    const indexesMatchLoadedMessages =
+      loadedIndexes.length === target.messageIndexes.length &&
+      loadedIndexes.every((index, position) => index === target.messageIndexes[position]);
+
+    if (!indexesMatchLoadedMessages) {
+      const savedSelectedIndex = target.messageIndexes[target.selectedPosition];
+      const selectedPosition = loadedIndexes.includes(savedSelectedIndex)
+        ? loadedIndexes.indexOf(savedSelectedIndex)
+        : clampSearchPosition(target.selectedPosition, loadedIndexes.length);
+
+      setSearchNavigationTarget({
+        ...target,
+        messageIndexes: loadedIndexes,
+        selectedPosition,
+      });
+      return false;
+    }
+
+    const selectedIndex = target.messageIndexes[target.selectedPosition];
+
+    if (typeof selectedIndex !== "number") {
+      clearSearchNavigation();
+      return true;
+    }
+
+    const offset = searchMessageOffsetsRef.current[`${currentId}:${selectedIndex}`];
+
+    if (typeof offset !== "number") {
+      return false;
+    }
+
+    const maxScrollTop =
+      listContentHeightRef.current > 0 && listViewportHeightRef.current > 0
+        ? Math.max(0, listContentHeightRef.current - listViewportHeightRef.current)
+        : Number.POSITIVE_INFINITY;
+    const desiredTop = Math.max(0, Math.min(maxScrollTop, offset - 24));
+
+    pendingSearchJumpRef.current = false;
+    searchJumpRetryCountRef.current = 0;
+    currentScrollOffsetRef.current = desiredTop;
+    listRef.current?.scrollTo({ animated: false, x: 0, y: desiredTop });
+    return true;
+  }, [chatLoading, clearSearchNavigation, currentId, messages, searchNavigationTarget]);
+
+  useEffect(() => {
+    if (!pendingSearchJumpRef.current || !searchNavigationTarget) {
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      attemptSearchJump();
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [attemptSearchJump, searchNavigationTarget]);
+
   const showPromptCues =
     Boolean(isNewChat) && !chatLoading && messages.length === 0 && !isKeyboardVisible;
+  const firstUserMessageIndex = messages.findIndex((message) => message.role === "user");
+  const showAnonymousSignInPrompt =
+    Boolean(isAnon) &&
+    anonymousSignInPromptHydrated &&
+    !anonymousSignInPromptDismissed &&
+    firstUserMessageIndex >= 0;
 
   const hideNewestButton = useCallback(() => {
     if (newestButtonTimeoutRef.current) {
@@ -532,11 +822,14 @@ export default function QuietRoomScreen() {
     scrollAnchorTopRef.current = null;
     pendingAnchorScrollRef.current = false;
     pendingSendScrollRef.current = false;
-    lastSendScrollKeyRef.current = null;
-    anchorScrollRetryCountRef.current = 0;
+    pendingSendTextRef.current = null;
+    pendingSendMessageIndexRef.current = null;
+    scrollAnchorRenderIdRef.current = null;
     anchorContentMinHeightRef.current = 0;
     setAnchorContentMinHeight(0);
   }
+
+  clearAnchorStateRef.current = clearAnchorState;
 
   const isEffectivelyNearBottom = useCallback(
     (
@@ -589,7 +882,11 @@ export default function QuietRoomScreen() {
 
     if (typeof anchorTop !== "number") {
       pendingAnchorScrollRef.current = false;
-      anchorScrollRetryCountRef.current = 0;
+      return;
+    }
+
+    if (!syncAnchorMinHeight(anchorTop)) {
+      pendingAnchorScrollRef.current = true;
       return;
     }
 
@@ -613,53 +910,64 @@ export default function QuietRoomScreen() {
 
     if (!needsScrollAdjustment) {
       pendingAnchorScrollRef.current = false;
-      anchorScrollRetryCountRef.current = 0;
       return;
     }
 
     pendingAnchorScrollRef.current = true;
     scrollListTo(nextTop, animated);
+  }, [scrollListTo, syncAnchorMinHeight]);
 
-    const retryCount = anchorScrollRetryCountRef.current + 1;
-    anchorScrollRetryCountRef.current = retryCount;
+  const refreshResolvedAnchorTarget = useCallback(() => {
+    const anchorRenderId = scrollAnchorRenderIdRef.current;
+    if (!anchorRenderId) {
+      return false;
+    }
+
+    const anchorOffset = messageOffsetsRef.current[anchorRenderId];
+    if (typeof anchorOffset !== "number") {
+      return false;
+    }
+
+    const desiredTop = Math.max(0, anchorOffset - USER_ANCHOR_TOP_OFFSET);
+    scrollAnchorTopRef.current = desiredTop;
+    pendingAnchorScrollRef.current = true;
+
+    if (!syncAnchorMinHeight(desiredTop)) {
+      return false;
+    }
 
     requestAnimationFrame(() => {
-      const settled = Math.abs(currentScrollOffsetRef.current - nextTop) < 1;
-      if (settled || retryCount >= 4) {
-        pendingAnchorScrollRef.current = false;
-        anchorScrollRetryCountRef.current = 0;
-        return;
-      }
-
       syncAnchorScroll(false);
     });
-  }, [scrollListTo]);
+    return true;
+  }, [syncAnchorMinHeight, syncAnchorScroll]);
+
+  refreshResolvedAnchorTargetRef.current = refreshResolvedAnchorTarget;
 
   const tryResolvePendingSendAnchor = useCallback(() => {
     if (!pendingSendScrollRef.current) {
       return false;
     }
 
-    let lastUserIndex = -1;
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      if (messages[index]?.role === "user") {
-        lastUserIndex = index;
-        break;
+    const boundMessageIndex = pendingSendMessageIndexRef.current;
+    let lastUserIndex = typeof boundMessageIndex === "number" ? boundMessageIndex : -1;
+    if (lastUserIndex < 0) {
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        if (messages[index]?.role === "user") {
+          lastUserIndex = index;
+          break;
+        }
       }
     }
 
-    if (lastUserIndex < 0) {
-      pendingSendScrollRef.current = false;
-      return true;
+    if (lastUserIndex < 0 || !messages[lastUserIndex] || messages[lastUserIndex]?.role !== "user") {
+      return false;
     }
 
     const lastUser = messages[lastUserIndex];
-    const contentLength = typeof lastUser?.content === "string" ? lastUser.content.length : 0;
-    const scrollKey = `${currentId ?? "new"}:${lastUserIndex}:${contentLength}`;
-
-    if (lastSendScrollKeyRef.current === scrollKey) {
-      pendingSendScrollRef.current = false;
-      return true;
+    const pendingSendText = pendingSendTextRef.current;
+    if (pendingSendText && lastUser.content !== pendingSendText) {
+      return false;
     }
 
     const anchorRenderId = renderedMessages[lastUserIndex + 1]?.id;
@@ -673,32 +981,43 @@ export default function QuietRoomScreen() {
     }
 
     const desiredTop = Math.max(0, anchorOffset - USER_ANCHOR_TOP_OFFSET);
+    scrollAnchorRenderIdRef.current = anchorRenderId;
     scrollAnchorTopRef.current = desiredTop;
 
-    if (!syncAnchorMinHeight(desiredTop)) {
-      return false;
-    }
-
-    lastSendScrollKeyRef.current = scrollKey;
+    pendingSendTextRef.current = null;
+    pendingSendMessageIndexRef.current = null;
     pendingSendScrollRef.current = false;
     pendingAnchorScrollRef.current = true;
+
+    syncAnchorMinHeight(desiredTop);
 
     requestAnimationFrame(() => {
       syncAnchorScroll(false);
     });
 
     return true;
-  }, [currentId, messages, renderedMessages, syncAnchorMinHeight, syncAnchorScroll]);
+  }, [messages, renderedMessages, syncAnchorMinHeight, syncAnchorScroll]);
 
-  const armSendAnchor = useCallback(() => {
+  const armSendAnchor = useCallback((text: string) => {
     isNearBottomRef.current = false;
     scrollAnchorTopRef.current = null;
     pendingAnchorScrollRef.current = false;
     pendingSendScrollRef.current = true;
-    anchorScrollRetryCountRef.current = 0;
+    pendingSendTextRef.current = text.trim();
+    pendingSendMessageIndexRef.current = null;
+    scrollAnchorRenderIdRef.current = null;
     anchorContentMinHeightRef.current = 0;
     setAnchorContentMinHeight(0);
   }, []);
+
+  optimisticAnchorBindingRef.current = ({ content, messageIndex }) => {
+    if (!pendingSendScrollRef.current) {
+      return;
+    }
+
+    pendingSendTextRef.current = content;
+    pendingSendMessageIndexRef.current = messageIndex;
+  };
 
   useEffect(() => {
     if (!pendingSendScrollRef.current) {
@@ -711,6 +1030,13 @@ export default function QuietRoomScreen() {
   }, [messages, renderedMessages, tryResolvePendingSendAnchor]);
 
   useLayoutEffect(() => {
+    if (pendingSendScrollRef.current) {
+      requestAnimationFrame(() => {
+        void tryResolvePendingSendAnchor();
+      });
+      return;
+    }
+
     if (typeof scrollAnchorTopRef.current !== "number") {
       return;
     }
@@ -722,7 +1048,17 @@ export default function QuietRoomScreen() {
     if (pendingAnchorScrollRef.current) {
       syncAnchorScroll(false);
     }
-  }, [anchorContentMinHeight, syncAnchorMinHeight, syncAnchorScroll]);
+  }, [
+    anchorContentMinHeight,
+    currentId,
+    isKeyboardVisible,
+    loading,
+    messages,
+    renderedMessages,
+    syncAnchorMinHeight,
+    syncAnchorScroll,
+    tryResolvePendingSendAnchor,
+  ]);
 
   const handleComposerSizeChange = useCallback(
     (event: NativeSyntheticEvent<TextInputContentSizeChangeEventData>) => {
@@ -755,6 +1091,13 @@ export default function QuietRoomScreen() {
     const wasNearBottom = isNearBottomRef.current;
     listViewportHeightRef.current = nextHeight;
 
+    if (pendingSearchJumpRef.current) {
+      requestAnimationFrame(() => {
+        attemptSearchJump();
+      });
+      return;
+    }
+
     if (pendingSendScrollRef.current) {
       requestAnimationFrame(() => {
         void tryResolvePendingSendAnchor();
@@ -776,11 +1119,26 @@ export default function QuietRoomScreen() {
         scrollToLatest(false);
       });
     }
-  }, [isEffectivelyNearBottom, scrollToLatest, syncAnchorMinHeight, syncAnchorScroll, tryResolvePendingSendAnchor]);
+  }, [
+    attemptSearchJump,
+    isEffectivelyNearBottom,
+    refreshResolvedAnchorTarget,
+    scrollToLatest,
+    syncAnchorMinHeight,
+    syncAnchorScroll,
+    tryResolvePendingSendAnchor,
+  ]);
 
   const handleMessageListInnerLayout = useCallback((event: LayoutChangeEvent) => {
     const innerHeight = event.nativeEvent.layout.height;
     listContentHeightRef.current = innerHeight + MESSAGE_LIST_PADDING_TOP + MESSAGE_LIST_PADDING_BOTTOM;
+
+    if (pendingSearchJumpRef.current) {
+      requestAnimationFrame(() => {
+        attemptSearchJump();
+      });
+      return;
+    }
 
     if (pendingSendScrollRef.current) {
       requestAnimationFrame(() => {
@@ -791,11 +1149,10 @@ export default function QuietRoomScreen() {
 
     if (typeof scrollAnchorTopRef.current === "number") {
       requestAnimationFrame(() => {
-        pendingAnchorScrollRef.current = true;
-        syncAnchorScroll(false);
+        refreshResolvedAnchorTarget();
       });
     }
-  }, [syncAnchorScroll, tryResolvePendingSendAnchor]);
+  }, [attemptSearchJump, refreshResolvedAnchorTarget, syncAnchorScroll, tryResolvePendingSendAnchor]);
 
   const handleListScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -809,13 +1166,17 @@ export default function QuietRoomScreen() {
     );
     setShowScrollTopButton(contentOffset.y > 40);
 
+    if (pendingAnchorScrollRef.current) {
+      syncAnchorScroll(false);
+    }
+
     if (isNearBottomRef.current) {
       hideNewestButton();
       return;
     }
 
     queueNewestButton();
-  }, [hideNewestButton, isEffectivelyNearBottom, queueNewestButton]);
+  }, [hideNewestButton, isEffectivelyNearBottom, queueNewestButton, syncAnchorScroll]);
 
   const handleListScrollBeginDrag = useCallback(() => {
     if (
@@ -842,7 +1203,44 @@ export default function QuietRoomScreen() {
     }
   }, [clearAnchorState]);
 
+  useEffect(() => {
+    const retryAnchorAfterKeyboardLayout = () => {
+      if (
+        !pendingSendScrollRef.current &&
+        !pendingAnchorScrollRef.current &&
+        typeof scrollAnchorTopRef.current !== "number"
+      ) {
+        return;
+      }
+
+      requestAnimationFrame(() => {
+        if (pendingSendScrollRef.current) {
+          void tryResolvePendingSendAnchor();
+          return;
+        }
+
+        if (typeof scrollAnchorTopRef.current === "number") {
+          refreshResolvedAnchorTarget();
+        }
+      });
+    };
+
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSubscription = Keyboard.addListener(showEvent, retryAnchorAfterKeyboardLayout);
+    const hideSubscription = Keyboard.addListener(hideEvent, retryAnchorAfterKeyboardLayout);
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, [refreshResolvedAnchorTarget, tryResolvePendingSendAnchor]);
+
   function scrollToLatest(animated: boolean) {
+    if (pendingSearchJumpRef.current) {
+      return;
+    }
+
     hideNewestButton();
     isNearBottomRef.current = true;
     currentScrollOffsetRef.current = Math.max(0, listContentHeightRef.current - listViewportHeightRef.current);
@@ -924,7 +1322,7 @@ export default function QuietRoomScreen() {
         return;
       }
 
-      armSendAnchor();
+      armSendAnchor(nextInput);
       void sendMessage(nextInput);
     },
     [
@@ -1027,7 +1425,7 @@ export default function QuietRoomScreen() {
           return;
         }
 
-        armSendAnchor();
+        armSendAnchor(pendingMessage);
         void sendMessage(pendingMessage);
       })
       .catch((error) => {
@@ -1225,6 +1623,16 @@ export default function QuietRoomScreen() {
             </View>
           ) : null}
         </Pressable>
+        {searchNavigationTarget?.conversationId === currentId ? (
+          <ConversationSearchMatchNavigator
+            onDismiss={clearSearchNavigation}
+            onNext={() => moveSearchMatch(1)}
+            onPrevious={() => moveSearchMatch(-1)}
+            query={searchNavigationTarget.query}
+            selectedPosition={searchNavigationTarget.selectedPosition}
+            totalMatches={searchNavigationTarget.messageIndexes.length}
+          />
+        ) : null}
         <View onLayout={handleMessagesWrapLayout} style={styles.messagesWrap}>
           {chatLoading ? (
             <View style={styles.loadingConversation}>
@@ -1233,12 +1641,22 @@ export default function QuietRoomScreen() {
           ) : (
             <>
               <ScrollView
-                contentContainerStyle={styles.messageListContent}
+                contentContainerStyle={[
+                  styles.messageListContent,
+                  anchorContentMinHeight > 0
+                    ? { minHeight: anchorContentMinHeight + MESSAGE_LIST_PADDING_BOTTOM }
+                    : null,
+                ]}
                 style={styles.messageList}
                 keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "none"}
                 keyboardShouldPersistTaps="handled"
                 onContentSizeChange={(_, contentHeight) => {
                   listContentHeightRef.current = contentHeight;
+
+                  if (pendingSearchJumpRef.current) {
+                    attemptSearchJump();
+                    return;
+                  }
 
                   if (pendingSendScrollRef.current) {
                     void tryResolvePendingSendAnchor();
@@ -1277,6 +1695,16 @@ export default function QuietRoomScreen() {
                 >
                   {renderedMessages.map((item, index) => {
                     const shouldShowSeparator = index < renderedMessages.length - 1;
+                    const activeSearchMessageIndex =
+                      searchNavigationTarget?.conversationId === currentId
+                        ? searchNavigationTarget.messageIndexes[searchNavigationTarget.selectedPosition]
+                        : undefined;
+                    const isActiveSearchMessage =
+                      typeof item.messageIndex === "number" &&
+                      item.messageIndex === activeSearchMessageIndex;
+                    const activeSearchLabel = isActiveSearchMessage && searchNavigationTarget
+                      ? `Search match ${searchNavigationTarget.selectedPosition + 1} of ${searchNavigationTarget.messageIndexes.length}`
+                      : undefined;
 
                     return (
                       <View
@@ -1284,7 +1712,25 @@ export default function QuietRoomScreen() {
                         key={item.id}
                         style={index === 0 ? styles.openingMessageWrap : null}
                         onLayout={(event: LayoutChangeEvent) => {
-                          messageOffsetsRef.current[item.id] = event.nativeEvent.layout.y;
+                          const messageTop = event.nativeEvent.layout.y;
+                          messageOffsetsRef.current[item.id] = messageTop;
+
+                          if (scrollAnchorRenderIdRef.current) {
+                            requestAnimationFrame(() => {
+                              refreshResolvedAnchorTarget();
+                            });
+                          }
+
+                          if (currentId && typeof item.messageIndex === "number") {
+                            searchMessageOffsetsRef.current[`${currentId}:${item.messageIndex}`] =
+                              event.nativeEvent.layout.y;
+
+                            if (pendingSearchJumpRef.current) {
+                              requestAnimationFrame(() => {
+                                attemptSearchJump();
+                              });
+                            }
+                          }
 
                           if (pendingSendScrollRef.current && item.message.role === "user") {
                             requestAnimationFrame(() => {
@@ -1296,10 +1742,26 @@ export default function QuietRoomScreen() {
                         <MessageBubble
                           autoPlayVoice={item.autoPlayVoice}
                           conversationId={item.conversationId}
+                          highlightQuery={
+                            isActiveSearchMessage ? searchNavigationTarget?.query : undefined
+                          }
+                          highlightTestID={
+                            isActiveSearchMessage && currentId && typeof item.messageIndex === "number"
+                              ? conversationSearchHighlightTestId(currentId, item.messageIndex)
+                              : undefined
+                          }
                           message={item.message}
                           messageIndex={item.messageIndex ?? undefined}
                           onReportResponse={user ? openReportResponse : undefined}
-                          testID={index === 0 ? testIds.openingMessage : messageBubbleTestId(item.message.role, index - 1)}
+                          searchMatchActive={isActiveSearchMessage}
+                          searchMatchLabel={activeSearchLabel}
+                          testID={
+                            isActiveSearchMessage && currentId && typeof item.messageIndex === "number"
+                              ? conversationSearchActiveMessageTestId(currentId, item.messageIndex)
+                              : index === 0
+                                ? testIds.openingMessage
+                                : messageBubbleTestId(item.message.role, index - 1)
+                          }
                           testIndex={index === 0 ? undefined : index - 1}
                         />
                         {shouldShowSeparator ? <View style={styles.messageSeparator} /> : null}
@@ -1375,6 +1837,58 @@ export default function QuietRoomScreen() {
           </View>
         ) : null}
 
+        {showAnonymousSignInPrompt ? (
+          <View style={styles.anonymousSignInPromptDock}>
+            <View
+              accessibilityLabel="Guest sign-in prompt"
+              style={styles.anonymousSignInPrompt}
+              testID={testIds.anonymousSignInPrompt}
+            >
+              <View style={styles.anonymousSignInPromptCopy}>
+                <Text style={styles.anonymousSignInPromptTitle}>Want another conversation?</Text>
+                <Text style={styles.anonymousSignInPromptText}>Sign in to start one.</Text>
+              </View>
+              <Pressable
+                accessibilityLabel="Sign in"
+                accessibilityRole="button"
+                onPress={() => {
+                  dismissKeyboard();
+                  setShowChatOptions(false);
+                  setShowProfileMenu(false);
+                  setShowLogin(true);
+                }}
+                style={({ pressed }) => [
+                  styles.anonymousSignInPromptButton,
+                  pressed && styles.anonymousSignInPromptButtonPressed,
+                ]}
+                testID={testIds.anonymousSignInPromptButton}
+              >
+                <Text style={styles.anonymousSignInPromptButtonLabel}>Sign in</Text>
+              </Pressable>
+              <Pressable
+                accessibilityLabel="Dismiss sign-in prompt"
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={() => {
+                  setAnonymousSignInPromptDismissed(true);
+                  if (user?.isAnonymous) {
+                    void AsyncStorage.setItem(anonymousSignInPromptStorageKey(user.uid), "1").catch(() => {
+                      // Keep the prompt dismissed for this app session if persistence fails.
+                    });
+                  }
+                }}
+                style={({ pressed }) => [
+                  styles.anonymousSignInPromptDismiss,
+                  pressed && styles.anonymousSignInPromptDismissPressed,
+                ]}
+                testID={testIds.anonymousSignInPromptDismiss}
+              >
+                <Ionicons name="close" size={18} color={mobileWeb.colors.gray600} />
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
         <View
           style={[
             styles.inputRow,
@@ -1395,6 +1909,7 @@ export default function QuietRoomScreen() {
                 <Pressable
                   disabled={loading}
                   onPress={() => {
+                    dismissKeyboard();
                     setShowProfileMenu(false);
                     setShowChatOptions((previous) => !previous);
                   }}
@@ -1414,71 +1929,93 @@ export default function QuietRoomScreen() {
 
                 {showChatOptions ? (
                   <View style={styles.modelMenu} testID={testIds.modelMenu}>
-                    {voiceModeAvailable ? (
-                      <>
-                        <Pressable
-                          onPress={() => {
-                            setVoiceModeEnabled((previous) => !previous);
-                          }}
-                          style={styles.modelMenuVoiceRow}
-                          testID={testIds.modelMenuVoiceToggle}
-                        >
-                          <View style={styles.modelMenuVoiceCopy}>
-                            <Text style={styles.modelMenuVoiceTitle}>Voice mode</Text>
-                            <Text style={styles.modelMenuVoiceSubtitle}>Auto-play replies</Text>
-                          </View>
-                          <View
-                            style={[
-                              styles.modelMenuSwitchTrack,
-                              voiceModeEnabled && styles.modelMenuSwitchTrackOn,
-                            ]}
+                    <ScrollView
+                      bounces={false}
+                      contentContainerStyle={styles.modelMenuScrollContent}
+                      showsVerticalScrollIndicator={false}
+                      style={styles.modelMenuScroll}
+                    >
+                      {ambientAudioEnabled ? (
+                        <AmbientAudioSelector
+                          hydrated={ambientAudioHydrated}
+                          onSelect={selectAmbientAudioEnvironment}
+                          playbackStatus={ambientAudioPlaybackStatus}
+                          selectedEnvironment={ambientAudioEnvironment}
+                        />
+                      ) : null}
+
+                      {ambientAudioEnabled && (voiceModeAvailable || showModelSection) ? (
+                        <View style={styles.modelMenuDivider} />
+                      ) : null}
+
+                      {voiceModeAvailable ? (
+                        <>
+                          <Pressable
+                            accessibilityRole="switch"
+                            accessibilityState={{ checked: voiceModeEnabled }}
+                            onPress={() => {
+                              setVoiceModeEnabled((previous) => !previous);
+                            }}
+                            style={styles.modelMenuVoiceRow}
+                            testID={testIds.modelMenuVoiceToggle}
                           >
+                            <View style={styles.modelMenuVoiceCopy}>
+                              <Text style={styles.modelMenuVoiceTitle}>Voice mode</Text>
+                              <Text style={styles.modelMenuVoiceSubtitle}>Auto-play replies</Text>
+                            </View>
                             <View
                               style={[
-                                styles.modelMenuSwitchThumb,
-                                voiceModeEnabled && styles.modelMenuSwitchThumbOn,
+                                styles.modelMenuSwitchTrack,
+                                voiceModeEnabled && styles.modelMenuSwitchTrackOn,
                               ]}
-                            />
-                          </View>
-                        </Pressable>
-                        {showModelSection ? <View style={styles.modelMenuDivider} /> : null}
-                      </>
-                    ) : null}
-
-                    {showModelSection ? (
-                      <>
-                        <Text style={styles.modelMenuSectionLabel}>MODEL</Text>
-
-                        {modelOptions.map((option) => {
-                          const active = option.key === currentModel;
-
-                          return (
-                            <Pressable
-                              key={option.key}
-                              onPress={() => {
-                                setCurrentModel(option.key);
-                                setShowChatOptions(false);
-                              }}
-                              style={[
-                                styles.modelMenuOption,
-                                active && styles.modelMenuOptionActive,
-                              ]}
-                              testID={modelOptionTestId(option.key)}
                             >
-                              <Text
+                              <View
                                 style={[
-                                  styles.modelMenuOptionLabel,
-                                  active && styles.modelMenuOptionLabelActive,
+                                  styles.modelMenuSwitchThumb,
+                                  voiceModeEnabled && styles.modelMenuSwitchThumbOn,
                                 ]}
+                              />
+                            </View>
+                          </Pressable>
+                          {showModelSection ? <View style={styles.modelMenuDivider} /> : null}
+                        </>
+                      ) : null}
+
+                      {showModelSection ? (
+                        <>
+                          <Text style={styles.modelMenuSectionLabel}>MODEL</Text>
+
+                          {modelOptions.map((option) => {
+                            const active = option.key === currentModel;
+
+                            return (
+                              <Pressable
+                                key={option.key}
+                                onPress={() => {
+                                  setCurrentModel(option.key);
+                                  setShowChatOptions(false);
+                                }}
+                                style={[
+                                  styles.modelMenuOption,
+                                  active && styles.modelMenuOptionActive,
+                                ]}
+                                testID={modelOptionTestId(option.key)}
                               >
-                                {option.shortLabel || option.label}
-                              </Text>
-                              {active ? <Text style={styles.modelMenuOptionBadge}>Active</Text> : null}
-                            </Pressable>
-                          );
-                        })}
-                      </>
-                    ) : null}
+                                <Text
+                                  style={[
+                                    styles.modelMenuOptionLabel,
+                                    active && styles.modelMenuOptionLabelActive,
+                                  ]}
+                                >
+                                  {option.shortLabel || option.label}
+                                </Text>
+                                {active ? <Text style={styles.modelMenuOptionBadge}>Active</Text> : null}
+                              </Pressable>
+                            );
+                          })}
+                        </>
+                      ) : null}
+                    </ScrollView>
                   </View>
                 ) : null}
               </View>
@@ -1786,18 +2323,30 @@ export default function QuietRoomScreen() {
           hasMoreConversations={hasMoreConversations}
           loading={sidebarLoading}
           loadingMore={loadingMoreConversations}
-          onClose={() => setShowConversations(false)}
+          onClose={closeConversations}
           onLoadMore={loadMoreConversations}
           onCreateNew={() => {
             createNewChat();
-            setShowConversations(false);
+            clearSearchNavigation();
+            closeConversations();
           }}
           onDeleteConversation={deleteConversation}
           onRenameConversation={renameConversation}
           onSelectConversation={(conversationId) => {
-            setCurrentId(conversationId);
-            setShowConversations(false);
+            clearSearchNavigation();
+            openConversation(conversationId);
+            closeConversations();
           }}
+          onSelectSearchResult={selectSearchResult}
+          onSearchQueryChange={setConversationSearchQuery}
+          onSearchSubmit={searchConversations}
+          onClearSearch={clearSearch}
+          searchEnabled={conversationSearchEnabled}
+          searchError={conversationSearchError}
+          searchHasSearched={conversationSearchHasSearched}
+          searchLoading={conversationSearchLoading}
+          searchQuery={conversationSearchQuery}
+          searchResults={conversationSearchResults}
           visible={!isAnon && showConversations}
         />
       </View>
@@ -1806,6 +2355,65 @@ export default function QuietRoomScreen() {
 }
 
 const styles = StyleSheet.create({
+  anonymousSignInPrompt: {
+    alignItems: "center",
+    alignSelf: "stretch",
+    backgroundColor: mobileWeb.colors.blue50,
+    borderColor: mobileWeb.colors.blue200,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  anonymousSignInPromptButton: {
+    alignItems: "center",
+    backgroundColor: mobileWeb.colors.blue600,
+    borderRadius: 9,
+    justifyContent: "center",
+    minHeight: 36,
+    paddingHorizontal: 12,
+  },
+  anonymousSignInPromptButtonLabel: {
+    color: mobileWeb.colors.white,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  anonymousSignInPromptButtonPressed: {
+    opacity: 0.82,
+  },
+  anonymousSignInPromptCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  anonymousSignInPromptDismiss: {
+    alignItems: "center",
+    borderRadius: 999,
+    height: 32,
+    justifyContent: "center",
+    width: 32,
+  },
+  anonymousSignInPromptDismissPressed: {
+    backgroundColor: "rgba(120, 113, 108, 0.12)",
+  },
+  anonymousSignInPromptDock: {
+    backgroundColor: mobileWeb.colors.surface,
+    borderTopColor: mobileWeb.colors.gray200,
+    borderTopWidth: 1,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+  },
+  anonymousSignInPromptText: {
+    color: mobileWeb.colors.gray600,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  anonymousSignInPromptTitle: {
+    color: mobileWeb.colors.gray700,
+    fontSize: 14,
+    fontWeight: "700",
+  },
   centeredWrap: {
     alignItems: "center",
     flex: 1,
@@ -2215,8 +2823,6 @@ const styles = StyleSheet.create({
     bottom: 56,
     elevation: 20,
     left: 0,
-    paddingBottom: 8,
-    paddingTop: 0,
     position: "absolute",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
@@ -2224,6 +2830,13 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     width: 272,
     zIndex: 45,
+  },
+  modelMenuScroll: {
+    maxHeight: Dimensions.get("window").height * 0.62,
+  },
+  modelMenuScrollContent: {
+    paddingBottom: 8,
+    paddingTop: 0,
   },
   modelMenuDivider: {
     backgroundColor: mobileWeb.colors.border,

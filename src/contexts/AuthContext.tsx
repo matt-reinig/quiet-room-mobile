@@ -1,18 +1,30 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type { User } from "firebase/auth";
 import { Linking, NativeModules, StyleSheet, View } from "react-native";
 import Spinner from "../components/Spinner";
 import {
   deleteAccount as firebaseDeleteAccount,
   ensureAuth as firebaseEnsureAuth,
+  loginWithCustomToken as firebaseLoginWithCustomToken,
   loginWithApple as firebaseLoginWithApple,
   loginWithEmail as firebaseLoginWithEmail,
   loginWithGoogle as firebaseLoginWithGoogle,
   logout as firebaseLogout,
   sendPasswordReset as firebaseSendPasswordReset,
   signupWithEmail as firebaseSignupWithEmail,
+  subscribeAuthUser,
 } from "../lib/firebase";
 import { APP_VARIANT, RELEASE_ENV } from "../config/env";
+import { removeUserQueries } from "../lib/queryClient";
 
 type AuthContextValue = {
   deleteAccount: () => Promise<void>;
@@ -47,7 +59,11 @@ const isDetoxSession = Boolean(
 );
 const allowLocalQaE2ELogin = APP_VARIANT === "qa" && RELEASE_ENV === "local";
 
-function parseE2ELoginFromUrl(url: string | null): { email: string; password: string } | null {
+type E2ELogin =
+  | { customToken: string }
+  | { email: string; password: string };
+
+function parseE2ELoginFromUrl(url: string | null): E2ELogin | null {
   if ((!isDetoxSession && !allowLocalQaE2ELogin) || !url) {
     return null;
   }
@@ -58,6 +74,12 @@ function parseE2ELoginFromUrl(url: string | null): { email: string; password: st
   }
 
   const params = new URLSearchParams(url.slice(queryIndex + 1));
+  const customToken = params.get("e2eLoginCustomToken")?.trim();
+
+  if (customToken) {
+    return { customToken };
+  }
+
   const email = params.get("e2eLoginEmail")?.trim();
   const password = params.get("e2eLoginPassword") || "";
 
@@ -84,6 +106,49 @@ export function AuthProvider({ children }: AuthProviderProps) {
     loading: false,
     user: null,
   });
+  const cachedUserUidRef = useRef<string | null>(null);
+
+  const applyResolvedUser = useCallback((resolvedUser: User | null, loading = false) => {
+    setState({
+      initializing: false,
+      isAnon: Boolean(resolvedUser?.isAnonymous),
+      loading,
+      user: resolvedUser,
+    });
+  }, []);
+
+  useEffect(() => {
+    return subscribeAuthUser((nextUser) => {
+      setState((prev) => {
+        const nextIsAnon = Boolean(nextUser?.isAnonymous);
+
+        if (
+          prev.initializing ||
+          (prev.user?.uid === nextUser?.uid && prev.isAnon === nextIsAnon)
+        ) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          isAnon: nextIsAnon,
+          loading: false,
+          user: nextUser,
+        };
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    const previousUid = cachedUserUidRef.current;
+    const nextUid = state.user?.uid || null;
+
+    if (previousUid && previousUid !== nextUid) {
+      removeUserQueries(previousUid);
+    }
+
+    cachedUserUidRef.current = nextUid;
+  }, [state.user?.uid]);
 
   useEffect(() => {
     const initializeAuth = async () => {
@@ -93,15 +158,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const initialUser = (await firebaseEnsureAuth()) as User;
         const e2eLogin = await readLaunchE2ELogin();
         const resolvedUser = e2eLogin
-          ? ((await firebaseLoginWithEmail(e2eLogin.email, e2eLogin.password)) as { user: User }).user
+          ? ("customToken" in e2eLogin
+              ? ((await firebaseLoginWithCustomToken(e2eLogin.customToken)) as { user: User }).user
+              : ((await firebaseLoginWithEmail(e2eLogin.email, e2eLogin.password)) as { user: User }).user)
           : initialUser;
 
-        setState({
-          initializing: false,
-          isAnon: Boolean(resolvedUser?.isAnonymous),
-          loading: false,
-          user: resolvedUser,
-        });
+        applyResolvedUser(resolvedUser);
       } catch (error) {
         console.error("Auth initialization failed", error);
         setState((prev) => ({ ...prev, initializing: false }));
@@ -109,7 +171,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
 
     void initializeAuth();
-  }, []);
+  }, [applyResolvedUser]);
 
   const loginWithGoogle = async (idToken: string) => {
     setState((prev) => ({ ...prev, loading: true }));
@@ -119,12 +181,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         user: User;
       };
 
-      setState({
-        initializing: false,
-        isAnon: Boolean(loginUser.user?.isAnonymous),
-        loading: false,
-        user: loginUser.user,
-      });
+      applyResolvedUser(loginUser.user);
 
       return loginUser;
     } catch (error) {
@@ -141,12 +198,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         user: User;
       };
 
-      setState({
-        initializing: false,
-        isAnon: Boolean(loginUser.user?.isAnonymous),
-        loading: false,
-        user: loginUser.user,
-      });
+      applyResolvedUser(loginUser.user);
 
       return loginUser;
     } catch (error) {
@@ -163,12 +215,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         user: User;
       };
 
-      setState({
-        initializing: false,
-        isAnon: Boolean(loginUser.user?.isAnonymous),
-        loading: false,
-        user: loginUser.user,
-      });
+      applyResolvedUser(loginUser.user);
 
       return loginUser;
     } catch (error) {
@@ -195,12 +242,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         user: User;
       };
 
-      setState({
-        initializing: false,
-        isAnon: Boolean(newUser.user?.isAnonymous),
-        loading: false,
-        user: newUser.user,
-      });
+      applyResolvedUser(newUser.user);
 
       return newUser;
     } catch (error) {
@@ -214,12 +256,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const logoutUser = (await firebaseLogout()) as User;
 
-    setState({
-      initializing: false,
-      isAnon: Boolean(logoutUser?.isAnonymous),
-      loading: false,
-      user: logoutUser,
-    });
+    applyResolvedUser(logoutUser);
   };
 
   const deleteAccount = async () => {
@@ -228,12 +265,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const nextUser = (await firebaseDeleteAccount()) as User;
 
-      setState({
-        initializing: false,
-        isAnon: Boolean(nextUser?.isAnonymous),
-        loading: false,
-        user: nextUser,
-      });
+      applyResolvedUser(nextUser);
     } catch (error) {
       setState((prev) => ({ ...prev, loading: false }));
       throw error;

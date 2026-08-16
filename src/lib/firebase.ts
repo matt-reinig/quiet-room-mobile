@@ -21,9 +21,11 @@ const {
   GoogleAuthProvider,
   initializeAuth,
   OAuthProvider,
+  onIdTokenChanged,
   sendPasswordResetEmail,
   signInAnonymously,
   signInWithCredential,
+  signInWithCustomToken,
   signInWithEmailAndPassword,
   signOut,
 } = firebaseAuth;
@@ -83,21 +85,169 @@ function maybeConnectAuthEmulator() {
 
 maybeConnectAuthEmulator();
 
-async function resetToAnonymousSession() {
-  if (auth.currentUser && !auth.currentUser.isAnonymous) {
+const STALE_ANONYMOUS_SESSION_ERROR_CODES = new Set([
+  "auth/id-token-expired",
+  "auth/invalid-refresh-token",
+  "auth/invalid-user-token",
+  "auth/token-expired",
+  "auth/user-not-found",
+  "auth/user-token-expired",
+]);
+
+type IdTokenResult = {
+  idToken: string;
+  recovered: boolean;
+  user: User;
+};
+
+type AnonymousRecoveryResult = {
+  idToken: string;
+  user: User;
+};
+
+let anonymousRecoveryPromise: Promise<AnonymousRecoveryResult> | null = null;
+let anonymousTokenRequest: { promise: Promise<string>; uid: string } | null = null;
+
+function getAuthErrorCode(error: unknown): string {
+  return typeof error === "object" && error !== null && "code" in error
+    ? String(error.code)
+    : "";
+}
+
+export function isStaleAnonymousSessionError(error: unknown): boolean {
+  const code = getAuthErrorCode(error);
+  return STALE_ANONYMOUS_SESSION_ERROR_CODES.has(code);
+}
+
+async function getAnonymousIdToken(user: User, forceRefresh: boolean): Promise<string> {
+  if (anonymousTokenRequest?.uid === user.uid) {
+    return anonymousTokenRequest.promise;
+  }
+
+  const promise = user.getIdToken(forceRefresh);
+  const request = { promise, uid: user.uid };
+  anonymousTokenRequest = request;
+
+  try {
+    return await promise;
+  } finally {
+    if (anonymousTokenRequest === request) {
+      anonymousTokenRequest = null;
+    }
+  }
+}
+
+async function resetToAnonymousSession(options: { forceSignOut?: boolean } = {}) {
+  const currentUser = auth.currentUser;
+
+  if (currentUser && (options.forceSignOut || !currentUser.isAnonymous)) {
     try {
       await signOut(auth);
     } catch (error) {
       console.warn("signOut during session reset failed", error);
     }
 
-    if (Platform.OS === "android") {
+    if (!currentUser.isAnonymous && Platform.OS === "android") {
       await GoogleSignin.signOut().catch(() => null);
     }
   }
 
   const credential = await signInAnonymously(auth);
   return credential.user;
+}
+
+async function recoverAnonymousUser(staleUser: User): Promise<AnonymousRecoveryResult> {
+  if (anonymousRecoveryPromise) {
+    return anonymousRecoveryPromise;
+  }
+
+  const activeUser = auth.currentUser;
+
+  if (activeUser && activeUser.uid !== staleUser.uid) {
+    if (!activeUser.isAnonymous) {
+      throw new Error("The authenticated user changed during anonymous session recovery.");
+    }
+
+    try {
+      return {
+        idToken: await getAnonymousIdToken(activeUser, true),
+        user: activeUser,
+      };
+    } catch (error) {
+      if (!isStaleAnonymousSessionError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  const recovery = (async () => {
+    const user = await resetToAnonymousSession({ forceSignOut: true });
+    return {
+      idToken: await getAnonymousIdToken(user, false),
+      user,
+    };
+  })();
+  anonymousRecoveryPromise = recovery;
+
+  try {
+    return await recovery;
+  } finally {
+    if (anonymousRecoveryPromise === recovery) {
+      anonymousRecoveryPromise = null;
+    }
+  }
+}
+
+export function subscribeAuthUser(listener: (user: User | null) => void): () => void {
+  return onIdTokenChanged(auth, listener);
+}
+
+export async function recoverStaleAnonymousSession(error?: unknown): Promise<User | null> {
+  if (error && !isStaleAnonymousSessionError(error)) {
+    return null;
+  }
+
+  if (anonymousRecoveryPromise) {
+    return (await anonymousRecoveryPromise).user;
+  }
+
+  const currentUser = auth.currentUser;
+
+  if (!currentUser?.isAnonymous) {
+    return null;
+  }
+
+  console.warn("Recovering stale anonymous Firebase session.");
+  return (await recoverAnonymousUser(currentUser)).user;
+}
+
+export async function getIdTokenWithAnonymousRecovery(
+  user: User,
+  forceRefresh = false
+): Promise<IdTokenResult> {
+  const shouldForceRefresh = forceRefresh || user.isAnonymous;
+
+  try {
+    return {
+      idToken: user.isAnonymous
+        ? await getAnonymousIdToken(user, shouldForceRefresh)
+        : await user.getIdToken(shouldForceRefresh),
+      recovered: false,
+      user,
+    };
+  } catch (error) {
+    if (!user.isAnonymous || !isStaleAnonymousSessionError(error)) {
+      throw error;
+    }
+
+    const recovered = await recoverAnonymousUser(user);
+
+    return {
+      idToken: recovered.idToken,
+      recovered: true,
+      user: recovered.user,
+    };
+  }
 }
 
 async function restoreNativeGoogleUser(): Promise<User | null> {
@@ -131,7 +281,25 @@ export async function ensureAuth(): Promise<User> {
   await auth.authStateReady();
 
   if (auth.currentUser) {
-    return auth.currentUser;
+    const currentUser = auth.currentUser;
+
+    if (!currentUser.isAnonymous) {
+      return currentUser;
+    }
+
+    try {
+      await getAnonymousIdToken(currentUser, true);
+      return auth.currentUser || currentUser;
+    } catch (error) {
+      const recoveredUser = await recoverStaleAnonymousSession(error);
+
+      if (recoveredUser) {
+        return recoveredUser;
+      }
+
+      console.warn("ensureAuth: anonymous token refresh failed; keeping existing session", error);
+      return currentUser;
+    }
   }
 
   const restoredGoogleUser = await restoreNativeGoogleUser();
@@ -183,6 +351,16 @@ export async function loginWithApple(idToken: string, rawNonce: string) {
 
 export async function loginWithEmail(email: string, password: string) {
   return signInWithEmailAndPassword(auth, email, password);
+}
+
+export async function loginWithCustomToken(token: string) {
+  const trimmedToken = typeof token === "string" ? token.trim() : "";
+
+  if (!trimmedToken) {
+    throw new Error("Custom sign-in token is missing.");
+  }
+
+  return signInWithCustomToken(auth, trimmedToken);
 }
 
 export async function signupWithEmail(email: string, password: string) {

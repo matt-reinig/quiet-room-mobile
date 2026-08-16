@@ -194,18 +194,16 @@ async function waitForExistsMaybe(elementHandle, timeoutMs) {
 
 async function acceptAiConsentIfVisible(timeoutMs = 4000) {
   const consentModal = element(by.id(ids.aiConsentModal));
-  const acceptButton = element(by.id(ids.aiConsentAcceptButton));
   const consentVisible = await waitForExistsMaybe(consentModal, timeoutMs);
 
   if (!consentVisible) {
     return false;
   }
 
-  await waitFor(acceptButton).toBeVisible().withTimeout(10000);
+  await element(by.id(ids.aiConsentAcceptButton)).tap();
+  await element(by.text('I Consent')).tap().catch(() => null);
   if (device.getPlatform() === 'ios') {
-    await element(by.text('I Consent')).tap();
-  } else {
-    await acceptButton.tap();
+    await element(by.label('I Consent')).tap().catch(() => null);
   }
   await waitFor(consentModal).not.toExist().withTimeout(15000);
   return true;
@@ -362,7 +360,7 @@ async function createDisposableTestUser() {
   });
 }
 
-async function seedConversations({ uid, token, count }) {
+async function seedConversations({ uid, token, count, navigationFixture = false }) {
   return backendRequest('/test/seed-conversations', {
     method: 'POST',
     headers: {
@@ -371,6 +369,7 @@ async function seedConversations({ uid, token, count }) {
     },
     body: JSON.stringify({
       count,
+      navigationFixture,
       uid,
     }),
   });
