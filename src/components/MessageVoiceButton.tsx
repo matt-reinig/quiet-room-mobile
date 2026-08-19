@@ -27,6 +27,7 @@ import { configureQuietRoomAudioSession } from "../lib/audioSession";
 import {
   isVoicePlaybackOwner,
   publishVoicePlayback,
+  publishVoicePlaybackStarted,
   publishVoicePlaybackStopped,
   subscribeVoicePlayback,
 } from "../lib/voicePlaybackBus";
@@ -329,6 +330,7 @@ export default function MessageVoiceButton({
         return false;
       }
 
+      publishVoicePlaybackStarted(instanceIdRef.current);
       setStatus("playing");
       return true;
     },
@@ -436,6 +438,7 @@ export default function MessageVoiceButton({
         return false;
       }
 
+      publishVoicePlaybackStarted(instanceIdRef.current);
       trackPlayerStatusIntervalRef.current = setInterval(() => {
         void pollStatus();
       }, 1000);
@@ -495,6 +498,7 @@ export default function MessageVoiceButton({
         if (operation !== playbackOperationRef.current || !isVoicePlaybackOwner(instanceIdRef.current)) {
           return;
         }
+        publishVoicePlaybackStarted(instanceIdRef.current);
         setStatus("playing");
         setError("");
         return;
@@ -511,6 +515,7 @@ export default function MessageVoiceButton({
         if (operation !== playbackOperationRef.current || !isVoicePlaybackOwner(instanceIdRef.current)) {
           return;
         }
+        publishVoicePlaybackStarted(instanceIdRef.current);
         setStatus("playing");
         setError("");
         return;
@@ -801,6 +806,5 @@ const styles = StyleSheet.create({
     maxWidth: 180,
   },
 });
-
 
 

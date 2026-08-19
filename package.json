@@ -55,6 +55,7 @@
     "ios:appstore:readiness:apply": "node ./scripts/update-app-store-readiness.mjs --apply",
     "web": "expo start --web",
     "test:inline-markdown": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/inlineMarkdown.test.mjs",
+    "test:ambient-audio": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/ambientAudioPlayback.test.mjs",
     "typecheck": "tsc --noEmit",
     "mobile:configure:5556": "powershell -ExecutionPolicy Bypass -File .\\scripts\\configure-emulator-5556.ps1",
     "mobile:start:5556": "powershell -ExecutionPolicy Bypass -File .\\scripts\\start-mobile-dev-5556.ps1",
