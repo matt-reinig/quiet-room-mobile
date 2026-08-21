@@ -9,7 +9,7 @@ import {
   isAmbientAudioEnvironment,
   type AmbientAudioEnvironment,
 } from "../lib/ambientAudio";
-import { configureQuietRoomAudioSession } from "../lib/audioSession";
+import { configureAmbientAudioSession } from "../lib/audioSession";
 import { resolveAmbientAudioPlaybackIntent } from "../lib/ambientAudioPlayback";
 import { subscribeVoicePlaybackActivity } from "../lib/voicePlaybackBus";
 
@@ -192,7 +192,7 @@ export function useAmbientAudio(enabled: boolean): UseAmbientAudioResult {
         }
 
         try {
-          await configureQuietRoomAudioSession();
+          await configureAmbientAudioSession();
           if (operation !== currentOperation()) {
             return;
           }
@@ -236,7 +236,13 @@ export function useAmbientAudio(enabled: boolean): UseAmbientAudioResult {
       }
 
       try {
-        ambientPlayer.player.play();
+        await configureAmbientAudioSession();
+        if (operation !== currentOperation()) {
+          return;
+        }
+        if (!ambientPlayer.player.playing) {
+          ambientPlayer.player.play();
+        }
         const faded = await fadePlayer(
           ambientPlayer.player,
           ambientPlayer.player.volume,

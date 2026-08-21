@@ -5,6 +5,7 @@ import {
   AMBIENT_AUDIO_DUCK_FACTOR,
   resolveAmbientAudioPlaybackIntent,
 } from "../src/lib/ambientAudioPlayback.ts";
+import { ambientAudioInterruptionMode } from "../src/lib/audioSessionPolicy.ts";
 import {
   publishVoicePlayback,
   publishVoicePlaybackStarted,
@@ -107,4 +108,9 @@ test("microphone-only activity does not change ambient playback intent", () => {
 
   assert.deepEqual(afterMicrophoneActivity, beforeMicrophoneActivity);
   assert.equal(afterMicrophoneActivity.targetVolume, NORMAL_VOLUME);
+});
+
+test("ambient audio mixes on Android without changing the existing iOS policy", () => {
+  assert.equal(ambientAudioInterruptionMode("android"), "mixWithOthers");
+  assert.equal(ambientAudioInterruptionMode("ios"), "duckOthers");
 });

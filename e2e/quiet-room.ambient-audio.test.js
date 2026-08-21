@@ -27,7 +27,15 @@ async function launchWithAmbientAudio(enabled, options = {}) {
 }
 
 async function openAmbientAudioSelector() {
-  await element(by.id(ids.modelMenuButton)).tap();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await element(by.id(ids.modelMenuButton)).tap();
+    try {
+      await waitFor(element(by.id(ids.ambientAudioSelector))).toBeVisible().withTimeout(5000);
+      return;
+    } catch {
+      await waitFor(element(by.id(ids.modelMenuButton))).toBeVisible().withTimeout(5000);
+    }
+  }
   await waitFor(element(by.id(ids.ambientAudioSelector))).toBeVisible().withTimeout(10000);
 }
 
