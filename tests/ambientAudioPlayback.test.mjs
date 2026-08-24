@@ -31,6 +31,8 @@ function playbackIntent({
 }
 
 test("ducks only during produced voice playback and restores for the active owner", () => {
+  assert.equal(AMBIENT_AUDIO_DUCK_FACTOR, 0.4);
+
   let activeVoiceId = null;
   const unsubscribe = subscribeVoicePlaybackActivity((activeId) => {
     activeVoiceId = activeId;

@@ -1,4 +1,4 @@
-export const AMBIENT_AUDIO_DUCK_FACTOR = 0.2;
+export const AMBIENT_AUDIO_DUCK_FACTOR = 0.4;
 
 type AmbientAudioPlaybackInput = {
   appActive: boolean;
