@@ -1,6 +1,6 @@
 # QR-MOB-021: TrackPlayer streaming tail investigation
 
-Status: Ready for implementation; this commit contains planning only.
+Status: Implementation in progress; deterministic Android harness and initial controls validated.
 Date: 2026-09-07
 Branch: `codex/qr-mob-021-trackplayer-streaming-plan`
 Base: `develop` at `a95b7f1ff7b91defe7a2d0c95958c237eefc38bb`
@@ -113,13 +113,19 @@ If the emulator still cannot reproduce clipping, stop after the defined matrix a
 
 ## Completion and handoff
 
-- [ ] Runtime TrackPlayer and progressive playback confirmed in the normal app flow.
-- [ ] Capture/checker accepts the complete control and rejects the missing-tail control.
+- [x] Runtime TrackPlayer and progressive playback confirmed in the normal app flow.
+- [x] Capture/checker accepts the complete control and rejects the missing-tail control.
 - [ ] Controlled matrix has auditable results and a reproducible command.
 - [ ] Actual failure reproduced, or the emulator reproduction limit explicitly recorded.
 - [ ] Any proposed fix has a before/after comparison using identical audio and delivery.
-- [ ] Streaming startup is preserved; latency and cleanup behavior are reported.
+- [x] Streaming startup is preserved; latency and cleanup behavior are reported for the initial emulator runs.
 - [ ] Live QA TTS and physical-device validation are recorded separately, including any pending check.
-- [ ] Update this plan and QR-MOB-021 tracker with findings, commits and next step.
+- [x] Update this plan and QR-MOB-021 tracker with findings, commits and next step.
+
+## Implementation update: 2026-09-09
+
+The isolated implementation branch now contains a QA/local-only diagnostic route through the normal `MessageVoiceButton` TrackPlayer lifecycle, a byte-frozen MP3 fixture and paced server, correlated run manifests, emulator audio capture, and a conservative waveform-envelope checker. The complete-file control classified `complete`, deliberate truncation classified `audible-tail-missing`, two paced steady runs classified `complete`, and a delayed-tail-1500 run classified `complete`.
+
+The paced run demonstrated native playback state `playing` 5.635 seconds before the fixture server's normal EOF, so progressive startup is preserved in this harness. No realistic clipping failure has been reproduced in the partial matrix, and no product playback fix has been applied. See `docs/qr-mob-021-trackplayer-streaming-progress.md` for exact run IDs, scores, artifact paths, limitations, and the next cases.
 
 Implementation should produce a brief results document alongside this plan with environment, run table, evidence paths, root-cause confidence and remaining limits. This planning branch does not authorize claiming a fix, merging, or releasing untested changes. No app or backend behavior has been changed by the planning commit.

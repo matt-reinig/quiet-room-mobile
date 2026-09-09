@@ -1,0 +1,1 @@
+This is a synthetic Quiet Room playback fixture. It contains no private conversation text. The stream should begin while later audio bytes are still being delivered. Listen carefully through the final sentence. The final words are silver lantern seven.

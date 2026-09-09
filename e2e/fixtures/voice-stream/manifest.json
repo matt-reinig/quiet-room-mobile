@@ -1,0 +1,43 @@
+{
+  "schemaVersion": "qr-mob-021.fixture.v1",
+  "fixtureFile": "closing-phrase-v1.mp3",
+  "sourceTextFile": "fixture.txt",
+  "payloadBytes": 254581,
+  "sha256": "888d4c1dae1ef1fadb3c850b5bf886bb6bb0833cdbb91e15713d5ebb899295fa",
+  "contentType": "audio/mpeg",
+  "codec": "MP3 CBR 128 kbps, mono, 44.1 kHz",
+  "durationSeconds": 15.882,
+  "closingPhrase": "The final words are silver lantern seven.",
+  "finalSpeechIntervalSeconds": {
+    "start": 13.345,
+    "end": 15.855
+  },
+  "tailStartByte": 212581,
+  "tailBytes": 42000,
+  "generation": {
+    "speechTool": "macOS say, Samantha voice, 145 words per minute",
+    "encoder": "ffmpeg 4.4.1 static, libmp3lame 128 kbps",
+    "verification": "afinfo decoded the frozen MP3 as 15.882 seconds; ffmpeg silence detection placed the final phrase after the 13.345 second pause"
+  },
+  "cases": {
+    "complete-file": "complete payload with Content-Length",
+    "steady": "paced chunked payload with unknown length",
+    "delayed-tail-250": "complete payload with final speech-bearing bytes delayed 250 ms",
+    "delayed-tail-750": "complete payload with final speech-bearing bytes delayed 750 ms",
+    "delayed-tail-1500": "complete payload with final speech-bearing bytes delayed 1500 ms",
+    "chunk-schedule-a": "repeatable paced schedule ending with a 4096-byte final chunk",
+    "chunk-schedule-b": "repeatable paced schedule ending with a 12288-byte final chunk",
+    "normal-eof-immediate": "complete bytes followed by immediate normal EOF",
+    "normal-eof-delayed": "complete bytes followed by delayed normal EOF",
+    "truncated": "payload ends at byte 212581, before the known closing phrase"
+  },
+  "rangeHandling": {
+    "singleRange": "supported with 206, Content-Range, and Content-Length",
+    "multiRange": "rejected with 416",
+    "invalidOrUnsatisfiable": "rejected with 416"
+  },
+  "events": {
+    "terminalStatuses": ["normal_eof", "error", "cancelled"],
+    "requiredCorrelation": ["runId", "attemptId"]
+  }
+}
