@@ -13,6 +13,18 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DETOX_CONFIG="${VOICE_QA_DETOX_CONFIG:-android.emu.release}"
 DETOX_AVD_NAME="${DETOX_AVD_NAME:-Pixel34AVD_2}"
 DIAGNOSTIC_MODE="${VOICE_DIAGNOSTIC_MODE:-live-trace}"
+LONG_REPLY_MODE="${VOICE_QA_LONG_REPLY:-0}"
+# Android emulator screenrecord caps each invocation at 180 seconds. Run one
+# bounded E2E attempt per invocation and repeat this wrapper for three captured
+# attempts when the full batch is needed.
+LONG_REPLY_ATTEMPTS="${VOICE_QA_LONG_REPLY_ATTEMPTS:-1}"
+SETUP_TIMEOUT_MS="${VOICE_QA_SETUP_TIMEOUT_MS:-120000}"
+GENERATION_TIMEOUT_MS="${VOICE_QA_GENERATION_TIMEOUT_MS:-240000}"
+PLAYBACK_TIMEOUT_MS="${VOICE_QA_PLAYBACK_TIMEOUT_MS:-180000}"
+POST_TERMINAL_TIMEOUT_MS="${VOICE_QA_POST_TERMINAL_TIMEOUT_MS:-5000}"
+POST_TERMINAL_HOLD_MS="${VOICE_QA_POST_TERMINAL_HOLD_MS:-2000}"
+TARGET_SPEECH_MIN_MS="${VOICE_QA_TARGET_SPEECH_MIN_MS:-60000}"
+TARGET_SPEECH_MAX_MS="${VOICE_QA_TARGET_SPEECH_MAX_MS:-120000}"
 PROXY_PORT="${VOICE_DIAGNOSTIC_PROXY_PORT:-8788}"
 PROXY_BASE_URL="${VOICE_DIAGNOSTIC_PROXY_BASE_URL:-http://10.0.2.2:${PROXY_PORT}}"
 PROXY_UPSTREAM="${VOICE_QA_TEE_PROXY_UPSTREAM:-${VOICE_QA_UPSTREAM_URL:-}}"
@@ -23,6 +35,9 @@ DETOX_LOG="$RUN_DIR/detox.log"
 SCREENREC_LOG="$RUN_DIR/screenrecord.log"
 TEE_PROXY_LOG="$RUN_DIR/tee-proxy.log"
 SCREENREC_PATH="$RUN_DIR/emulator.webm"
+PLAYBACK_READY_SIGNAL="$RUN_DIR/playback-ready.signal"
+RECORDING_STARTED_MARKER="$RUN_DIR/screenrecord.started"
+NO_RECORDING_MARKER="$RUN_DIR/no-recording.json"
 
 mkdir -p "$RUN_DIR"
 
@@ -36,6 +51,44 @@ if [[ "$DIAGNOSTIC_MODE" != "live-trace" && "$DIAGNOSTIC_MODE" != "live-proxy" ]
   exit 2
 fi
 
+if [[ "$LONG_REPLY_MODE" != "0" && "$LONG_REPLY_MODE" != "1" ]]; then
+  echo "VOICE_QA_LONG_REPLY must be 0 or 1." >&2
+  exit 2
+fi
+
+if ! [[ "$LONG_REPLY_ATTEMPTS" =~ ^[1-3]$ ]]; then
+  echo "VOICE_QA_LONG_REPLY_ATTEMPTS must be between 1 and 3." >&2
+  exit 2
+fi
+
+if [[ "$LONG_REPLY_MODE" == "1" && "$LONG_REPLY_ATTEMPTS" != "1" ]]; then
+  echo "Long-reply capture runs one attempt per invocation; repeat the wrapper for three recordings." >&2
+  exit 2
+fi
+
+for timeout_value in "$SETUP_TIMEOUT_MS" "$GENERATION_TIMEOUT_MS" "$PLAYBACK_TIMEOUT_MS" "$POST_TERMINAL_TIMEOUT_MS" "$POST_TERMINAL_HOLD_MS" "$TARGET_SPEECH_MIN_MS" "$TARGET_SPEECH_MAX_MS"; do
+  if ! [[ "$timeout_value" =~ ^[0-9]+$ ]] || [[ "$timeout_value" -lt 1000 ]]; then
+    echo "Long-reply timeout and target values must be integer milliseconds >= 1000." >&2
+    exit 2
+  fi
+done
+
+if [[ "$TARGET_SPEECH_MAX_MS" -lt "$TARGET_SPEECH_MIN_MS" ]]; then
+  echo "VOICE_QA_TARGET_SPEECH_MAX_MS must be >= VOICE_QA_TARGET_SPEECH_MIN_MS." >&2
+  exit 2
+fi
+
+RECORDING_WATCH_TIMEOUT_SEC="${VOICE_QA_RECORDING_WATCH_TIMEOUT_SEC:-$((SETUP_TIMEOUT_MS / 1000 + GENERATION_TIMEOUT_MS / 1000 + 60))}"
+if ! [[ "$RECORDING_WATCH_TIMEOUT_SEC" =~ ^[0-9]+$ ]] || [[ "$RECORDING_WATCH_TIMEOUT_SEC" -lt 1 ]] || [[ "$RECORDING_WATCH_TIMEOUT_SEC" -gt 900 ]]; then
+  echo "VOICE_QA_RECORDING_WATCH_TIMEOUT_SEC must be an integer between 1 and 900." >&2
+  exit 2
+fi
+
+if [[ "$LONG_REPLY_MODE" == "1" ]]; then
+  # Keep the recording within the Android emulator's 180-second limit.
+  SCREEN_TIME_LIMIT="${VOICE_QA_SCREEN_TIME_LIMIT:-180}"
+fi
+
 if [[ "$DIAGNOSTIC_MODE" == "live-proxy" && -z "$PROXY_UPSTREAM" ]]; then
   echo "VOICE_QA_TEE_PROXY_UPSTREAM is required for live-proxy mode." >&2
   exit 2
@@ -43,6 +96,7 @@ fi
 
 adb_bin="${ADB:-adb}"
 tee_proxy_pid=""
+recording_watcher_pid=""
 detox_status=1
 
 find_emulator_serial() {
@@ -67,6 +121,49 @@ start_screen_recording() {
     "$SCREENREC_PATH" >"$SCREENREC_LOG" 2>&1
 }
 
+write_no_recording_marker() {
+  local reason="$1"
+  cat > "$NO_RECORDING_MARKER" <<EOF
+{
+  "classification": "no-recording",
+  "reason": "$reason",
+  "signalPath": "$PLAYBACK_READY_SIGNAL",
+  "recordingPath": "$SCREENREC_PATH"
+}
+EOF
+}
+
+start_recording_watcher() {
+  (
+    local deadline=$(( $(date +%s) + RECORDING_WATCH_TIMEOUT_SEC ))
+    while [[ ! -f "$PLAYBACK_READY_SIGNAL" && "$(date +%s)" -lt "$deadline" ]]; do
+      sleep 0.2
+    done
+
+    if [[ ! -f "$PLAYBACK_READY_SIGNAL" ]]; then
+      write_no_recording_marker "playback-ready-signal-timeout"
+      exit 0
+    fi
+
+    if start_screen_recording; then
+      touch "$RECORDING_STARTED_MARKER"
+    else
+      write_no_recording_marker "screenrecord-start-failed"
+    fi
+  ) &
+  recording_watcher_pid=$!
+}
+
+ensure_recording_classification() {
+  if [[ "$LONG_REPLY_MODE" == "1" && ! -f "$RECORDING_STARTED_MARKER" && ! -f "$NO_RECORDING_MARKER" ]]; then
+    if [[ -f "$PLAYBACK_READY_SIGNAL" ]]; then
+      write_no_recording_marker "screenrecord-start-not-observed"
+    else
+      write_no_recording_marker "playback-ready-signal-not-observed"
+    fi
+  fi
+}
+
 stop_screen_recording() {
   local serial=""
   serial="$(find_emulator_serial || true)"
@@ -78,11 +175,19 @@ stop_screen_recording() {
 cleanup() {
   local status=$?
 
+  if [[ -n "$recording_watcher_pid" ]]; then
+    kill "$recording_watcher_pid" 2>/dev/null || true
+    wait "$recording_watcher_pid" 2>/dev/null || true
+  fi
+  ensure_recording_classification || true
+
   if [[ -n "$tee_proxy_pid" ]]; then
     kill "$tee_proxy_pid" 2>/dev/null || true
     wait "$tee_proxy_pid" 2>/dev/null || true
   fi
-  stop_screen_recording || true
+  if [[ -f "$RECORDING_STARTED_MARKER" ]]; then
+    stop_screen_recording || true
+  fi
 
   exit "$status"
 }
@@ -94,6 +199,23 @@ cat > "$RUN_DIR/run-context.json" <<EOF
   "detoxConfig": "${DETOX_CONFIG}",
   "avdName": "${DETOX_AVD_NAME}",
   "diagnosticMode": "${DIAGNOSTIC_MODE}",
+  "longReplyMode": ${LONG_REPLY_MODE},
+  "longReplyAttempts": ${LONG_REPLY_ATTEMPTS},
+  "captureScope": "one-attempt-per-invocation",
+  "plannedBatchAttempts": 3,
+  "screenRecordTimeLimitSeconds": ${SCREEN_TIME_LIMIT},
+  "recordingWatchTimeoutSeconds": ${RECORDING_WATCH_TIMEOUT_SEC},
+  "timeoutsMs": {
+    "setup": ${SETUP_TIMEOUT_MS},
+    "generation": ${GENERATION_TIMEOUT_MS},
+    "playback": ${PLAYBACK_TIMEOUT_MS},
+    "postTerminal": ${POST_TERMINAL_TIMEOUT_MS},
+    "postTerminalHold": ${POST_TERMINAL_HOLD_MS}
+  },
+  "targetSpeechMs": {
+    "min": ${TARGET_SPEECH_MIN_MS},
+    "max": ${TARGET_SPEECH_MAX_MS}
+  },
   "proxyBaseUrl": $PROXY_CONTEXT_JSON,
   "trackPlayer": true,
   "qaAppVariant": true,
@@ -133,13 +255,29 @@ if [[ "${VOICE_QA_SKIP_BUILD:-0}" != "1" ]]; then
     npx detox build -c "$DETOX_CONFIG"
 fi
 
-start_screen_recording
+if [[ "$LONG_REPLY_MODE" == "1" ]]; then
+  echo "Waiting for playback-ready.signal before starting emulator recording." >&2
+  start_recording_watcher
+else
+  start_screen_recording
+  touch "$RECORDING_STARTED_MARKER"
+fi
 
 set +e
 EXPO_PUBLIC_VOICE_PLAYBACK_ENGINE=track-player \
 VOICE_DIAGNOSTIC_MODE="$DIAGNOSTIC_MODE" \
 VOICE_DIAGNOSTIC_PROXY_BASE_URL="$PROXY_BASE_URL" \
 VOICE_QA_TEE_PROXY_UPSTREAM="$PROXY_UPSTREAM" \
+VOICE_QA_LONG_REPLY="$LONG_REPLY_MODE" \
+VOICE_QA_LONG_REPLY_ATTEMPTS="$LONG_REPLY_ATTEMPTS" \
+VOICE_QA_SETUP_TIMEOUT_MS="$SETUP_TIMEOUT_MS" \
+VOICE_QA_GENERATION_TIMEOUT_MS="$GENERATION_TIMEOUT_MS" \
+VOICE_QA_PLAYBACK_TIMEOUT_MS="$PLAYBACK_TIMEOUT_MS" \
+VOICE_QA_POST_TERMINAL_TIMEOUT_MS="$POST_TERMINAL_TIMEOUT_MS" \
+VOICE_QA_POST_TERMINAL_HOLD_MS="$POST_TERMINAL_HOLD_MS" \
+VOICE_QA_TARGET_SPEECH_MIN_MS="$TARGET_SPEECH_MIN_MS" \
+VOICE_QA_TARGET_SPEECH_MAX_MS="$TARGET_SPEECH_MAX_MS" \
+VOICE_QA_EVIDENCE_DIR="$RUN_DIR" \
 DETOX_AVD_NAME="$DETOX_AVD_NAME" \
 E2E_APP_SCHEME="${E2E_APP_SCHEME:-quietroommobileqa}" \
 npx detox test \
@@ -150,12 +288,26 @@ npx detox test \
 detox_status="${PIPESTATUS[0]}"
 set -e
 
+ensure_recording_classification || true
+
+if [[ -f "$RECORDING_STARTED_MARKER" ]]; then
+  recording_status="recorded"
+elif [[ -f "$NO_RECORDING_MARKER" ]]; then
+  recording_status="no-recording"
+else
+  recording_status="not-started"
+fi
+
 cat > "$RUN_DIR/status.txt" <<EOF
 detox_status=$detox_status
 run_dir=$RUN_DIR
 screen_recording=$SCREENREC_PATH
 detox_log=$DETOX_LOG
 tee_proxy_log=$TEE_PROXY_LOG
+long_reply_evidence=$RUN_DIR/long-reply-evidence.json
+recording_status=$recording_status
+recording_ready_signal=$PLAYBACK_READY_SIGNAL
+no_recording_marker=$NO_RECORDING_MARKER
 EOF
 
 echo "QR-MOB-021 real QA Detox status: $detox_status"

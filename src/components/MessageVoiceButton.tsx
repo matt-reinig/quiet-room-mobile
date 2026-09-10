@@ -34,6 +34,7 @@ import {
 import {
   createVoicePlaybackDiagnosticEmitter,
   parseVoicePlaybackDiagnosticDeepLink,
+  resolveVoicePlaybackSourceIdentity,
   type VoicePlaybackDiagnosticDeepLink,
   type VoicePlaybackDiagnosticEmitter,
 } from "../lib/voicePlaybackDiagnostics";
@@ -258,6 +259,41 @@ export default function MessageVoiceButton({
     diagnostic.emitter.finishAttempt(diagnostic.attemptId, fields);
     activeDiagnosticRef.current = null;
   }, []);
+
+  const emitSourceIdentity = useCallback(
+    async (
+      diagnostic: ActiveVoiceDiagnostic | null,
+      sourceText: string,
+      sourceConversationId: string,
+      sourceSlot: number,
+    ) => {
+      if (
+        !diagnostic ||
+        (diagnostic.mode !== "live-trace" && diagnostic.mode !== "live-proxy")
+      ) {
+        return;
+      }
+
+      try {
+        const identity = await resolveVoicePlaybackSourceIdentity(
+          sourceText,
+          sourceConversationId,
+          sourceSlot,
+        );
+        diagnostic.emitter.emit("source.identity", identity, diagnostic.attemptId);
+      } catch (error) {
+        diagnostic.emitter.emit(
+          "source.identity.unavailable",
+          { reason: error instanceof Error ? error.name : "unknown" },
+          diagnostic.attemptId,
+        );
+        const identityError = new Error("Voice source identity is unavailable for this diagnostic attempt.");
+        identityError.name = "VoiceSourceIdentityUnavailableError";
+        throw identityError;
+      }
+    },
+    [],
+  );
 
   const cleanupTrackPlayer = useCallback(async (reason = "cleanup") => {
     clearTrackPlayerWatchers();
@@ -712,6 +748,13 @@ export default function MessageVoiceButton({
             )
           : buildConversationVoiceUri(voiceUrl, resolvedConversationId, resolvedMessageIndex);
 
+      await emitSourceIdentity(
+        activeDiagnostic,
+        text,
+        resolvedConversationId,
+        resolvedMessageIndex,
+      );
+
       if (VOICE_PLAYBACK_ENGINE === "track-player") {
         const playbackHeaders = diagnostic?.mode === "fixture"
           ? {}
@@ -749,6 +792,8 @@ export default function MessageVoiceButton({
       loadAndPlayFromSource,
       messageIndex,
       startTrackPlayerConversationPlayback,
+      emitSourceIdentity,
+      text,
       voiceUrl,
     ]
   );

@@ -51,7 +51,11 @@ function targetForRequest(upstreamBase, requestUrl) {
 }
 
 function elapsedMs(start) {
-  return Number((Number(process.hrtime.bigint() - start) / 1e6).toFixed(3));
+  return monotonicElapsedMs(start);
+}
+
+function monotonicElapsedMs(start, end = process.hrtime.bigint()) {
+  return Number((Number(end - start) / 1e6).toFixed(3));
 }
 
 function wallTime() {
@@ -66,6 +70,7 @@ function safeError(error) {
 }
 
 function writeChunk(stream, chunk) {
+  const submittedAt = process.hrtime.bigint();
   return new Promise((resolve, reject) => {
     if (stream.destroyed || stream.writableEnded) {
       reject(new Error("destination stream is closed"));
@@ -74,6 +79,7 @@ function writeChunk(stream, chunk) {
     let callbackDone = false;
     let drained = stream.writableNeedDrain === false;
     let settled = false;
+    let accepted = true;
     const onDrain = () => {
       drained = true;
       settle();
@@ -90,11 +96,12 @@ function writeChunk(stream, chunk) {
         settled = true;
         stream.off("drain", onDrain);
         stream.off("error", onError);
-        resolve();
+        const completedAt = process.hrtime.bigint();
+        resolve({ submittedAt, completedAt, accepted, backpressure: !accepted });
       }
     };
     stream.once("error", onError);
-    const accepted = stream.write(chunk, (error) => {
+    accepted = stream.write(chunk, (error) => {
       if (error) {
         onError(error);
         return;
@@ -105,6 +112,9 @@ function writeChunk(stream, chunk) {
     if (!accepted) {
       drained = false;
       stream.once("drain", onDrain);
+      // A small write can drain before the listener is attached. Re-check the
+      // state so timing evidence does not wait forever on a missed event.
+      if (!stream.writableNeedDrain) onDrain();
     }
     settle();
   });
@@ -127,6 +137,20 @@ function createRequestHeaders(request) {
   return headers;
 }
 
+function headerNames(headers) {
+  return Object.keys(headers || {}).map((name) => name.toLowerCase()).sort();
+}
+
+function requestHeaderPolicy(request) {
+  const incoming = new Set(headerNames(request.headers));
+  const forwarded = new Set(REQUEST_HEADERS);
+  if (request.headers.authorization) forwarded.add("authorization");
+  return {
+    forwarded: [...forwarded].filter((name) => incoming.has(name)).sort(),
+    omitted: [...incoming].filter((name) => !forwarded.has(name)).sort(),
+  };
+}
+
 function responseHeaders(upstreamResponse) {
   const headers = {};
   for (const name of RESPONSE_HEADERS) {
@@ -135,6 +159,16 @@ function responseHeaders(upstreamResponse) {
   }
   // Deliberately omit content-length so a progressive upstream stays progressive.
   return headers;
+}
+
+function responseHeaderPolicy(upstreamResponse) {
+  const incoming = new Set(headerNames(upstreamResponse.headers));
+  const forwarded = new Set(RESPONSE_HEADERS);
+  return {
+    forwarded: [...forwarded].filter((name) => incoming.has(name)).sort(),
+    omitted: [...incoming].filter((name) => !forwarded.has(name)).sort(),
+    removed: ["content-length"].filter((name) => incoming.has(name)),
+  };
 }
 
 function makeEvent(state, event, fields = {}) {
@@ -196,6 +230,7 @@ async function handleRequest({ request, response, upstreamBase, outputDir }) {
     clientClosed: false,
     upstreamEnded: false,
     upstreamError: null,
+    eventLogTimings: [],
     response,
   };
   const bodyFile = `${state.requestId}.bin`;
@@ -211,8 +246,19 @@ async function handleRequest({ request, response, upstreamBase, outputDir }) {
   let finalized = false;
 
   const emit = async (event, fields = {}) => {
+    const eventIndex = state.eventLogTimings.length + 1;
+    const submittedAt = process.hrtime.bigint();
     const line = `${JSON.stringify(makeEvent(state, event, fields))}\n`;
-    await writeChunk(eventStream, line);
+    const write = await writeChunk(eventStream, line);
+    state.eventLogTimings.push({
+      eventIndex,
+      event,
+      submittedElapsedMs: monotonicElapsedMs(state.startedAt, submittedAt),
+      completedElapsedMs: monotonicElapsedMs(state.startedAt, write.completedAt),
+      waitMs: monotonicElapsedMs(submittedAt, write.completedAt),
+      backpressure: write.backpressure,
+    });
+    return write;
   };
   const abortUpstream = () => {
     state.clientClosed = true;
@@ -230,20 +276,7 @@ async function handleRequest({ request, response, upstreamBase, outputDir }) {
     if (finalized) return;
     finalized = true;
     state.terminal = terminalOverride || (state.clientClosed ? "client_close" : state.upstreamError ? "upstream_error" : "upstream_exhaustion");
-    const endedAt = wallTime();
-    const manifest = makeEvent(state, "manifest", {
-      terminal: state.terminal,
-      statusCode: state.statusCode,
-      mimeType: state.mimeType,
-      bytesReceived: state.bytesReceived,
-      chunkCount: state.chunkCount,
-      sha256: state.hash.digest("hex"),
-      bodyFile,
-      eventFile,
-      startedAt: new Date(Date.now() - elapsedMs(state.startedAt)).toISOString(),
-      endedAt,
-      ...(state.upstreamError ? safeError(state.upstreamError) : {}),
-    });
+    const sha256 = state.hash.digest("hex");
     try {
       await emit("terminal", {
         terminal: state.terminal,
@@ -251,7 +284,29 @@ async function handleRequest({ request, response, upstreamBase, outputDir }) {
         mimeType: state.mimeType,
         bytesReceived: state.bytesReceived,
         chunkCount: state.chunkCount,
-        sha256: manifest.sha256,
+        sha256,
+        ...(state.upstreamError ? safeError(state.upstreamError) : {}),
+      });
+      const endedAt = wallTime();
+      const eventLogWaits = state.eventLogTimings.map((timing) => timing.waitMs);
+      const manifest = makeEvent(state, "manifest", {
+        terminal: state.terminal,
+        statusCode: state.statusCode,
+        mimeType: state.mimeType,
+        bytesReceived: state.bytesReceived,
+        chunkCount: state.chunkCount,
+        sha256,
+        bodyFile,
+        eventFile,
+        startedAt: new Date(Date.now() - elapsedMs(state.startedAt)).toISOString(),
+        endedAt,
+        headerPolicy: state.headerPolicy,
+        eventLogTimings: state.eventLogTimings,
+        eventLogTimingSummary: {
+          eventCount: eventLogWaits.length,
+          totalWaitMs: Number(eventLogWaits.reduce((sum, value) => sum + value, 0).toFixed(3)),
+          maxWaitMs: eventLogWaits.length ? Math.max(...eventLogWaits) : 0,
+        },
         ...(state.upstreamError ? safeError(state.upstreamError) : {}),
       });
       await writeChunk(manifestStream, `${JSON.stringify(manifest)}\n`);
@@ -265,7 +320,13 @@ async function handleRequest({ request, response, upstreamBase, outputDir }) {
   };
 
   try {
-    await emit("request", { method: state.method });
+    state.headerPolicy = {
+      request: requestHeaderPolicy(request),
+    };
+    await emit("request", {
+      method: state.method,
+      headerPolicy: state.headerPolicy.request,
+    });
     const target = targetForRequest(upstreamBase, request.url);
     const transport = target.protocol === "https:" ? https : http;
     const upstreamResponse = await new Promise((resolve, reject) => {
@@ -285,21 +346,36 @@ async function handleRequest({ request, response, upstreamBase, outputDir }) {
       state.upstreamError = Object.assign(new Error("upstream response aborted"), { code: "UPSTREAM_ABORTED" });
     });
     response.writeHead(state.statusCode, responseHeaders(upstreamResponse));
-    await emit("response", { statusCode: state.statusCode, mimeType: state.mimeType });
+    state.headerPolicy.response = responseHeaderPolicy(upstreamResponse);
+    await emit("response", {
+      statusCode: state.statusCode,
+      mimeType: state.mimeType,
+      headerPolicy: state.headerPolicy.response,
+    });
 
     try {
       for await (const chunk of upstreamResponse) {
         if (state.clientClosed) break;
         const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        const upstreamReceivedAt = process.hrtime.bigint();
         state.hash.update(bytes);
         state.bytesReceived += bytes.length;
         state.chunkCount += 1;
-        await writeChunk(bodyStream, bytes);
-        await writeChunk(response, bytes);
+        const bodyWrite = await writeChunk(bodyStream, bytes);
+        const downstreamWrite = await writeChunk(response, bytes);
         await emit("chunk", {
           chunkIndex: state.chunkCount,
           chunkBytes: bytes.length,
           bytesReceived: state.bytesReceived,
+          upstreamReceiptElapsedMs: monotonicElapsedMs(state.startedAt, upstreamReceivedAt),
+          diskWriteSubmittedElapsedMs: monotonicElapsedMs(state.startedAt, bodyWrite.submittedAt),
+          diskWriteCompletedElapsedMs: monotonicElapsedMs(state.startedAt, bodyWrite.completedAt),
+          diskWriteWaitMs: monotonicElapsedMs(bodyWrite.submittedAt, bodyWrite.completedAt),
+          diskWriteBackpressure: bodyWrite.backpressure,
+          downstreamWriteSubmittedElapsedMs: monotonicElapsedMs(state.startedAt, downstreamWrite.submittedAt),
+          downstreamWriteCompletedElapsedMs: monotonicElapsedMs(state.startedAt, downstreamWrite.completedAt),
+          downstreamWriteWaitMs: monotonicElapsedMs(downstreamWrite.submittedAt, downstreamWrite.completedAt),
+          downstreamWriteBackpressure: downstreamWrite.backpressure,
         });
       }
       state.upstreamEnded = !state.clientClosed && !state.upstreamError;

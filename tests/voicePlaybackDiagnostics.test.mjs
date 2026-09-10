@@ -10,6 +10,7 @@ import {
   createVoicePlaybackDiagnosticEmitter,
   formatVoicePlaybackDiagnosticEvent,
   parseVoicePlaybackDiagnosticDeepLink,
+  resolveVoicePlaybackSourceIdentity,
   sanitizeVoicePlaybackDiagnosticFields,
 } from "../src/lib/voicePlaybackDiagnostics.ts";
 
@@ -184,6 +185,23 @@ test("diagnostic fields are privacy-safe and bounded", () => {
       tooLong: "x".repeat(120),
     },
   );
+});
+
+test("source identity uses only bounded hash/count/slot fields accepted by the sanitizer", async () => {
+  const identity = await resolveVoicePlaybackSourceIdentity(
+    "finalized assistant words",
+    "conversation-private-id",
+    7,
+    async (value) => `digest:${value}`,
+  );
+
+  assert.deepEqual(identity, {
+    sourceSha256: "digest:finalized assistant words",
+    sourceCharCount: 25,
+    conversationSha256: "digest:conversation-private-id",
+    sourceSlot: 7,
+  });
+  assert.deepEqual(sanitizeVoicePlaybackDiagnosticFields(identity), identity);
 });
 
 test("emitter includes stable metadata, IDs, monotonic elapsed time, and prefixed JSON", () => {

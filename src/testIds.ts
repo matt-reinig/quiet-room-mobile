@@ -96,6 +96,10 @@ export function messageBubbleTestId(role: "assistant" | "user", index: number): 
   return `quiet-room.message.${role}.${index}`;
 }
 
+export function messageContentTestId(role: "assistant" | "user", index: number): string {
+  return `quiet-room.message.${role}.${index}.content`;
+}
+
 export function messageCopyButtonTestId(index: number): string {
   return `quiet-room.message.assistant.${index}.copy`;
 }

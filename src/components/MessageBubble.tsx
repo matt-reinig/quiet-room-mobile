@@ -8,6 +8,7 @@ import type { ChatMessage } from "../types/chat";
 import { mobileWeb } from "../theme/mobileWeb";
 import {
   messageCopyButtonTestId,
+  messageContentTestId,
   messageReportButtonTestId,
   messageVoiceButtonTestId,
 } from "../testIds";
@@ -108,6 +109,8 @@ export default function MessageBubble({
 
   const voiceButtonTestID =
     typeof testIndex === "number" ? messageVoiceButtonTestId(message.role, testIndex) : undefined;
+  const contentTestID =
+    typeof testIndex === "number" ? messageContentTestId(message.role, testIndex) : undefined;
   const copyButtonTestID =
     !isUser && typeof testIndex === "number" ? messageCopyButtonTestId(testIndex) : undefined;
   const reportButtonTestID =
@@ -130,7 +133,7 @@ export default function MessageBubble({
           selectable={content.trim().length > 0}
           selectionColor={mobileWeb.colors.blue200}
           style={styles.content}
-          testID={highlightTestID}
+          testID={highlightTestID ?? contentTestID}
         >
           {contentSegments.map((segment, index) => (
             <Text

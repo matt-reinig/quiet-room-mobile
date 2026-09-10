@@ -1,6 +1,6 @@
 # QR-MOB-021 TrackPlayer streaming progress
 
-Status: detector v2, direct/proxied live tracing, one exact-byte QA TTS capture, and exact-byte replay evidence are present in the worktree. No realistic clipping failure or product fix is claimed.
+Status: detector v2, exact-byte replay, source-identity correlation, three fully recorded direct long replies, timing-v2 proxy evidence, and the bounded playback-lifecycle batch are present in the worktree. No realistic direct-path clipping failure or product fix is claimed.
 
 ## Worktree and baseline
 
@@ -13,7 +13,7 @@ Status: detector v2, direct/proxied live tracing, one exact-byte QA TTS capture,
 ## Implemented in this checkout
 
 - `src/lib/voicePlaybackDiagnostics.ts`: QA/local deep-link gate, fixture-source allowlisting, run/attempt IDs, monotonic timing, structured `QR_MOB_021_VOICE_DIAG` events, TrackPlayer version metadata, and field sanitization for credentials/private content.
-- `src/components/MessageVoiceButton.tsx`: normal message-button path with diagnostic fixture routing, source assertion/fallback suppression, TrackPlayer setup/reset/add/play/state/progress/queue-end/error/cleanup events, and stale-attempt guards.
+- `src/components/MessageVoiceButton.tsx`: normal message-button path with diagnostic fixture routing, source assertion/fallback suppression, bounded source-identity hashing, TrackPlayer setup/reset/add/play/state/progress/queue-end/error/cleanup events, and stale-attempt guards.
 - `scripts/voice-stream-fixture-server.mjs`: saved-message-shaped GET/HEAD fixture route, host-reachable binding, frozen MP3 manifest/hash, progressive cases (steady, delayed tails, chunk schedules, EOF variants), truncation negative control, range handling, and run/attempt-correlated server events. The default `steady` case paces chunks every 250 ms.
 - `e2e/fixtures/voice-stream/`: frozen `closing-phrase-v1.mp3`, source text, and manifest. The manifest records 254,581 bytes, SHA-256 `888d4c1dae1ef1fadb3c850b5bf886bb6bb0833cdbb91e15713d5ebb899295fa`, 15.882 seconds, and the known closing phrase.
 - `e2e/quiet-room.voice-stream-diagnostics.test.js`: Detox flow through the normal message voice button, including the playing-to-ended UI transition.
@@ -21,8 +21,9 @@ Status: detector v2, direct/proxied live tracing, one exact-byte QA TTS capture,
 - `scripts/check-voice-playback-capture.mjs`: VP9/Vorbis capture decoding, timestamp-preserving calibration, RMS-envelope alignment, local closing alignment, gain-normalized closing energy, and bounded classification.
 - `scripts/collect-voice-stream-run.mjs`: run-manifest collection joining server and device logs by run/attempt ID, with retry request instances kept separate.
 - `scripts/voice-stream-tee-proxy.mjs` and `scripts/run-voice-stream-live-qa-android.sh`: ephemeral local byte-preserving QA tee and real-QA emulator runner with explicit proxy readiness, emulator audio capture, and bounded cleanup.
-- `e2e/quiet-room.voice-stream-live-qa.test.js`: a fresh-chat, saved-message, real-QA-TTS flow through the actual message voice button.
-- `tests/voicePlaybackDiagnostics.test.mjs` and `tests/voiceStreamFixtureServer.test.mjs`: eight diagnostics tests and twelve fixture-server tests.
+- `e2e/quiet-room.voice-stream-live-qa.test.js`: fresh-chat, saved-message, real-QA-TTS short and long flows through the actual message voice button, with exact rendered-source evidence, phase timeouts, duration bands, recording synchronization, and post-terminal hold.
+- `e2e/quiet-room.voice-lifecycle-batch.test.js`: retained-fixture replay/pause/ambient/message-switch coverage plus opt-in automatic Voice Mode coverage.
+- `tests/voicePlaybackDiagnostics.test.mjs` and `tests/voiceStreamFixtureServer.test.mjs`: nine diagnostics tests and twelve fixture-server tests.
 - `tests/voicePlaybackCaptureChecker.test.mjs`, `tests/voiceStreamRunCollector.test.mjs`, and `tests/voiceStreamTeeProxy.test.mjs`: eight capture-checker tests, three run-manifest collector tests, and two tee tests.
 - `package.json`: focused fixture/diagnostics test scripts and the Detox wrapper entry point.
 
@@ -147,3 +148,82 @@ The seven-second stress held 50,000 tail bytes. The last client poll clearly bef
 No realistic live or replay emulator capture lost the ending. The exact QA bytes, complete replay, recorded-timing replay, and repeat near-buffer replay all retained it. No fix was selected because the plan requires a captured relevant failure first. Backend provider-internal exhaustion remains unverified because the current backend `finally` marker cannot distinguish it; the tee does prove the HTTP response ended normally at the proxy. Physical-device/output-route applicability remains separately pending as the plan’s last resort. Nothing was pushed, merged, deployed, or released.
 
 Next: review this bounded emulator result with the user before considering one targeted physical-device capture. If statistical confidence is needed independently, repeat the requested matrix counts; do not infer root cause from the eight-second idle-timeout stress.
+
+## Source completeness and normal emulator use (2026-09-10)
+
+This round executes the plan section added on 2026-09-10 and supersedes the physical-device next step above. Work remained emulator-only. Luna subagents independently reviewed source recovery, Firestore correlation, source-identity instrumentation, tee timing, long-run and lifecycle harnesses, emulator inventory, exact-content test exposure, and the final diff; the primary agent integrated their work, reran evidence, and resolved review findings.
+
+### Instrumentation and privacy boundary
+
+- `MessageVoiceButton` emits a `source.identity` event only for QA/local `live-trace` and `live-proxy`: SHA-256 and Unicode character count for the exact source text, SHA-256 for the conversation identifier, and source slot. It makes no extra network request and emits no source text, identifier, token, or header value. Identity resolution is awaited before queueing so it cannot arrive after that attempt's terminal event; an identity failure emits `source.identity.unavailable` and aborts that diagnostic attempt instead of allowing it to be called source-correlated.
+- `MessageBubble` exposes the exact assistant content through a test-only identifier. The Detox evidence file stores only hash/count/readability and whether the normalized text has the requested ending. The current harness treats a missing/unreadable ending as `source-inconclusive` rather than a complete run.
+- The long runner separates setup, generation, playback, post-terminal, and timeout classifications. It records actual `Pause voice` to `Play voice` duration, labels target/short/long bands, waits for the runner's recording-start marker before tapping, and holds the terminal state for at least two seconds.
+- The tee records monotonic upstream receipt, disk write submission/completion/wait, downstream write submission/completion/wait, backpressure, and event-log submission/completion. It records only forwarded/omitted/removed header names. `Content-Length` remains deliberately removed on the proxied response.
+
+### Historical and fresh source completeness
+
+Read-only lookup against QA Firestore recovered the historical 2026-09-09 saved assistant source at message index 1 selected by the retained GET. Its private content was not copied into committed artifacts. The bounded identity is 220 Unicode characters/bytes, SHA-256 `c5f3f5d6012cbb2f26f90d80144040ed6bdf8d9c669c6d9e4091a63b91d5ad4d`, and its normalized ending is `copper meadow nine` (phrase SHA-256 `9e1b6bf5f783b68df72bfad695e3cd5f184dc5d15a89745b30dfdf1cc4f55ced`). This establishes that the saved text supplied to the selected message contained the intended ending.
+
+The historical AAC remains 136,189 bytes with SHA-256 `004e929896aba2bcf0c523fbaf3ceb82a33502e1c0fcaba8b9f53402d03a7548`; detector v2 previously classified its emulator rendering `complete` with ending correlation 0.9949. Only FFmpeg/FFprobe were available locally—no Whisper, Vosk, or speech model—so the actual words realized in the AAC were not independently transcribed. The generated-speech lexical check is therefore `inconclusive`; the rendering check establishes that the emulator retained the AAC ending, not what those samples say.
+
+Read-only QA lookup also matched every fresh long-run app identity exactly and confirmed the normalized requested ending:
+
+| Run | Saved source characters | Source SHA-256 | Ending present |
+| --- | ---: | --- | --- |
+| `run-mtvk7up0-hv4dtc` | 1,991 | `4e71b5d048e6d167ba36517d67038db28fbf42dd2508bf2123f361ed40e68120` | yes |
+| `run-mtvki30s-pmb5v6` | 1,854 | `ceae43cd574b464d8dd84e56e9c9b1778642762fd847beab9c06766f98fbeb48` | yes |
+| `run-mtvkn7zo-7ihszd` | 1,907 | `4a0036da9eb925a37e3dc0eace20ccaf8c00cfbafb8a5b3e2d2587963d002e26` | yes |
+| `run-mtvks80y-6reze4` | 1,837 | `4f8410da4ad0c3d5dee5920b7130e78e5ea8b4cd2a7ba1ab987b12dc21fd12a9` | yes |
+
+### Direct long-reply observations
+
+Command shape: `VOICE_QA_LONG_REPLY=1 VOICE_QA_LONG_REPLY_ATTEMPTS=1 VOICE_DIAGNOSTIC_MODE=live-trace bash scripts/run-voice-stream-live-qa-android.sh`. Each invocation used the QA/qa TrackPlayer build on `Pixel34AVD_2` (API 34, arm64-v8a), one normal authenticated saved-message GET, a fresh synthetic conversation, phase-specific timeouts, and a two-second post-terminal hold.
+
+| Evidence root | Run / attempt | Measured playback | Native result | Recording result |
+| --- | --- | ---: | --- | --- |
+| `artifacts/qr-mob-021/live-qa-20260910T132311Z/` | `run-mtvk7up0-hv4dtc` / `attempt-mtvk7up0-9xqyxd` | 127.442 s (`long`) | queue ended | timing only; the 180.010 s capture began before login and omitted about 49 s of playback |
+| `artifacts/qr-mob-021/live-qa-20260910T133150Z/` | `run-mtvki30s-pmb5v6` / `attempt-mtvki30s-sqkq4y` | 116.296 s (`target`) | queue ended | full, 123.220 s, SHA-256 `d3928224580544816b14e6c30b6f0506ebf11f9e6240354f130b0e1aac6ae68f` |
+| `artifacts/qr-mob-021/live-qa-20260910T133553Z/` | `run-mtvkn7zo-7ihszd` / `attempt-mtvkn7zo-ky37vm` | 115.220 s (`target`) | queue ended | full, 122.278 s, SHA-256 `30ae33113d0677724210d878fcb0f0575e1f941b4dc400130cc080c7b1550cef` |
+| `artifacts/qr-mob-021/live-qa-20260910T133935Z/` | `run-mtvks80y-6reze4` / `attempt-mtvks810-enzijn` | 124.913 s (`long`) | queue ended | full, 131.750 s, SHA-256 `a9644081a71499ca042ef592dc984ead1ec4c84aebb5a6eb622f20b296a1186f` |
+
+The requested deliverable of three fully captured direct observations is satisfied by the last three rows. Two are inside the 60–120 second target and one is 4.913 seconds above it; the out-of-band run is retained as such rather than silently counted in-band. All three reached native queue end and stayed terminal for two seconds. Direct mode intentionally retained no response bytes, so these recordings cannot establish byte-identical waveform completeness. The exact-content hook was rebuilt during this sequence: older UI evidence for the first three runs is not authoritative, while the app source-identity events and Firestore readback match exactly.
+
+### Direct/proxy timing comparison
+
+Command shape: `VOICE_DIAGNOSTIC_MODE=live-proxy VOICE_QA_TEE_PROXY_UPSTREAM=<QA voice base> bash scripts/run-voice-stream-live-qa-android.sh`; the comparison direct run used the same wrapper with `VOICE_DIAGNOSTIC_MODE=live-trace`. The secret upstream value came from the existing QA environment and is not recorded.
+
+The short proxied comparison is under `artifacts/qr-mob-021/live-qa-20260910T180641Z/`, run `run-mtvuc1l9-mipopc`, attempt `attempt-mtvuc1l9-hiyzy6`. It reached native queue end after 28.367 seconds. The tee retained an HTTP 200 `audio/aac` response with 220,147 bytes, SHA-256 `601d2cc46767b97c8ef12b8bdeaef60741f88aa0bf6b84437a9ea135f64cd370`, 14 chunks, and normal upstream exhaustion. Upstream headers arrived at 4,432.855 ms; the first chunk was received at 4,434.657 ms, its disk write completed at 4,434.941 ms, and its downstream write completed at 4,435.586 ms. The last chunk receipt/disk/downstream completions were 5,015.210/5,017.357/5,017.501 ms and terminal logging completed at 5,018.828 ms. Maximum disk wait was 2.121 ms, maximum downstream wait 0.639 ms, and neither path reported backpressure.
+
+Request header names forwarded were `accept-encoding`, `authorization`, and `user-agent`; local correlation, connection, host, and ICY metadata names were omitted. Response names forwarded were `cache-control`, `content-type`, and `vary`; AWS/CORS/TTS metadata names and `content-length` were omitted, with `content-length` explicitly removed. No values are stored.
+
+The matching source-to-emulator checker used the exact retained bytes and `emulator.webm` (79,553,129 bytes, SHA-256 `91d2412f39e10a066dfdb35869250e72c2529ec64670c663815cb2a3dc949927`). It classified the overall result `inconclusive`: full alignment 0.7147 was below threshold at very low capture gain, while closing correlation was 0.9782 and ending correlation 0.9979 with full coverage and gain-normalized ending energy 0.9784. Per detector policy, low whole-capture correlation plus strong ending evidence remains inconclusive rather than being promoted to complete.
+
+The separate short direct run is under `artifacts/qr-mob-021/live-qa-20260910T180915Z/`, run `run-mtvufaec-c5dgj7`, attempt `attempt-mtvufaed-ve3md9`; it reached queue end after 29.903 seconds. Native queue-add to playing was 3.754 seconds direct versus 5.543 seconds proxied. The requests generated different source lengths (405 versus 352 characters), and direct mode has no upstream-receipt timestamp, so the 1.789-second difference does not isolate proxy overhead or establish causation.
+
+A long proxy run under `artifacts/qr-mob-021/live-qa-20260910T180400Z/` failed before playback with `android-io-network-connection-timeout`. Four separate tee requests each closed near eight seconds with zero bytes/status because the QA TTS upstream had not returned headers; the upstream then reported connection reset. This is a meaningful direct/proxy difference and an existing proxy-path slow-first-byte limitation, not evidence that the direct TrackPlayer path clips final speech.
+
+### Playback lifecycle batch
+
+`e2e/quiet-room.voice-lifecycle-batch.test.js` uses the retained `steady` fixture through the normal message button. Start `node scripts/voice-stream-fixture-server.mjs --host 0.0.0.0 --port 8787`, then run `QR_MOB_021_LIFECYCLE_AUTO=1 VOICE_FIXTURE_BASE_URL=http://10.0.2.2:8787 VOICE_FIXTURE_CASE=steady DETOX_AVD_NAME=Pixel34AVD_2 bash scripts/with-mobile-env.sh qa qa npx detox test -c android.emu.release e2e/quiet-room.voice-lifecycle-batch.test.js`. The consolidated run is `artifacts/qr-mob-021/lifecycle-final-20260910T132100Z/`; it executes two attempts each for uninterrupted playback plus replay, deliberate pause/restart, ambient enable/disable while voice remains active, and switching ownership from one assistant message to another. With `QR_MOB_021_LIFECYCLE_AUTO=1`, it also executes three completed QA replies in automatic Voice Mode without tapping their voice buttons. Deliberate pause is recorded as an expected restart action, not an unexpected interruption. Earlier single-pass and focused rerun artifacts remain under `lifecycle-20260910T134355Z`, `lifecycle-auto-20260910T135110Z`, and `lifecycle-ambient-20260910T132000Z`.
+
+### Optional second Android image
+
+The host has `QuietRoom_Play_API35` and `Galaxy_S22_Plus` definitions and API 35 system-image directories, although `avdmanager list` reported the image as missing for those definitions. Normal, headless, and read-only launch attempts exited before producing an ADB-ready device; logs are under `artifacts/qr-mob-021/api35-emulator/`. No application test ran on those AVDs and no API 35 result is inferred. The working primary emulator remained API 34. The optional image check is recorded as blocked by emulator readiness rather than expanded into AVD repair.
+
+### Current conclusion
+
+The saved source text was complete in the historical lookup and all four fresh direct observations. The normal direct path completed three fully recorded long playbacks without a native error or early terminal transition. The retained proxy source has strong captured-tail correspondence but an intentionally inconclusive whole-recording classification, and its spoken lexical content was not independently transcribed. Lifecycle cases completed at their planned bounded counts. No realistic missing-ending failure was captured, so no playback behavior, player, cleanup delay, or transport was changed as a product fix. No physical-device test, merge, push, deployment, or release was performed.
+
+### Final verification for this section
+
+- Consolidated lifecycle Detox: 5/5 tests passed in 592.894 seconds. Those five tests contain the planned 2/2 retained/replay, 2/2 deliberate pause/restart, 2/2 ambient, 2/2 message-switch, and three-reply autoplay loops. Status file: `artifacts/qr-mob-021/lifecycle-final-20260910T132100Z/status.txt` = `0`.
+- `npm run typecheck` — passed.
+- `npm run test:voice-playback-diagnostics` — passed, 9/9.
+- `npm run test:voice-tee` — passed, 2/2.
+- `npm run test:voice-fixture` — passed, 12/12.
+- `npm run test:voice-capture-checker` — passed, 8/8.
+- `npm run test:voice-run-collector` — passed, 3/3.
+- `npm run test:ambient-audio` — passed, 5/5.
+- JavaScript syntax checks for both changed E2Es and shell syntax for the live runner — passed.
+- Final Android QA/qa TrackPlayer Detox build — passed: 842 tasks, 22 executed, 820 up-to-date; `BUILD SUCCESSFUL in 11s`.
+- `git diff --check` — passed before final commit.

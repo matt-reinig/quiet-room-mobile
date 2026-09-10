@@ -88,6 +88,9 @@ module.exports = {
     assistant(index) {
       return `quiet-room.message.assistant.${index}`;
     },
+    content(role, index) {
+      return `quiet-room.message.${role}.${index}.content`;
+    },
     voice(role, index) {
       return `quiet-room.message.${role}.${index}.voice`;
     },

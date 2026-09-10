@@ -100,11 +100,34 @@ test("tee preserves exact bytes, forwards progressively, and excludes query/toke
     const names = await readdir(outputDir);
     const eventFile = names.find((name) => name.endsWith(".events.jsonl"));
     const eventText = await readFile(join(outputDir, eventFile), "utf8");
+    const events = eventText.trim().split("\n").map((line) => JSON.parse(line));
     assert.equal(eventText.includes("secret-token-value"), false);
     assert.equal(eventText.includes("secret-conversation"), false);
     assert.equal(eventText.includes("/api/voice_stream"), false);
     assert.equal(eventText.includes('"runId":"run-123"'), true);
     assert.equal(eventText.includes('"attemptId":"attempt-456"'), true);
+    const chunkEvents = events.filter((event) => event.event === "chunk");
+    assert.equal(chunkEvents.length, 3);
+    for (const event of chunkEvents) {
+      assert.equal(event.upstreamReceiptElapsedMs <= event.diskWriteSubmittedElapsedMs, true);
+      assert.equal(event.diskWriteSubmittedElapsedMs <= event.diskWriteCompletedElapsedMs, true);
+      assert.equal(event.diskWriteCompletedElapsedMs <= event.downstreamWriteSubmittedElapsedMs, true);
+      assert.equal(event.downstreamWriteSubmittedElapsedMs <= event.downstreamWriteCompletedElapsedMs, true);
+      assert.equal(event.diskWriteWaitMs >= 0, true);
+      assert.equal(event.downstreamWriteWaitMs >= 0, true);
+      assert.equal(typeof event.diskWriteBackpressure, "boolean");
+      assert.equal(typeof event.downstreamWriteBackpressure, "boolean");
+    }
+    assert.equal(events[0].headerPolicy.forwarded.includes("authorization"), true);
+    assert.equal(events[0].headerPolicy.omitted.includes("x-qr-mob-021-run-id"), true);
+    assert.equal(events[1].headerPolicy.removed.includes("content-length"), true);
+    assert.equal(manifest.headerPolicy.response.removed.includes("content-length"), true);
+    assert.equal(manifest.eventLogTimingSummary.eventCount, events.length);
+    assert.equal(manifest.eventLogTimings.every((timing) => (
+      timing.submittedElapsedMs <= timing.completedElapsedMs
+      && timing.waitMs >= 0
+      && typeof timing.backpressure === "boolean"
+    )), true);
     const body = await readFile(join(outputDir, manifest.bodyFile));
     assert.deepEqual(body, payload);
   } finally {

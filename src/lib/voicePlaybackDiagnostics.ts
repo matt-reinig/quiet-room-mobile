@@ -48,6 +48,15 @@ export type VoicePlaybackDiagnosticDeepLink = {
 export type VoicePlaybackDiagnosticValue = string | number | boolean | null;
 export type VoicePlaybackDiagnosticFields = Record<string, unknown>;
 
+export type VoicePlaybackSourceIdentity = {
+  sourceSha256: string;
+  sourceCharCount: number;
+  conversationSha256: string;
+  sourceSlot: number;
+};
+
+export type VoicePlaybackSha256 = (value: string) => Promise<string>;
+
 export type VoicePlaybackDiagnosticEvent = {
   prefix: typeof VOICE_PLAYBACK_DIAGNOSTIC_PREFIX;
   event: string;
@@ -85,6 +94,35 @@ export type VoicePlaybackDiagnosticEmitter = {
   finishAttempt: (attemptId: string, fields?: VoicePlaybackDiagnosticFields) => void;
   subscribe: (listener: (event: VoicePlaybackDiagnosticEvent) => void) => () => void;
 };
+
+async function digestVoicePlaybackValue(value: string): Promise<string> {
+  // Keep expo-crypto lazy so the diagnostics module remains usable in the
+  // node-based focused tests without loading a native Expo module. The hash
+  // work is only started by the QA/local diagnostic path.
+  const { CryptoDigestAlgorithm, digestStringAsync } = await import("expo-crypto");
+  return digestStringAsync(CryptoDigestAlgorithm.SHA256, value);
+}
+
+export async function resolveVoicePlaybackSourceIdentity(
+  assistantText: string,
+  conversationId: string,
+  sourceSlot: number,
+  digest: VoicePlaybackSha256 = digestVoicePlaybackValue,
+): Promise<VoicePlaybackSourceIdentity> {
+  const [sourceSha256, conversationSha256] = await Promise.all([
+    digest(assistantText),
+    digest(conversationId),
+  ]);
+
+  return {
+    sourceSha256,
+    // Python's `len()` on the backend counts Unicode code points; Array.from
+    // keeps this diagnostic count comparable for non-BMP assistant content.
+    sourceCharCount: Array.from(assistantText).length,
+    conversationSha256,
+    sourceSlot,
+  };
+}
 
 type DiagnosticClock = () => number;
 
