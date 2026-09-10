@@ -9,6 +9,7 @@ const fixtureCase = process.env.VOICE_FIXTURE_CASE || 'steady';
 function diagnosticUrl() {
   const payload = encodeURIComponent(JSON.stringify({
     enabled: true,
+    mode: 'fixture',
     fixtureBaseUrl,
     fixtureCase,
   }));

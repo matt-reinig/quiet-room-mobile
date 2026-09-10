@@ -3,8 +3,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_VARIANT="${VOICE_DIAGNOSTICS_APP_VARIANT:-qa}"
+RELEASE_ENV="${VOICE_DIAGNOSTICS_RELEASE_ENV:-local}"
 FIXTURE_PORT="${VOICE_FIXTURE_PORT:-8787}"
 FIXTURE_CASE="${VOICE_FIXTURE_CASE:-steady}"
+FIXTURE_PATH="${VOICE_FIXTURE_PATH:-}"
+FIXTURE_MANIFEST="${VOICE_FIXTURE_MANIFEST:-}"
+FIXTURE_EVENTS="${VOICE_FIXTURE_EVENTS:-}"
 DETOX_CONFIG="${VOICE_DIAGNOSTICS_DETOX_CONFIG:-android.emu.release}"
 DETOX_AVD_NAME="${DETOX_AVD_NAME:-Pixel34AVD_2}"
 RUN_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -16,19 +21,32 @@ RUN_MANIFEST="$RUN_DIR/run-manifest.json"
 mkdir -p "$RUN_DIR"
 export EXPO_PUBLIC_VOICE_PLAYBACK_ENGINE="track-player"
 
-node "$ROOT_DIR/scripts/verify-mobile-config.js" qa local
+node "$ROOT_DIR/scripts/verify-mobile-config.js" "$APP_VARIANT" "$RELEASE_ENV"
 
 if [[ "${VOICE_DIAGNOSTICS_SKIP_SYNC:-0}" != "1" ]]; then
-  bash "$ROOT_DIR/scripts/sync-native-variant.sh" qa local
+  bash "$ROOT_DIR/scripts/sync-native-variant.sh" "$APP_VARIANT" "$RELEASE_ENV"
 fi
 
 if [[ "${VOICE_DIAGNOSTICS_SKIP_BUILD:-0}" != "1" ]]; then
   npx detox build -c "$DETOX_CONFIG"
 fi
 
+fixture_args=(
+  --host 0.0.0.0
+  --port "$FIXTURE_PORT"
+)
+if [[ -n "$FIXTURE_PATH" ]]; then
+  fixture_args+=(--fixture "$FIXTURE_PATH")
+fi
+if [[ -n "$FIXTURE_MANIFEST" ]]; then
+  fixture_args+=(--manifest "$FIXTURE_MANIFEST")
+fi
+if [[ -n "$FIXTURE_EVENTS" ]]; then
+  fixture_args+=(--events "$FIXTURE_EVENTS")
+fi
+
 node "$ROOT_DIR/scripts/voice-stream-fixture-server.mjs" \
-  --host 0.0.0.0 \
-  --port "$FIXTURE_PORT" >"$SERVER_LOG" 2>&1 &
+  "${fixture_args[@]}" >"$SERVER_LOG" 2>&1 &
 fixture_server_pid=$!
 
 cleanup() {
@@ -63,15 +81,23 @@ detox_status=$?
 set -e
 
 set +e
-node "$ROOT_DIR/scripts/collect-voice-stream-run.mjs" \
-  --root "$ROOT_DIR" \
-  --run-started-at "$RUN_STARTED_AT" \
-  --server-log "$SERVER_LOG" \
-  --fixture-case "$FIXTURE_CASE" \
-  --detox-config "$DETOX_CONFIG" \
-  --avd-name "$DETOX_AVD_NAME" \
-  --detox-status "$detox_status" \
+collector_args=(
+  --root "$ROOT_DIR"
+  --run-started-at "$RUN_STARTED_AT"
+  --server-log "$SERVER_LOG"
+  --fixture-case "$FIXTURE_CASE"
+  --detox-config "$DETOX_CONFIG"
+  --avd-name "$DETOX_AVD_NAME"
+  --detox-status "$detox_status"
   --output "$RUN_MANIFEST"
+)
+if [[ -n "$FIXTURE_MANIFEST" ]]; then
+  collector_args+=(--fixture-manifest "$FIXTURE_MANIFEST")
+fi
+if [[ -n "$FIXTURE_PATH" ]]; then
+  collector_args+=(--fixture-path "$FIXTURE_PATH")
+fi
+node "$ROOT_DIR/scripts/collect-voice-stream-run.mjs" "${collector_args[@]}"
 collector_status=$?
 set -e
 

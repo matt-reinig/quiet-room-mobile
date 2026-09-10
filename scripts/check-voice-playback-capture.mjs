@@ -6,7 +6,7 @@ import { basename, dirname, extname, resolve } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-export const CHECKER_SCHEMA_VERSION = "qr-mob-021.capture-check.v1";
+export const CHECKER_SCHEMA_VERSION = "qr-mob-021.capture-check.v2";
 export const DEFAULT_SAMPLE_RATE = 8_000;
 export const DEFAULT_FRAME_MS = 20;
 export const DEFAULT_HOP_MS = 20;
@@ -16,6 +16,11 @@ export const DEFAULT_MIN_CLOSING_ENERGY_RATIO = 0.45;
 export const DEFAULT_MIN_COVERAGE = 0.95;
 export const DEFAULT_MIN_MISSING_TAIL_ALIGNMENT_CORRELATION = 0.75;
 export const DEFAULT_CLOSING_ALIGNMENT_WINDOW_MS = 750;
+export const DEFAULT_ENDING_WINDOW_MS = 750;
+export const DEFAULT_ENDING_ALIGNMENT_WINDOW_MS = 120;
+export const DEFAULT_MIN_ENDING_CORRELATION = 0.82;
+export const DEFAULT_MIN_ENDING_ENERGY_RATIO = 0.55;
+export const DEFAULT_MIN_ENDING_MISSING_ENERGY_RATIO = 0.9;
 
 const DEFAULT_OPTIONS = {
   frameMs: DEFAULT_FRAME_MS,
@@ -26,6 +31,11 @@ const DEFAULT_OPTIONS = {
   minCoverage: DEFAULT_MIN_COVERAGE,
   minMissingTailAlignmentCorrelation: DEFAULT_MIN_MISSING_TAIL_ALIGNMENT_CORRELATION,
   closingAlignmentWindowMs: DEFAULT_CLOSING_ALIGNMENT_WINDOW_MS,
+  endingWindowMs: DEFAULT_ENDING_WINDOW_MS,
+  endingAlignmentWindowMs: DEFAULT_ENDING_ALIGNMENT_WINDOW_MS,
+  minEndingCorrelation: DEFAULT_MIN_ENDING_CORRELATION,
+  minEndingEnergyRatio: DEFAULT_MIN_ENDING_ENERGY_RATIO,
+  minEndingMissingEnergyRatio: DEFAULT_MIN_ENDING_MISSING_ENERGY_RATIO,
   sampleRate: DEFAULT_SAMPLE_RATE,
   searchStepMs: DEFAULT_HOP_MS,
 };
@@ -245,6 +255,8 @@ export function scoreAlignedCapture({
   alignment,
   captureEnvelope,
   closingAlignmentWindowMs = DEFAULT_CLOSING_ALIGNMENT_WINDOW_MS,
+  endingAlignmentWindowMs = DEFAULT_ENDING_ALIGNMENT_WINDOW_MS,
+  endingWindowMs = DEFAULT_ENDING_WINDOW_MS,
   envelopeRateHz,
   finalSpeechIntervalSeconds,
   referenceEnvelope,
@@ -253,6 +265,7 @@ export function scoreAlignedCapture({
     return {
       full: { score: 0, referenceEnergy: averageEnergy(referenceEnvelope), captureEnergy: 0, energyRatio: 0, coverage: 0 },
       closing: { score: 0, referenceEnergy: 0, captureEnergy: 0, energyRatio: 0, coverage: 0 },
+      ending: { score: 0, referenceEnergy: 0, captureEnergy: 0, energyRatio: 0, coverage: 0 },
     };
   }
 
@@ -330,6 +343,77 @@ export function scoreAlignedCapture({
     ? closingEnergyRatio / fullEnergyRatio
     : 0;
 
+  // The broad closing interval is useful for alignment, but it can hide a
+  // short missing ending because most of the phrase is still present. Score a
+  // separate, anchored tail segment as well. A small local search absorbs
+  // capture clock drift without allowing the detector to move the window back
+  // into an earlier, intact part of the phrase.
+  const endingEndFrame = Math.min(
+    referenceEnvelope.length,
+    Math.max(0, Math.ceil(finalSpeechIntervalSeconds.end * envelopeRateHz)),
+  );
+  const endingLengthFrames = Math.max(
+    1,
+    Math.ceil((endingWindowMs * envelopeRateHz) / 1000),
+  );
+  const endingStartFrame = Math.max(
+    0,
+    Math.max(
+      Math.floor(finalSpeechIntervalSeconds.start * envelopeRateHz),
+      endingEndFrame - endingLengthFrames,
+    ),
+  );
+  const actualEndingLengthFrames = Math.max(1, endingEndFrame - endingStartFrame);
+  const referenceEnding = referenceEnvelope.slice(
+    endingStartFrame,
+    endingStartFrame + actualEndingLengthFrames,
+  );
+  const predictedEndingStartFrame =
+    alignment.offsetFrames + Math.max(0, endingStartFrame - referenceOffsetFrames);
+  const endingSearchRadiusFrames = Math.max(
+    0,
+    Math.round((endingAlignmentWindowMs * envelopeRateHz) / 1000),
+  );
+  const scoreEndingCandidate = (candidateStartFrame) => {
+    const candidate = sliceWithCoverage(
+      captureEnvelope,
+      candidateStartFrame,
+      actualEndingLengthFrames,
+    );
+    const rawCorrelation = normalizedCorrelation(referenceEnding, candidate.values);
+    return {
+      startFrame: candidateStartFrame,
+      rawCorrelation,
+      score: rawCorrelation * candidate.coverage,
+      coverage: candidate.coverage,
+      values: candidate.values,
+    };
+  };
+  let localEnding = scoreEndingCandidate(predictedEndingStartFrame);
+  for (
+    let candidateStart = predictedEndingStartFrame - endingSearchRadiusFrames;
+    candidateStart <= predictedEndingStartFrame + endingSearchRadiusFrames;
+    candidateStart += 1
+  ) {
+    const candidate = scoreEndingCandidate(candidateStart);
+    const candidateDistance = Math.abs(candidateStart - predictedEndingStartFrame);
+    const localDistance = Math.abs(localEnding.startFrame - predictedEndingStartFrame);
+    if (
+      candidate.score > localEnding.score + 1e-6 ||
+      (Math.abs(candidate.score - localEnding.score) <= 1e-6 && candidateDistance < localDistance)
+    ) {
+      localEnding = candidate;
+    }
+  }
+  const endingReferenceEnergy = averageEnergy(referenceEnding);
+  const endingCaptureEnergy = averageEnergy(localEnding.values);
+  const endingEnergyRatio = endingReferenceEnergy > 0
+    ? endingCaptureEnergy / endingReferenceEnergy
+    : 0;
+  const gainNormalizedEndingEnergyRatio = fullEnergyRatio > Number.EPSILON
+    ? endingEnergyRatio / fullEnergyRatio
+    : 0;
+
   return {
     full: {
       score: alignment.score,
@@ -358,6 +442,26 @@ export function scoreAlignedCapture({
       captureStartSeconds: localClosing.startFrame / envelopeRateHz,
       captureEndSeconds: (localClosing.startFrame + localClosingCapture.values.length) / envelopeRateHz,
     },
+    ending: {
+      score: localEnding.score,
+      rawCorrelation: localEnding.rawCorrelation,
+      referenceEnergy: endingReferenceEnergy,
+      captureEnergy: endingCaptureEnergy,
+      energyRatio: endingEnergyRatio,
+      gainNormalizedEnergyRatio: gainNormalizedEndingEnergyRatio,
+      coverage: localEnding.coverage,
+      alignment: {
+        predictedStartFrame: predictedEndingStartFrame,
+        localStartFrame: localEnding.startFrame,
+        driftFrames: localEnding.startFrame - predictedEndingStartFrame,
+        driftSeconds: (localEnding.startFrame - predictedEndingStartFrame) / envelopeRateHz,
+        windowSeconds: endingAlignmentWindowMs / 1000,
+      },
+      referenceStartSeconds: endingStartFrame / envelopeRateHz,
+      referenceEndSeconds: endingEndFrame / envelopeRateHz,
+      captureStartSeconds: localEnding.startFrame / envelopeRateHz,
+      captureEndSeconds: (localEnding.startFrame + localEnding.values.length) / envelopeRateHz,
+    },
   };
 }
 
@@ -367,6 +471,9 @@ export function classifyCaptureResult({
   minAlignmentCorrelation = DEFAULT_MIN_ALIGNMENT_CORRELATION,
   minClosingCorrelation = DEFAULT_MIN_CLOSING_CORRELATION,
   minClosingEnergyRatio = DEFAULT_MIN_CLOSING_ENERGY_RATIO,
+  minEndingCorrelation = DEFAULT_MIN_ENDING_CORRELATION,
+  minEndingEnergyRatio = DEFAULT_MIN_ENDING_ENERGY_RATIO,
+  minEndingMissingEnergyRatio = DEFAULT_MIN_ENDING_MISSING_ENERGY_RATIO,
   minCoverage = DEFAULT_MIN_COVERAGE,
   minMissingTailAlignmentCorrelation = DEFAULT_MIN_MISSING_TAIL_ALIGNMENT_CORRELATION,
 }) {
@@ -374,11 +481,28 @@ export function classifyCaptureResult({
     return "inconclusive";
   }
 
+  const ending = scores.ending;
+  const endingEnergyRatio = ending?.gainNormalizedEnergyRatio ?? ending?.energyRatio ?? 0;
+  const endingCoverageFails = ending && ending.coverage < minCoverage;
+  const endingCorrelationFails = ending && ending.score < minEndingCorrelation;
+  const endingEnergyFails = ending && endingEnergyRatio < minEndingEnergyRatio;
+  const endingFails = endingCoverageFails || endingCorrelationFails || endingEnergyFails;
+  // A high-energy but low-correlation tail can be an alignment/decoder
+  // anomaly. Do not call that audible loss without an independent energy drop.
+  // This keeps retained ambiguous recordings inconclusive while the synthetic
+  // silence controls (which lose energy as well as correlation) remain useful.
+  const endingAmbiguous = endingCorrelationFails &&
+    !endingCoverageFails &&
+    endingEnergyRatio >= minEndingMissingEnergyRatio;
   if (
+    endingFails ||
     scores.closing.coverage < minCoverage ||
     scores.closing.score < minClosingCorrelation ||
     (scores.closing.gainNormalizedEnergyRatio ?? scores.closing.energyRatio) < minClosingEnergyRatio
   ) {
+    if (endingAmbiguous) {
+      return "inconclusive";
+    }
     return alignment.score >= minMissingTailAlignmentCorrelation
       ? "audible-tail-missing"
       : "inconclusive";
@@ -511,6 +635,36 @@ function buildOptions(raw) {
       0,
       5_000,
     ),
+    endingWindowMs: boundedNumber(
+      raw["ending-window-ms"],
+      DEFAULT_OPTIONS.endingWindowMs,
+      100,
+      5_000,
+    ),
+    endingAlignmentWindowMs: boundedNumber(
+      raw["ending-alignment-window-ms"],
+      DEFAULT_OPTIONS.endingAlignmentWindowMs,
+      0,
+      1_000,
+    ),
+    minEndingCorrelation: boundedNumber(
+      raw["min-ending-correlation"],
+      DEFAULT_OPTIONS.minEndingCorrelation,
+      -1,
+      1,
+    ),
+    minEndingEnergyRatio: boundedNumber(
+      raw["min-ending-energy-ratio"],
+      DEFAULT_OPTIONS.minEndingEnergyRatio,
+      0,
+      10,
+    ),
+    minEndingMissingEnergyRatio: boundedNumber(
+      raw["min-ending-missing-energy-ratio"],
+      DEFAULT_OPTIONS.minEndingMissingEnergyRatio,
+      0,
+      10,
+    ),
     sampleRate: Math.round(boundedNumber(raw["sample-rate"], DEFAULT_OPTIONS.sampleRate, 1_000, 48_000)),
     searchStepMs: boundedNumber(raw["search-step-ms"], DEFAULT_OPTIONS.searchStepMs, 5, 500),
   };
@@ -590,6 +744,8 @@ export async function checkVoicePlaybackCapture({
     alignment,
     captureEnvelope: captureEnvelope.envelope,
     closingAlignmentWindowMs: options.closingAlignmentWindowMs,
+    endingAlignmentWindowMs: options.endingAlignmentWindowMs,
+    endingWindowMs: options.endingWindowMs,
     envelopeRateHz: referenceEnvelope.envelopeRateHz,
     finalSpeechIntervalSeconds: manifest.finalSpeechIntervalSeconds,
     referenceEnvelope: referenceEnvelope.envelope,
@@ -617,12 +773,25 @@ export async function checkVoicePlaybackCapture({
   };
   output.full = scores.full;
   output.closing = scores.closing;
+  output.ending = scores.ending;
+  output.classificationBeforeEndingCheck = classifyCaptureResult({
+    alignment,
+    scores: { full: scores.full, closing: scores.closing },
+    minAlignmentCorrelation: options.minAlignmentCorrelation,
+    minClosingCorrelation: options.minClosingCorrelation,
+    minClosingEnergyRatio: options.minClosingEnergyRatio,
+    minCoverage: options.minCoverage,
+    minMissingTailAlignmentCorrelation: options.minMissingTailAlignmentCorrelation,
+  });
   output.classification = classifyCaptureResult({
     alignment,
     scores,
     minAlignmentCorrelation: options.minAlignmentCorrelation,
     minClosingCorrelation: options.minClosingCorrelation,
     minClosingEnergyRatio: options.minClosingEnergyRatio,
+    minEndingCorrelation: options.minEndingCorrelation,
+    minEndingEnergyRatio: options.minEndingEnergyRatio,
+    minEndingMissingEnergyRatio: options.minEndingMissingEnergyRatio,
     minCoverage: options.minCoverage,
     minMissingTailAlignmentCorrelation: options.minMissingTailAlignmentCorrelation,
   });

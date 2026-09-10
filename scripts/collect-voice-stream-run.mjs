@@ -237,12 +237,25 @@ export function summarizeServerEvents(events, correlation) {
       event.runId === correlation.runId &&
       event.attemptId === correlation.attemptId,
   );
-  const request = correlated.find((event) => event.event === "request" && event.method === "GET") || null;
-  const chunks = correlated.filter((event) => event.event === "chunk");
-  const terminal = correlated.find((event) => event.event === "terminal") || null;
-  const firstChunk = chunks[0] || null;
-  const finalChunk = chunks.at(-1) || null;
-  return {
+  const instances = [];
+  let current = null;
+
+  for (const event of correlated) {
+    if (event.event === "request" && event.method === "GET") {
+      current = { request: event, chunks: [], terminal: null };
+      instances.push(current);
+    } else if (current && event.event === "chunk") {
+      current.chunks.push(event);
+    } else if (current && event.event === "terminal") {
+      current.terminal = event;
+      current = null;
+    }
+  }
+
+  const summarizeInstance = ({ request, chunks, terminal }) => {
+    const firstChunk = chunks[0] || null;
+    const finalChunk = chunks.at(-1) || null;
+    return {
     request: request
       ? { case: request.case, method: request.method, runId: request.runId, attemptId: request.attemptId, wallTime: request.wallTime }
       : null,
@@ -255,7 +268,12 @@ export function summarizeServerEvents(events, correlation) {
     terminal: terminal
       ? { bytesWritten: terminal.bytesWritten, chunksWritten: terminal.chunksWritten, elapsedMs: terminal.elapsedMs, status: terminal.status, wallTime: terminal.wallTime }
       : null,
+    };
   };
+
+  const requests = instances.map(summarizeInstance);
+  const selected = requests[0] || summarizeInstance({ request: null, chunks: [], terminal: null });
+  return { ...selected, requestCount: requests.length, requests };
 }
 
 export async function collectVoiceStreamRun({
@@ -265,14 +283,29 @@ export async function collectVoiceStreamRun({
   detoxExitStatus = null,
   fixtureCase = "steady",
   fixtureManifestPath,
+  fixturePath: fixturePathOverride,
   root = DEFAULT_ROOT,
   runStartedAt = null,
   serverLogPath,
   serial = null,
 } = {}) {
   const manifestPath = fixtureManifestPath || path.join(root, "e2e/fixtures/voice-stream/manifest.json");
-  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-  const fixturePath = path.resolve(path.dirname(manifestPath), manifest.fixtureFile);
+  const manifestRaw = await readFile(manifestPath, "utf8");
+  let manifest;
+  try {
+    manifest = JSON.parse(manifestRaw);
+  } catch {
+    const lines = manifestRaw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    manifest = JSON.parse(lines.at(-1));
+  }
+  const fixturePath = fixturePathOverride
+    ? path.resolve(fixturePathOverride)
+    : manifest.fixtureFile
+      ? path.resolve(path.dirname(manifestPath), manifest.fixtureFile)
+      : null;
+  if (!fixturePath) {
+    throw new Error("fixture path is required when the manifest does not declare fixtureFile");
+  }
   const fixtureBytes = await readFile(fixturePath);
   const serverEvents = serverLogPath ? await readOptionalEvents(serverLogPath, (line) => parseJsonLine(line, SERVER_PREFIX)) : [];
   const artifacts = detoxArtifactDir
@@ -340,6 +373,7 @@ async function runCli() {
     detoxExitStatus: args.has("detox-status") ? Number(args.get("detox-status")) : null,
     fixtureCase: args.get("fixture-case") || "steady",
     fixtureManifestPath: args.get("fixture-manifest") ? path.resolve(args.get("fixture-manifest")) : undefined,
+    fixturePath: args.get("fixture-path") ? path.resolve(args.get("fixture-path")) : undefined,
     root,
     runStartedAt: args.get("run-started-at") || null,
     serverLogPath: args.get("server-log") ? path.resolve(args.get("server-log")) : null,

@@ -43,7 +43,8 @@ type VoiceStatus = "error" | "idle" | "loading" | "playing";
 type ActiveVoiceDiagnostic = {
   attemptId: string;
   emitter: VoicePlaybackDiagnosticEmitter;
-  fixtureCase: string;
+  mode: VoicePlaybackDiagnosticDeepLink["mode"];
+  fixtureCase?: string;
 };
 
 const DEFAULT_ANDROID_FIXTURE_BASE_URL = "http://10.0.2.2:8787";
@@ -100,7 +101,7 @@ function buildConversationVoiceUri(baseUrl: string, conversationId: string, mess
   return `${baseUrl}${separator}conversation_id=${encodeURIComponent(conversationId)}&message_index=${messageIndex}`;
 }
 
-function buildDiagnosticVoiceUri(
+function buildDiagnosticFixtureVoiceUri(
   diagnostic: VoicePlaybackDiagnosticDeepLink,
   runId: string,
   attemptId: string,
@@ -120,6 +121,18 @@ function buildDiagnosticVoiceUri(
     run_id: runId,
   });
   return `${endpoint}?${params.toString()}`;
+}
+
+function buildDiagnosticProxyVoiceUri(
+  proxyBaseUrl: string,
+  conversationId: string,
+  messageIndex: number,
+): string {
+  const normalizedBaseUrl = proxyBaseUrl.replace(/\/+$/, "");
+  const endpoint = normalizedBaseUrl.endsWith("/api/voice_stream")
+    ? normalizedBaseUrl
+    : `${normalizedBaseUrl}/api/voice_stream`;
+  return buildConversationVoiceUri(endpoint, conversationId, messageIndex);
 }
 
 function finiteOrNull(value: unknown): number | null {
@@ -273,7 +286,11 @@ export default function MessageVoiceButton({
     }
   }, [clearTrackPlayerWatchers, emitDiagnostic]);
 
-  const cleanup = useCallback(async (invalidateOperation = true, reason = "cleanup") => {
+  const cleanup = useCallback(async (
+    invalidateOperation = true,
+    reason = "cleanup",
+    result: "cancelled" | "native-ended" | "playback-error" = "cancelled",
+  ) => {
     if (invalidateOperation) {
       playbackOperationRef.current += 1;
     }
@@ -317,8 +334,10 @@ export default function MessageVoiceButton({
     }
 
     publishVoicePlaybackStopped(instanceIdRef.current);
-    finishDiagnostic({ reason, result: "cancelled" });
-  }, [cleanupTrackPlayer, finishDiagnostic]);
+    emitDiagnostic("ownership.released", { reason });
+    emitDiagnostic("ambient.duck.released", { reason });
+    finishDiagnostic({ reason, result });
+  }, [cleanupTrackPlayer, emitDiagnostic, finishDiagnostic]);
 
   const pausePlayback = useCallback(async () => {
     playbackOperationRef.current += 1;
@@ -353,12 +372,29 @@ export default function MessageVoiceButton({
 
     setStatus("idle");
     publishVoicePlaybackStopped(instanceIdRef.current);
+    emitDiagnostic("ownership.released", { reason: "user-pause" });
+    emitDiagnostic("ambient.duck.released", { reason: "user-pause" });
     finishDiagnostic({ reason: "user-pause", result: "cancelled" });
   }, [cleanupTrackPlayer, clearTrackPlayerWatchers, emitDiagnostic, finishDiagnostic]);
 
   const loadAndPlayFromSource = useCallback(
-    async (source: AudioSource, operation: number) => {
-      await configureQuietRoomAudioSession();
+    async (
+      source: AudioSource,
+      operation: number,
+      diagnostic: ActiveVoiceDiagnostic | null = null,
+    ) => {
+      const emit = (event: string, fields: Record<string, unknown> = {}) => {
+        diagnostic?.emitter.emit(event, fields, diagnostic.attemptId);
+      };
+
+      emit("audio-session.requested", { engine: "expo-audio" });
+      try {
+        await configureQuietRoomAudioSession();
+        emit("audio-session.completed", { engine: "expo-audio" });
+      } catch (error) {
+        emit("audio-session.failed", { engine: "expo-audio", error: error instanceof Error ? error.name : "unknown" });
+        throw error;
+      }
       if (operation !== playbackOperationRef.current) {
         return false;
       }
@@ -381,9 +417,18 @@ export default function MessageVoiceButton({
 
       statusIntervalRef.current = setInterval(() => {
         const playbackStatus = player.currentStatus;
+        emit("playback.progress", {
+          buffered: null,
+          duration: finiteOrNull(playbackStatus.duration),
+          isBuffering: playbackStatus.isBuffering,
+          position: finiteOrNull(playbackStatus.currentTime),
+          state: playbackStatus.playbackState,
+          timeControlStatus: playbackStatus.timeControlStatus,
+        });
         if (playbackStatus.didJustFinish) {
+          emit("playback.terminal", { reason: "native-ended", errorCode: null });
           setStatus("idle");
-          void cleanup();
+          void cleanup(true, "native-ended", "native-ended");
         }
       }, 1000);
 
@@ -397,6 +442,8 @@ export default function MessageVoiceButton({
       }
 
       publishVoicePlaybackStarted(instanceIdRef.current);
+      emit("ownership.activity-started", { reason: "playback-started" });
+      emit("ambient.duck.requested", { reason: "playback-started" });
       setStatus("playing");
       return true;
     },
@@ -424,6 +471,11 @@ export default function MessageVoiceButton({
       const emit = (event: string, fields: Record<string, unknown> = {}) => {
         diagnostic?.emitter.emit(event, fields, diagnostic.attemptId);
       };
+      const endpointMode = diagnostic?.mode === "fixture"
+        ? "fixture"
+        : diagnostic?.mode === "live-proxy"
+          ? "live-proxy"
+          : "live";
 
       const finish = async (reason: string, errorCode?: string) => {
         if (settled) {
@@ -460,6 +512,8 @@ export default function MessageVoiceButton({
           setStatus("error");
           setError("Voice playback failed.");
           publishVoicePlaybackStopped(instanceIdRef.current);
+          emit("ownership.released", { reason });
+          emit("ambient.duck.released", { reason });
           diagnostic?.emitter.finishAttempt(diagnostic.attemptId, {
             errorCode,
             reason,
@@ -474,6 +528,8 @@ export default function MessageVoiceButton({
         setStatus("idle");
         setError("");
         publishVoicePlaybackStopped(instanceIdRef.current);
+        emit("ownership.released", { reason });
+        emit("ambient.duck.released", { reason });
         diagnostic?.emitter.finishAttempt(diagnostic.attemptId, {
           reason,
           result: "native-ended",
@@ -497,9 +553,17 @@ export default function MessageVoiceButton({
           emit("playback.poll", {
             buffered: finiteOrNull(progress.buffered),
             duration: finiteOrNull(progress.duration),
+            isBuffering: playbackState.state === State.Buffering,
             position: finiteOrNull(progress.position),
             state: playbackState.state,
           });
+          if (playbackState.state === State.Buffering) {
+            emit("playback.buffering", {
+              buffered: finiteOrNull(progress.buffered),
+              duration: finiteOrNull(progress.duration),
+              position: finiteOrNull(progress.position),
+            });
+          }
 
           if (isTrackPlayerTerminalState(playbackState)) {
             await finish(
@@ -515,8 +579,18 @@ export default function MessageVoiceButton({
       };
 
       emit("setup.requested", { operation });
-      await ensureTrackPlayerSetup();
+      emit("audio-session.requested", { engine: "track-player" });
+      try {
+        await ensureTrackPlayerSetup();
+      } catch (error) {
+        emit("audio-session.failed", {
+          engine: "track-player",
+          error: error instanceof Error ? error.name : "unknown",
+        });
+        throw error;
+      }
       emit("setup.completed", { operation });
+      emit("audio-session.completed", { engine: "track-player", source: "track-player.setup" });
       if (!stillOwnsPlayback()) {
         emit("setup.cancelled", { operation });
         return false;
@@ -564,7 +638,7 @@ export default function MessageVoiceButton({
         }),
       ];
 
-      emit("queue.add.requested", { endpointMode: diagnostic ? "fixture" : "live" });
+      emit("queue.add.requested", { endpointMode });
       await TrackPlayer.add({
         artist: "Quiet Room",
         headers: authHeaders,
@@ -572,7 +646,7 @@ export default function MessageVoiceButton({
         title: "Quiet Room voice",
         url: remoteUri,
       });
-      emit("queue.add.completed", { endpointMode: diagnostic ? "fixture" : "live" });
+      emit("queue.add.completed", { endpointMode });
       if (!stillOwnsPlayback()) {
         emit("queue.add.cancelled", { operation });
         return false;
@@ -588,6 +662,8 @@ export default function MessageVoiceButton({
       }
 
       publishVoicePlaybackStarted(instanceIdRef.current);
+      emit("ownership.activity-started", { reason: "playback-started" });
+      emit("ambient.duck.requested", { reason: "playback-started" });
       trackPlayerStatusIntervalRef.current = setInterval(() => {
         void pollStatus();
       }, 1000);
@@ -611,28 +687,50 @@ export default function MessageVoiceButton({
         return false;
       }
 
+      if (
+        (diagnostic?.mode === "live-trace" || diagnostic?.mode === "live-proxy") &&
+        !hasConversationAudio
+      ) {
+        throw new Error("Live voice tracing requires a saved message.");
+      }
+
       const resolvedConversationId = hasConversationAudio ? conversationId!.trim() : "fixture";
       const resolvedMessageIndex = hasConversationAudio ? (messageIndex as number) : 1;
-      const remoteUri = diagnostic && activeDiagnostic
-        ? buildDiagnosticVoiceUri(
+      const remoteUri = diagnostic?.mode === "fixture" && activeDiagnostic
+        ? buildDiagnosticFixtureVoiceUri(
             diagnostic,
             activeDiagnostic.emitter.runId,
             activeDiagnostic.attemptId,
             resolvedConversationId,
             resolvedMessageIndex,
           )
-        : buildConversationVoiceUri(voiceUrl, resolvedConversationId, resolvedMessageIndex);
+        : diagnostic?.mode === "live-proxy" && diagnostic.proxyBaseUrl
+          ? buildDiagnosticProxyVoiceUri(
+              diagnostic.proxyBaseUrl,
+              resolvedConversationId,
+              resolvedMessageIndex,
+            )
+          : buildConversationVoiceUri(voiceUrl, resolvedConversationId, resolvedMessageIndex);
 
       if (VOICE_PLAYBACK_ENGINE === "track-player") {
+        const playbackHeaders = diagnostic?.mode === "fixture"
+          ? {}
+          : diagnostic?.mode === "live-proxy" && activeDiagnostic
+            ? {
+                ...authHeaders,
+                "X-QR-MOB-021-Attempt-Id": activeDiagnostic.attemptId,
+                "X-QR-MOB-021-Run-Id": activeDiagnostic.emitter.runId,
+              }
+            : authHeaders;
         return startTrackPlayerConversationPlayback(
-          diagnostic ? {} : authHeaders,
+          playbackHeaders,
           remoteUri,
           operation,
           activeDiagnostic,
         );
       }
 
-      if (diagnostic) {
+      if (diagnostic?.mode === "fixture") {
         throw new Error("Voice diagnostics require TrackPlayer.");
       }
 
@@ -642,6 +740,7 @@ export default function MessageVoiceButton({
           uri: remoteUri,
         },
         operation,
+        activeDiagnostic,
       );
     },
     [
@@ -711,19 +810,29 @@ export default function MessageVoiceButton({
           enabled: true,
           sink: (line) => console.info(line),
         });
-        const fixtureCase = diagnosticLink.fixtureCase || "steady";
+        const fixtureCase = diagnosticLink.mode === "fixture"
+          ? diagnosticLink.fixtureCase || "steady"
+          : undefined;
+        const endpointMode = diagnosticLink.mode === "fixture"
+          ? "fixture"
+          : diagnosticLink.mode === "live-proxy"
+            ? "live-proxy"
+            : "live";
         const attemptId = emitter.startAttempt({
-          endpointMode: "fixture",
-          fixtureCase,
-          sourceClass: diagnosticLink.fixtureSource,
+          diagnosticMode: diagnosticLink.mode,
+          endpointMode,
+          ...(fixtureCase ? { fixtureCase } : {}),
+          ...(diagnosticLink.fixtureSource ? { sourceClass: diagnosticLink.fixtureSource } : {}),
         });
-        activeDiagnostic = { attemptId, emitter, fixtureCase };
+        activeDiagnostic = { attemptId, emitter, mode: diagnosticLink.mode, fixtureCase };
         activeDiagnosticRef.current = activeDiagnostic;
         emitter.emit("source.asserted", {
-          endpointMode: "fixture",
-          fixtureCase,
-          sourceClass: diagnosticLink.fixtureSource,
+          diagnosticMode: diagnosticLink.mode,
+          endpointMode,
+          ...(fixtureCase ? { fixtureCase } : {}),
+          ...(diagnosticLink.fixtureSource ? { sourceClass: diagnosticLink.fixtureSource } : {}),
         }, attemptId);
+        emitDiagnostic("ownership.claimed", { reason: "playback-requested" });
       }
 
       if (hasPresetAudio) {
@@ -758,7 +867,7 @@ export default function MessageVoiceButton({
           }
 
           if (diagnosticLink) {
-            emitDiagnostic("fallback.suppressed", { reason: "fixture-source-required" });
+            emitDiagnostic("fallback.suppressed", { reason: "diagnostic-source-required" });
             throw conversationError;
           }
 
@@ -838,7 +947,9 @@ export default function MessageVoiceButton({
       const message =
         rawError instanceof Error ? rawError.message : "Unable to start voice playback.";
 
-      console.warn("Voice playback failed", rawError);
+      console.warn("Voice playback failed", {
+        name: rawError instanceof Error ? rawError.name : "UnknownError",
+      });
       setStatus("error");
       setError(message);
       publishVoicePlaybackStopped(instanceIdRef.current);

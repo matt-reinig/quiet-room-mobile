@@ -27,11 +27,22 @@ export type VoicePlaybackFixtureSource = {
   baseUrl?: string;
 };
 
+export type VoicePlaybackDiagnosticMode = "fixture" | "live-trace" | "live-proxy";
+
+export type VoicePlaybackProxySourceClass = "missing" | "allowed-url" | "disallowed";
+
+export type VoicePlaybackProxySource = {
+  classification: VoicePlaybackProxySourceClass;
+  baseUrl?: string;
+};
+
 export type VoicePlaybackDiagnosticDeepLink = {
   enabled: boolean;
-  fixtureSource: VoicePlaybackFixtureSourceClass;
+  mode: VoicePlaybackDiagnosticMode;
+  fixtureSource?: VoicePlaybackFixtureSourceClass;
   fixtureBaseUrl?: string;
   fixtureCase?: string;
+  proxyBaseUrl?: string;
 };
 
 export type VoicePlaybackDiagnosticValue = string | number | boolean | null;
@@ -171,6 +182,26 @@ export function classifyAllowedFixtureSource(value: unknown): VoicePlaybackFixtu
   return { classification: "allowed-url", baseUrl };
 }
 
+export function classifyAllowedProxySource(value: unknown): VoicePlaybackProxySource {
+  if (typeof value !== "string" || !value.trim()) {
+    return { classification: "missing" };
+  }
+
+  const baseUrl = value.trim();
+  let hasQuery = false;
+  try {
+    hasQuery = Boolean(new URL(baseUrl).search);
+  } catch {
+    return { classification: "disallowed" };
+  }
+
+  if (hasQuery || !isSafeFixtureUrl(baseUrl)) {
+    return { classification: "disallowed" };
+  }
+
+  return { classification: "allowed-url", baseUrl };
+}
+
 function readDiagnosticPayload(rawValue: string): Record<string, unknown> | null {
   const trimmed = rawValue.trim();
   if (trimmed === "1" || trimmed.toLowerCase() === "true") {
@@ -221,8 +252,44 @@ export function parseVoicePlaybackDiagnosticDeepLink(
     return null;
   }
 
+  const requestedMode = payload.mode;
+  const hasFixtureSource = payload.fixtureBaseUrl !== undefined || payload.fixtureSource !== undefined;
+  const hasProxySource = payload.proxyBaseUrl !== undefined;
   const source = classifyAllowedFixtureSource(payload.fixtureBaseUrl ?? payload.fixtureSource);
-  if (source.classification === "disallowed") {
+  const proxy = classifyAllowedProxySource(payload.proxyBaseUrl);
+  const mode: VoicePlaybackDiagnosticMode | null =
+    requestedMode === undefined
+      ? hasFixtureSource
+        ? "fixture"
+        : null
+      : requestedMode === "fixture"
+        ? "fixture"
+        : requestedMode === "live-trace"
+          ? "live-trace"
+          : requestedMode === "live-proxy"
+            ? "live-proxy"
+            : null;
+
+  if (
+    !mode ||
+    (mode === "fixture" &&
+      ((source.classification !== "allowed-local" && source.classification !== "allowed-url") ||
+        hasProxySource)) ||
+    (mode === "live-proxy" && (proxy.classification !== "allowed-url" || hasFixtureSource))
+  ) {
+    return null;
+  }
+
+  // Direct live tracing must use the normal saved-message endpoint. Proxy
+  // tracing may replace only the local base URL; neither mode may be mixed
+  // with fixture routing or fixture-only fields.
+  if (
+    mode === "live-trace" &&
+    (hasFixtureSource || hasProxySource || payload.fixtureCase !== undefined)
+  ) {
+    return null;
+  }
+  if (mode === "live-proxy" && payload.fixtureCase !== undefined) {
     return null;
   }
 
@@ -233,9 +300,11 @@ export function parseVoicePlaybackDiagnosticDeepLink(
 
   return {
     enabled: true,
-    fixtureSource: source.classification,
-    ...(source.baseUrl ? { fixtureBaseUrl: source.baseUrl } : {}),
-    ...(fixtureCase ? { fixtureCase } : {}),
+    mode,
+    ...(mode === "fixture" ? { fixtureSource: source.classification } : {}),
+    ...(mode === "fixture" && source.baseUrl ? { fixtureBaseUrl: source.baseUrl } : {}),
+    ...(mode === "fixture" && fixtureCase ? { fixtureCase } : {}),
+    ...(mode === "live-proxy" && proxy.baseUrl ? { proxyBaseUrl: proxy.baseUrl } : {}),
   };
 }
 

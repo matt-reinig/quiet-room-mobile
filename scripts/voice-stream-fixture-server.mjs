@@ -15,6 +15,8 @@ const DEFAULT_MANIFEST_PATH = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../e2e/fixtures/voice-stream/manifest.json",
 );
+const DEFAULT_REPLAY_FINAL_RELEASE_MS = 5_000;
+const MAX_REPLAY_FINAL_RELEASE_MS = 30_000;
 
 const DEFAULT_HOST = "0.0.0.0";
 const DEFAULT_PORT = 0;
@@ -39,6 +41,9 @@ const VALID_CASES = new Set([
   "chunk-schedule",
   "chunk-schedule-a",
   "chunk-schedule-b",
+  "recorded-progressive",
+  "replay-progressive",
+  "near-buffer-exhaustion",
   "normal-eof",
   "normal-eof-immediate",
   "normal-eof-delayed",
@@ -53,6 +58,10 @@ function asPositiveInteger(value, fallback) {
 function asNonNegativeInteger(value, fallback) {
   const parsed = Number.parseInt(value ?? "", 10);
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function asBoundedNonNegativeInteger(value, fallback, maximum) {
+  return Math.min(asNonNegativeInteger(value, fallback), maximum);
 }
 
 function boundedId(value, fallback) {
@@ -83,15 +92,49 @@ function splitWithFinalSize(bytes, finalSize, pattern) {
   return chunks;
 }
 
+function chunksFromRecordedSchedule(bytes, schedule) {
+  if (!Array.isArray(schedule) || schedule.length === 0) {
+    throw new Error("Recorded replay schedule is empty.");
+  }
+
+  const chunks = [];
+  let offset = 0;
+  for (const [index, entry] of schedule.entries()) {
+    const chunkBytes = Number.parseInt(entry?.chunkBytes ?? "", 10);
+    if (!Number.isInteger(chunkBytes) || chunkBytes <= 0 || offset + chunkBytes > bytes.length) {
+      throw new Error(`Recorded replay chunk ${index} does not fit the fixture bytes.`);
+    }
+    chunks.push(bytes.subarray(offset, offset + chunkBytes));
+    offset += chunkBytes;
+  }
+  if (offset !== bytes.length) {
+    throw new Error(`Recorded replay schedule covers ${offset} of ${bytes.length} fixture bytes.`);
+  }
+  return chunks;
+}
+
+function recordedDelays(schedule) {
+  return schedule.map((entry, index) => {
+    if (index === 0) return 0;
+    const current = Number(entry?.elapsedMs);
+    const previous = Number(schedule[index - 1]?.elapsedMs);
+    return Number.isFinite(current) && Number.isFinite(previous)
+      ? Math.max(0, Math.round(current - previous))
+      : 0;
+  });
+}
+
 function chunksForCase(bytes, fixture, query) {
   const requestedCase = query.get("fixture_case") || query.get("case") || "steady";
   const chunkDelayMs = asNonNegativeInteger(query.get("chunk_delay_ms"), DEFAULT_CHUNK_DELAY_MS);
   const caseName = requestedCase
     .replace(/^delayed-tail-(250|750|1500)$/, "delayed-tail")
     .replace(/^chunk-schedule-(a|b)$/, "chunk-schedule")
+    .replace(/^near-buffer-exhaustion-(\d+)$/, "near-buffer-exhaustion")
+    .replace(/^replay-progressive$/, "recorded-progressive")
     .replace(/^normal-eof-(immediate|delayed)$/, "normal-eof");
 
-  if (!VALID_CASES.has(requestedCase)) {
+  if (!VALID_CASES.has(requestedCase) && !VALID_CASES.has(caseName)) {
     throw new Error(`Unknown fixture case: ${requestedCase}`);
   }
 
@@ -136,6 +179,42 @@ function chunksForCase(bytes, fixture, query) {
       chunkDelayMs,
       delayBeforeTailMs: 0,
       progressive: true,
+    };
+  }
+
+  if (caseName === "recorded-progressive") {
+    const schedule = fixture.replaySchedule;
+    const chunks = chunksFromRecordedSchedule(bytes, schedule);
+    const delays = recordedDelays(schedule);
+    return {
+      chunks,
+      chunkDelaysMs: delays,
+      chunkDelayMs: 0,
+      delayBeforeTailMs: 0,
+      progressive: chunks.length > 1,
+      recordedSchedule: schedule,
+    };
+  }
+
+  if (caseName === "near-buffer-exhaustion") {
+    const chunks = splitWithFinalSize(
+      bytes,
+      fixture.tailBytes || fixture.replaySchedule?.at(-1)?.chunkBytes || 4096,
+      [8192, 12288, 16384],
+    );
+    const aliasDelay = requestedCase.match(/^near-buffer-exhaustion-(\d+)$/)?.[1];
+    const finalReleaseMs = asBoundedNonNegativeInteger(
+      query.get("final_release_ms"),
+      aliasDelay ? Number.parseInt(aliasDelay, 10) : DEFAULT_REPLAY_FINAL_RELEASE_MS,
+      MAX_REPLAY_FINAL_RELEASE_MS,
+    );
+    return {
+      chunks,
+      chunkDelayMs: asNonNegativeInteger(query.get("chunk_delay_ms"), DEFAULT_CHUNK_DELAY_MS),
+      chunkDelaysMs: null,
+      delayBeforeTailMs: 0,
+      finalReleaseMs,
+      progressive: chunks.length > 1,
     };
   }
 
@@ -217,36 +296,79 @@ function createRequestEvent(context, type, extra = {}) {
 export async function loadFixture(
   fixturePath = DEFAULT_FIXTURE_PATH,
   manifestPath = DEFAULT_MANIFEST_PATH,
+  { eventsPath } = {},
 ) {
-  const [bytes, manifestRaw] = await Promise.all([
-    readFile(fixturePath),
-    readFile(manifestPath, "utf8"),
-  ]);
-  const manifest = JSON.parse(manifestRaw);
+  const bytes = await readFile(fixturePath);
+  let manifest;
+  if (manifestPath == null) {
+    manifest = {
+      contentType: DEFAULT_CONTENT_TYPE,
+      payloadBytes: bytes.length,
+      schemaVersion: "qr-mob-021.runtime.v1",
+      sha256: createFixtureHash(bytes),
+      tailBytes: 0,
+    };
+  } else {
+    const manifestRaw = await readFile(manifestPath, "utf8");
+    try {
+      manifest = JSON.parse(manifestRaw);
+    } catch {
+      const lines = manifestRaw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      manifest = JSON.parse(lines.at(-1));
+    }
+  }
   const sha256 = createFixtureHash(bytes);
-  if (bytes.length !== manifest.payloadBytes || sha256 !== manifest.sha256) {
+  const declaredBytes = manifest.payloadBytes ?? manifest.bytesReceived;
+  if ((declaredBytes != null && bytes.length !== declaredBytes) || (manifest.sha256 && sha256 !== manifest.sha256)) {
     throw new Error("Frozen voice fixture does not match its manifest.");
+  }
+
+  let replaySchedule;
+  const resolvedEventsPath = eventsPath || (manifest.eventFile && manifestPath
+    ? path.resolve(path.dirname(manifestPath), manifest.eventFile)
+    : null);
+  if (resolvedEventsPath) {
+    const eventsRaw = await readFile(resolvedEventsPath, "utf8");
+    const events = eventsRaw
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter((event) => event.event === "chunk");
+    if (events.length > 0) {
+      replaySchedule = events.map((event) => ({
+        chunkBytes: event.chunkBytes,
+        chunkIndex: event.chunkIndex,
+        elapsedMs: event.elapsedMs,
+      }));
+    }
   }
 
   return {
     bytes,
     closingPhrase: manifest.closingPhrase,
-    contentType: manifest.contentType,
+    contentType: manifest.contentType || manifest.mimeType || DEFAULT_CONTENT_TYPE,
     durationSeconds: manifest.durationSeconds,
     manifest,
     path: fixturePath,
     sha256,
-    tailBytes: manifest.tailBytes,
+    tailBytes: manifest.tailBytes ?? 0,
+    replaySchedule,
   };
 }
 
 export async function startVoiceFixtureServer({
   fixturePath = DEFAULT_FIXTURE_PATH,
+  manifestPath,
+  eventsPath,
   host = DEFAULT_HOST,
   logger = console,
   port = DEFAULT_PORT,
 } = {}) {
-  const fixture = await loadFixture(fixturePath);
+  const resolvedManifestPath = manifestPath === undefined
+    ? (path.resolve(fixturePath) === DEFAULT_FIXTURE_PATH ? DEFAULT_MANIFEST_PATH : null)
+    : manifestPath;
+  const fixture = await loadFixture(fixturePath, resolvedManifestPath, { eventsPath });
   const events = [];
 
   function emit(event) {
@@ -276,6 +398,7 @@ export async function startVoiceFixtureServer({
     let terminal = false;
     let bytesWritten = 0;
     let chunksWritten = 0;
+    let finalReleaseDelayMs = 0;
     let timeoutId;
     const timers = new Map();
 
@@ -296,6 +419,7 @@ export async function startVoiceFixtureServer({
         createRequestEvent(context, "terminal", {
           bytesWritten,
           chunksWritten,
+          finalReleaseDelayMs,
           status: terminalStatus,
           ...extra,
         }),
@@ -368,7 +492,7 @@ export async function startVoiceFixtureServer({
       return;
     }
 
-    if (!VALID_CASES.has(caseName)) {
+    if (!VALID_CASES.has(caseName) && !/^near-buffer-exhaustion-\d+$/.test(caseName)) {
       fail(400, `unknown_fixture_case:${caseName}`);
       return;
     }
@@ -408,6 +532,14 @@ export async function startVoiceFixtureServer({
       "X-Fixture-Run-Id": runId,
       "X-Fixture-Attempt-Id": attemptId,
     };
+    if (fixtureCase.recordedSchedule) {
+      headers["X-Fixture-Replay-Schedule"] = "recorded";
+      headers["X-Fixture-Replay-Chunk-Count"] = String(fixtureCase.recordedSchedule.length);
+    }
+    if (fixtureCase.finalReleaseMs != null) {
+      headers["X-Fixture-Final-Release-Delay-Ms"] = String(fixtureCase.finalReleaseMs);
+      headers["X-Fixture-Buffer-Probe"] = "client_diagnostics_required";
+    }
     if (fixtureCase.truncated) {
       headers["X-Fixture-Truncated"] = String(fixtureCase.truncatedBytes);
     }
@@ -459,11 +591,21 @@ export async function startVoiceFixtureServer({
 
     try {
       for (let index = 0; index < fixtureCase.chunks.length; index += 1) {
-        if (index > 0 && fixtureCase.chunkDelayMs) {
-          await delay(fixtureCase.chunkDelayMs);
+        const recordedDelayMs = fixtureCase.chunkDelaysMs?.[index] ?? 0;
+        if (index > 0 && (recordedDelayMs || fixtureCase.chunkDelayMs)) {
+          await delay(recordedDelayMs || fixtureCase.chunkDelayMs);
         }
         if (index > 0 && index === fixtureCase.chunks.length - 1 && fixtureCase.delayBeforeTailMs) {
           await delay(fixtureCase.delayBeforeTailMs);
+        }
+        if (index === fixtureCase.chunks.length - 1 && fixtureCase.finalReleaseMs) {
+          finalReleaseDelayMs = fixtureCase.finalReleaseMs;
+          emit(createRequestEvent(context, "final_release_scheduled", {
+            finalReleaseDelayMs,
+            finalChunkBytes: fixtureCase.chunks[index].length,
+            bufferProbe: "client_diagnostics_required",
+          }));
+          await delay(fixtureCase.finalReleaseMs);
         }
         const chunk = fixtureCase.chunks[index];
         await writeChunk(chunk);
@@ -474,6 +616,9 @@ export async function startVoiceFixtureServer({
           chunkBytes: chunk.length,
           chunkIndex: index,
           chunksWritten,
+          ...(fixtureCase.finalReleaseMs && index === fixtureCase.chunks.length - 1
+            ? { finalReleaseDelayMs: fixtureCase.finalReleaseMs }
+            : {}),
         }));
       }
 
@@ -531,6 +676,8 @@ async function runCli() {
 
   const fixtureServer = await startVoiceFixtureServer({
     fixturePath: options.get("fixture") || DEFAULT_FIXTURE_PATH,
+    ...(options.has("manifest") ? { manifestPath: options.get("manifest") } : {}),
+    ...(options.has("events") ? { eventsPath: options.get("events") } : {}),
     host: options.get("host") || DEFAULT_HOST,
     port: asNonNegativeInteger(options.get("port"), 8787),
   });

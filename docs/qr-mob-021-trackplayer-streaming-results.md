@@ -2,7 +2,7 @@
 
 Date: 2026-09-09
 
-This is bounded emulator evidence for the frozen QR-MOB-021 fixture. It is not a product-fix or root-cause report.
+This is bounded emulator evidence for the frozen fixture plus one exact-byte live QA TTS capture and replay. It is not a product-fix or root-cause report.
 
 ## Environment and method
 
@@ -38,4 +38,14 @@ Every delivery shape has at least one capture classified `complete`. The two fir
 
 No clipping was reproduced in the two steady captures or the delayed-tail-1500 capture, and the other tested progressive/EOF shapes also have at least one complete capture. This raises confidence that the instrumented TrackPlayer path consumed the frozen fixture across these representative delivery schedules.
 
-Root-cause confidence remains low: these are synthetic-fixture emulator runs, not live QA TTS or physical-device validation. The matrix is one pass per delivery shape with two repeats, not the full repetition counts in the investigation plan. The result is therefore evidence for the next investigation step, not a product fix, production-readiness claim, or explanation of the reported field behavior.
+For this frozen-fixture matrix alone, root-cause confidence remained low. The matrix is one pass per delivery shape with two repeats, not the full repetition counts in the investigation plan. The result is therefore evidence for the next investigation step, not a product fix, production-readiness claim, or explanation of the reported field behavior.
+
+## Updated detector and live QA comparison
+
+Checker schema v2 adds a separate final-speech window. It detects final-word removal and 250/500/750 ms speech loss while the capture continues through two seconds of silence; the intact and gain/alignment controls remain complete. Rechecking the table above preserves every result except delayed-tail-750 repeat, now `inconclusive` rather than `complete` because ending shape correlation is low while ending energy is intact.
+
+One authenticated QA TTS response was captured from the same streamed GET through a local tee: AAC mono 24 kHz, 136,189 bytes, SHA-256 `004e929896aba2bcf0c523fbaf3ceb82a33502e1c0fcaba8b9f53402d03a7548`. The tee observed HTTP 200 `audio/aac`, nine chunks, and upstream HTTP exhaustion without client cancellation. The emulator capture classified `complete` (alignment `0.9932`, closing `0.9898`, ending `0.9949`). The path was changed by the local proxy, and backend provider-internal exhaustion was not instrumented.
+
+Byte-identical complete-file and recorded-schedule replays both passed and classified `complete`. A progressive stress held 50,000 tail bytes for seven seconds; playback began almost eight seconds before final delivery, the final release occurred within the bounded last one-to-two seconds of the pre-release buffer, native queue end completed, and the repeat capture classified `complete` with ending score `0.99995`. An eight-second silent network gap instead triggered native cancellation/retry just before the final release, identifying an idle-timeout boundary but not reproducing the reported clipping.
+
+No realistic emulator failure was captured, so no playback fix was implemented. Physical-device/output-route uncertainty remains. Exact run IDs, commands, hashes, timing, and artifact paths are in `docs/qr-mob-021-trackplayer-streaming-progress.md`.

@@ -31,6 +31,7 @@ test("collector parses bounded server and device-log JSON events", () => {
   assert.equal(summary.chunks.first.wallTime, "2026-09-09T21:18:33.261Z");
   assert.equal(summary.terminal.status, "normal_eof");
   assert.equal(summary.terminal.bytesWritten, 254581);
+  assert.equal(summary.requestCount, 1);
 });
 
 test("collector does not select readiness HEAD requests over the real GET", () => {
@@ -46,4 +47,23 @@ test("collector does not select readiness HEAD requests over the real GET", () =
   assert.equal(summary.request.method, "GET");
   assert.equal(summary.request.case, "delayed-tail-750");
   assert.equal(summary.terminal.status, "cancelled");
+});
+
+test("collector keeps retry request chunks and terminals separate", () => {
+  const events = parseServerEvents([
+    '[voice-fixture] {"event":"request","method":"GET","case":"near-buffer-exhaustion-8000","runId":"run-3","attemptId":"attempt-3"}',
+    '[voice-fixture] {"event":"chunk","runId":"run-3","attemptId":"attempt-3","chunkBytes":65536,"bytesWritten":65536,"chunksWritten":1}',
+    '[voice-fixture] {"event":"terminal","status":"cancelled","runId":"run-3","attemptId":"attempt-3","bytesWritten":65536,"chunksWritten":1}',
+    '[voice-fixture] {"event":"request","method":"GET","case":"near-buffer-exhaustion-8000","runId":"run-3","attemptId":"attempt-3"}',
+    '[voice-fixture] {"event":"chunk","runId":"run-3","attemptId":"attempt-3","chunkBytes":32768,"bytesWritten":32768,"chunksWritten":1}',
+    '[voice-fixture] {"event":"terminal","status":"cancelled","runId":"run-3","attemptId":"attempt-3","bytesWritten":32768,"chunksWritten":1}',
+  ].join("\n"));
+  const summary = summarizeServerEvents(events, { runId: "run-3", attemptId: "attempt-3" });
+
+  assert.equal(summary.requestCount, 2);
+  assert.equal(summary.chunks.count, 1);
+  assert.equal(summary.chunks.bytes, 65536);
+  assert.equal(summary.terminal.bytesWritten, 65536);
+  assert.equal(summary.requests[1].chunks.bytes, 32768);
+  assert.equal(summary.requests[1].terminal.status, "cancelled");
 });

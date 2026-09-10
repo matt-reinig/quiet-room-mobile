@@ -1,6 +1,6 @@
 # QR-MOB-021 TrackPlayer streaming progress
 
-Status: diagnostic harness, frozen fixture, run manifests, and bounded emulator capture evidence are present in the worktree. This note does not claim a product fix or root cause.
+Status: detector v2, direct/proxied live tracing, one exact-byte QA TTS capture, and exact-byte replay evidence are present in the worktree. No realistic clipping failure or product fix is claimed.
 
 ## Worktree and baseline
 
@@ -19,9 +19,11 @@ Status: diagnostic harness, frozen fixture, run manifests, and bounded emulator 
 - `e2e/quiet-room.voice-stream-diagnostics.test.js`: Detox flow through the normal message voice button, including the playing-to-ended UI transition.
 - `scripts/run-voice-stream-diagnostics.sh`: QA/local config check, native sync/build, fixture server startup on `0.0.0.0`, emulator address `10.0.2.2`, readiness probe, and cleanup trap.
 - `scripts/check-voice-playback-capture.mjs`: VP9/Vorbis capture decoding, timestamp-preserving calibration, RMS-envelope alignment, local closing alignment, gain-normalized closing energy, and bounded classification.
-- `scripts/collect-voice-stream-run.mjs`: run-manifest collection joining server and device logs by run/attempt ID.
-- `tests/voicePlaybackDiagnostics.test.mjs` and `tests/voiceStreamFixtureServer.test.mjs`: seven diagnostics tests and nine fixture-server tests.
-- `tests/voicePlaybackCaptureChecker.test.mjs` and `tests/voiceStreamRunCollector.test.mjs`: six capture-checker tests and two run-manifest collector tests.
+- `scripts/collect-voice-stream-run.mjs`: run-manifest collection joining server and device logs by run/attempt ID, with retry request instances kept separate.
+- `scripts/voice-stream-tee-proxy.mjs` and `scripts/run-voice-stream-live-qa-android.sh`: ephemeral local byte-preserving QA tee and real-QA emulator runner with explicit proxy readiness, emulator audio capture, and bounded cleanup.
+- `e2e/quiet-room.voice-stream-live-qa.test.js`: a fresh-chat, saved-message, real-QA-TTS flow through the actual message voice button.
+- `tests/voicePlaybackDiagnostics.test.mjs` and `tests/voiceStreamFixtureServer.test.mjs`: eight diagnostics tests and twelve fixture-server tests.
+- `tests/voicePlaybackCaptureChecker.test.mjs`, `tests/voiceStreamRunCollector.test.mjs`, and `tests/voiceStreamTeeProxy.test.mjs`: eight capture-checker tests, three run-manifest collector tests, and two tee tests.
 - `package.json`: focused fixture/diagnostics test scripts and the Detox wrapper entry point.
 
 ## Luna review follow-through
@@ -35,10 +37,12 @@ The review’s earlier evidence concern was addressed by retaining server logs, 
 Focused checks on the current implementation:
 
 - `npm run typecheck` — passed.
-- `npm run test:voice-playback-diagnostics` — passed, 7/7 tests.
-- `npm run test:voice-fixture` — passed, 9/9 tests.
-- `npm run test:voice-capture-checker` — passed, 6/6 tests.
-- `npm run test:voice-run-collector` — passed, 2/2 tests.
+- `npm run test:voice-playback-diagnostics` — passed, 8/8 tests.
+- `npm run test:voice-fixture` — passed, 12/12 tests.
+- `npm run test:voice-capture-checker` — passed, 8/8 tests.
+- `npm run test:voice-run-collector` — passed, 3/3 tests.
+- `npm run test:voice-tee` — passed, 2/2 tests.
+- `npm run test:ambient-audio` — passed, 5/5 tests.
 - `git diff --check` — passed.
 - Rebuilt Android QA/local TrackPlayer app — succeeded; 842 tasks, build successful in 20 seconds.
 
@@ -107,6 +111,39 @@ Every tested fixture delivery shape has at least one capture classified `complet
 
 ## Open evidence gaps and next actions
 
-1. If statistical confidence is needed, repeat each delivery shape to the plan’s requested counts; the current matrix is representative one-pass-per-shape evidence with two repeats.
-2. If investigation continues beyond the emulator fixture, validate live QA TTS behavior and a physical device separately; neither is covered by these results.
-3. Keep the current conclusion bounded to the tested emulator fixture cases. Do not call it a product fix or infer the production root cause.
+### Emulator-first handoff work (2026-09-09)
+
+- Detector v2 adds a 750 ms ending segment with a 120 ms local alignment window. Deterministic 8 kHz mono controls retain the full capture and two seconds of trailing silence. Legacy → revised results were: intact `complete` → `complete` (ending `0.9817`); final-word removal `complete` → `audible-tail-missing` (`0.6846`); 250 ms loss `complete` → `audible-tail-missing` (`0.7957`); 500 ms loss `complete` → `audible-tail-missing` (`0.5573`); and 750 ms loss `audible-tail-missing` → `audible-tail-missing` (`0.0807`). Gain/alignment variants remain complete.
+- All retained fixture recordings were rechecked. Only `delayed-tail-750-repeat-capture` changed: legacy `complete` → revised `inconclusive` because ending correlation was `0.5669` while gain-normalized ending energy remained `0.9968`. A low-correlation/high-energy ending is intentionally ambiguous; it is not labeled missing.
+- Diagnostics now has three explicit QA/local-only modes: `fixture`, direct `live-trace`, and allowlisted-local `live-proxy`. Direct live trace leaves source selection untouched. Proxy mode changes only the voice endpoint, retains the authenticated saved-message GET and resolved engine, and attaches bounded local run/attempt headers that the tee strips before forwarding. Lifecycle traces cover endpoint mode, progress/buffering, terminal/cleanup, ownership, audio session, and ambient duck transitions without private text or tokens.
+- The tee integration tests prove exact bytes, progressive first-byte forwarding, privacy redaction, correlation-header stripping, upstream exhaustion, and client cancellation. No second TTS request or backend deployment was used.
+- The live runner waits for an explicit tee-listening marker before launching Detox. Diagnostic failure logs emit only a bounded error name, rather than a raw native error that could contain a source URI.
+
+### One real QA TTS capture
+
+- Command: `VOICE_DIAGNOSTIC_MODE=live-proxy VOICE_QA_TEE_PROXY_UPSTREAM=<QA voice base> VOICE_QA_SCREEN_TIME_LIMIT=180 bash scripts/run-voice-stream-live-qa-android.sh`.
+- QA/qa Android build succeeded: 842 tasks, 34 executed, 808 up-to-date. Detox passed 1/1 on `Pixel34AVD_2` using a fresh test-account chat and a synthetic response requested to end in `copper meadow nine`.
+- Evidence root: `artifacts/qr-mob-021/live-qa-20260909T225042Z/`; Detox device artifacts: `artifacts/android.emu.release.2026-09-09 22-50-58Z/`.
+- The evidence manifest records the then-current HEAD `c9984bb185ff806d40d51245d97236c39da49d31` with `dirty: true`; the capture was intentionally made from the implementation worktree before its final commit. The final commit therefore postdates the recording, while the recorded worktree state and artifacts remain locally auditable.
+- Correlation: run `run-mtup1gvq-pw51n0`, attempt `attempt-mtup1gvq-gfrtbg`.
+- Exact QA response: AAC mono 24 kHz, decoded 14.464 seconds, 136,189 bytes, SHA-256 `004e929896aba2bcf0c523fbaf3ceb82a33502e1c0fcaba8b9f53402d03a7548`. Tee: nine chunks, status 200 `audio/aac`, request `22:52:24.936Z`, first retained chunk `22:52:29.505Z`, final chunk/HTTP exhaustion `22:52:29.593Z`/`22:52:29.594Z`.
+- Native `playing` was `22:52:29.399Z`; queue end was `22:52:44.248Z` at position `14.468`. The apparent 195 ms lead over proxy EOF is within cross-process clock and write-callback uncertainty, so it is not treated as strong proof of live progressive startup.
+- Emulator recording: 58,584,237 bytes, SHA-256 `382ee0ef6d32f9f00ce02e04b08c271ebc5465e10bcd3d0552fd6358598aff20`. Detector v2: `complete`, alignment `0.9932`, closing `0.9898`, ending `0.9949`.
+- The closing words were requested by the synthetic prompt but were not independently transcribed or checked by a physical listener; the detector proves the retained ending segment is present relative to the captured source, not its lexical content. Raw Detox logs can include that synthetic prompt and remain ignored local artifacts; the tee and structured diagnostic logs exclude prompts, assistant text, query values, tokens, and conversation identifiers.
+
+### Exact-byte replay
+
+| Replay | Run | Delivery / native result | Detector v2 |
+| --- | --- | --- | --- |
+| Complete file | `run-mtup92ec-ucypoj` | 136,189 bytes, normal EOF; playing 689 ms after EOF; queue end | `complete`, ending `0.9889` |
+| Recorded nine-chunk schedule | `run-mtupb0h3-mx6k14` | 136,189 bytes in 107 ms, normal EOF; playing 1.064 s after EOF; queue end | `complete`, ending `0.9860` |
+| Near-buffer stress, first | `run-mtupnyw0-6nks9o` | final 50,000 bytes at 9.027 s; playing 8.155 s before server EOF; queue end | capture `inconclusive` from full alignment `0.7446`, ending present `0.9958` |
+| Near-buffer stress, repeat | `run-mtupqpiy-h6ooop` | final 50,000 bytes at 9.030 s; playing 7.838 s before server EOF; queue end | `complete`, alignment `0.9574`, ending `0.99995` |
+
+The seven-second stress held 50,000 tail bytes. The last client poll clearly before the final release reported position `6.820` and buffered `8.959` at `23:10:02.745Z`, 1.238 seconds before server EOF, leaving 2.139 seconds of reserve at that poll. This bounds final receipt to roughly the last one-to-two seconds of the buffer despite cross-process timestamp uncertainty. An eight-second hold crossed the native idle timeout: four distinct requests each cancelled at about 10.53–10.54 seconds with 131,072/136,189 bytes written per request. The collector now reports retries as separate request instances instead of aggregating their chunk counts. This is a deliberate transport stress, not a field reproduction.
+
+### Current boundary
+
+No realistic live or replay emulator capture lost the ending. The exact QA bytes, complete replay, recorded-timing replay, and repeat near-buffer replay all retained it. No fix was selected because the plan requires a captured relevant failure first. Backend provider-internal exhaustion remains unverified because the current backend `finally` marker cannot distinguish it; the tee does prove the HTTP response ended normally at the proxy. Physical-device/output-route applicability remains separately pending as the plan’s last resort. Nothing was pushed, merged, deployed, or released.
+
+Next: review this bounded emulator result with the user before considering one targeted physical-device capture. If statistical confidence is needed independently, repeat the requested matrix counts; do not infer root cause from the eight-second idle-timeout stress.

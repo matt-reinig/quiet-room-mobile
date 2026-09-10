@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { resolve } from "node:path";
 
 import {
   alignEnvelope,
   buildRmsEnvelope,
   classifyCaptureResult,
+  decodeMediaToMonoPcm,
   normalizedCorrelation,
   scoreAlignedCapture,
 } from "../scripts/check-voice-playback-capture.mjs";
@@ -17,6 +19,24 @@ function makePulseEnvelope(length, pulses) {
     }
   }
   return result;
+}
+
+function makeSilentEndingCapture(samples, sampleRate, {
+  lossMs = 0,
+  gain = 0.31,
+  leadingSilenceMs = 96,
+  trailingSilenceMs = 2_000,
+} = {}) {
+  const leadingSamples = Math.round((leadingSilenceMs * sampleRate) / 1000);
+  const trailingSamples = Math.round((trailingSilenceMs * sampleRate) / 1000);
+  const lossSamples = Math.round((lossMs * sampleRate) / 1000);
+  const capture = new Float32Array(leadingSamples + samples.length + trailingSamples);
+  for (let index = 0; index < samples.length; index += 1) {
+    capture[leadingSamples + index] = samples[index] * gain;
+  }
+  const silentStart = Math.max(0, samples.length - lossSamples);
+  capture.fill(0, leadingSamples + silentStart, leadingSamples + samples.length);
+  return capture;
 }
 
 test("RMS envelope and normalized correlation preserve a deterministic closing pattern", () => {
@@ -148,4 +168,78 @@ test("weak or absent alignment remains inconclusive", () => {
     classifyCaptureResult({ alignment: { offsetFrames: null, score: 0 }, scores }),
     "inconclusive",
   );
+});
+
+test("ending detector distinguishes intact, final-word, and 250/500/750 ms losses", async () => {
+  const fixturePath = resolve("e2e/fixtures/voice-stream/closing-phrase-v1.mp3");
+  const decoded = await decodeMediaToMonoPcm(fixturePath);
+  const reference = buildRmsEnvelope(decoded.samples, decoded.sampleRate);
+  const finalSpeechIntervalSeconds = { start: 13.345, end: 15.855 };
+
+  const controls = [
+    ["intact", 0, "complete", "complete"],
+    ["final-word-removed", 360, "complete", "audible-tail-missing"],
+    ["loss-250ms", 250, "complete", "audible-tail-missing"],
+    ["loss-500ms", 500, "complete", "audible-tail-missing"],
+    ["loss-750ms", 750, "audible-tail-missing", "audible-tail-missing"],
+  ];
+
+  for (const [name, lossMs, expectedLegacy, expectedRevised] of controls) {
+    const capture = buildRmsEnvelope(
+      makeSilentEndingCapture(decoded.samples, decoded.sampleRate, { lossMs }),
+      decoded.sampleRate,
+    );
+    const alignment = alignEnvelope(reference.envelope, capture.envelope);
+    const scores = scoreAlignedCapture({
+      alignment,
+      captureEnvelope: capture.envelope,
+      envelopeRateHz: reference.envelopeRateHz,
+      finalSpeechIntervalSeconds,
+      referenceEnvelope: reference.envelope,
+    });
+    const revised = classifyCaptureResult({ alignment, scores });
+    const legacy = classifyCaptureResult({
+      alignment,
+      scores: { full: scores.full, closing: scores.closing },
+    });
+
+    assert.equal(legacy, expectedLegacy, `${name} legacy classification`);
+    assert.equal(revised, expectedRevised, `${name} revised classification`);
+    assert.ok(scores.ending.coverage >= 1, `${name} retains the trailing capture window`);
+    if (name !== "intact") {
+      assert.ok(scores.ending.score < 0.82, `${name} ending score should fail the short-window check`);
+    }
+  }
+
+  for (const [gain, leadingSilenceMs] of [[0.12, 0], [1, 40], [1.7, 180]]) {
+    const capture = buildRmsEnvelope(
+      makeSilentEndingCapture(decoded.samples, decoded.sampleRate, {
+        gain,
+        leadingSilenceMs,
+      }),
+      decoded.sampleRate,
+    );
+    const alignment = alignEnvelope(reference.envelope, capture.envelope);
+    const scores = scoreAlignedCapture({
+      alignment,
+      captureEnvelope: capture.envelope,
+      envelopeRateHz: reference.envelopeRateHz,
+      finalSpeechIntervalSeconds,
+      referenceEnvelope: reference.envelope,
+    });
+
+    assert.equal(classifyCaptureResult({ alignment, scores }), "complete");
+    assert.ok(scores.ending.score >= 0.82, `intact gain/alignment variation ${gain}/${leadingSilenceMs}`);
+  }
+});
+
+test("low ending correlation with retained energy is inconclusive", () => {
+  const alignment = { offsetFrames: 12, score: 0.84 };
+  const scores = {
+    full: { coverage: 1 },
+    closing: { coverage: 1, score: 0.9, gainNormalizedEnergyRatio: 1 },
+    ending: { coverage: 1, score: 0.5669, gainNormalizedEnergyRatio: 0.9968 },
+  };
+
+  assert.equal(classifyCaptureResult({ alignment, scores }), "inconclusive");
 });

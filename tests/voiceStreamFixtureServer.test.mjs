@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import { test, afterEach } from "node:test";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createHash } from "node:crypto";
 
 import { startVoiceFixtureServer } from "../scripts/voice-stream-fixture-server.mjs";
 
@@ -201,4 +205,84 @@ test("request telemetry records auth and range presence without recording their 
   assert.equal(requestEvent?.authorizationPresent, true);
   assert.equal(requestEvent?.rangePresent, false);
   assert.equal(JSON.stringify(requestEvent).includes("should-never-be-logged"), false);
+});
+
+test("custom captured bytes can be replayed with generated runtime metadata", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "qr-mob-021-captured-runtime-"));
+  const payload = Buffer.from("captured-runtime-mp3\0bytes");
+  const fixturePath = join(directory, "capture.bin");
+  await writeFile(fixturePath, payload);
+  const fixtureServer = await startVoiceFixtureServer({ fixturePath, logger: { info() {} } });
+  servers.push(fixtureServer);
+
+  const response = await fetch(voiceUrl(fixtureServer, "&fixture_case=complete-file&attempt_id=runtime"));
+  assert.equal(response.status, 200);
+  assert.deepEqual(Buffer.from(await response.arrayBuffer()), payload);
+  assert.equal(response.headers.get("x-fixture-sha256"), createHash("sha256").update(payload).digest("hex"));
+  assert.equal(fixtureServer.fixture.manifest.schemaVersion, "qr-mob-021.runtime.v1");
+});
+
+test("recorded tee events reproduce exact chunk order and relative delays", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "qr-mob-021-recorded-replay-"));
+  const payload = Buffer.from("0123456789");
+  const fixturePath = join(directory, "capture.bin");
+  const manifestPath = join(directory, "capture.manifest.jsonl");
+  const eventsPath = join(directory, "capture.events.jsonl");
+  await writeFile(fixturePath, payload);
+  await writeFile(eventsPath, [
+    { event: "chunk", chunkIndex: 1, chunkBytes: 3, elapsedMs: 10 },
+    { event: "chunk", chunkIndex: 2, chunkBytes: 2, elapsedMs: 60 },
+    { event: "chunk", chunkIndex: 3, chunkBytes: 5, elapsedMs: 125 },
+  ].map((event) => JSON.stringify(event)).join("\n") + "\n");
+  await writeFile(manifestPath, JSON.stringify({
+    bytesReceived: payload.length,
+    contentType: "audio/mpeg",
+    eventFile: "capture.events.jsonl",
+    sha256: createHash("sha256").update(payload).digest("hex"),
+  }) + "\n");
+
+  const fixtureServer = await startVoiceFixtureServer({
+    fixturePath,
+    manifestPath,
+    logger: { info() {} },
+  });
+  servers.push(fixtureServer);
+  const response = await fetch(voiceUrl(
+    fixtureServer,
+    "&fixture_case=recorded-progressive&attempt_id=recorded&run_id=replay",
+  ));
+  const body = Buffer.from(await response.arrayBuffer());
+  assert.equal(response.headers.get("x-fixture-replay-schedule"), "recorded");
+  assert.equal(response.headers.get("x-fixture-replay-chunk-count"), "3");
+  assert.deepEqual(body, payload);
+
+  const chunks = fixtureServer.events.filter(
+    (event) => event.event === "chunk" && event.attemptId === "recorded",
+  );
+  assert.deepEqual(chunks.map((event) => event.chunkBytes), [3, 2, 5]);
+  assert.deepEqual(chunks.map((event) => event.chunkIndex), [0, 1, 2]);
+  assert.ok(chunks[1].elapsedMs - chunks[0].elapsedMs >= 35);
+  assert.ok(chunks[2].elapsedMs - chunks[1].elapsedMs >= 45);
+});
+
+test("near-buffer-exhaustion bounds and records the configured final release", async () => {
+  const fixtureServer = await createServer();
+  const startedAt = Date.now();
+  const response = await fetch(voiceUrl(
+    fixtureServer,
+    "&fixture_case=near-buffer-exhaustion-80&chunk_delay_ms=0&attempt_id=buffer-probe",
+  ));
+  const body = Buffer.from(await response.arrayBuffer());
+  const elapsed = Date.now() - startedAt;
+  assert.deepEqual(body, fixtureServer.fixture.bytes);
+  assert.equal(response.headers.get("x-fixture-final-release-delay-ms"), "80");
+  assert.equal(response.headers.get("x-fixture-buffer-probe"), "client_diagnostics_required");
+  assert.ok(elapsed >= 65, `final release arrived too early: ${elapsed}ms`);
+  const scheduled = fixtureServer.events.find(
+    (event) => event.event === "final_release_scheduled" && event.attemptId === "buffer-probe",
+  );
+  assert.equal(scheduled?.finalReleaseDelayMs, 80);
+  assert.equal(scheduled?.bufferProbe, "client_diagnostics_required");
+  const terminal = terminalEvent(fixtureServer, "buffer-probe");
+  assert.equal(terminal?.finalReleaseDelayMs, 80);
 });

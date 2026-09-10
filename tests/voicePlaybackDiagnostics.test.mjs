@@ -6,6 +6,7 @@ import {
   TRACK_PLAYER_PACKAGE_VERSION,
   VOICE_PLAYBACK_DIAGNOSTIC_PREFIX,
   classifyAllowedFixtureSource,
+  classifyAllowedProxySource,
   createVoicePlaybackDiagnosticEmitter,
   formatVoicePlaybackDiagnosticEvent,
   parseVoicePlaybackDiagnosticDeepLink,
@@ -26,9 +27,76 @@ test("diagnostic deep links require QA/local enablement and a local fixture sour
     ),
     {
       enabled: true,
+      mode: "fixture",
       fixtureSource: "allowed-local",
       fixtureCase: "delayed-tail-750",
     },
+  );
+
+  assert.deepEqual(
+    parseVoicePlaybackDiagnosticDeepLink(
+      "quietroommobileqa://quiet-room?voiceDiag=%7B%22enabled%22%3Atrue%2C%22mode%22%3A%22live-trace%22%7D",
+      QA_RUNTIME,
+    ),
+    {
+      enabled: true,
+      mode: "live-trace",
+    },
+  );
+
+  assert.deepEqual(
+    parseVoicePlaybackDiagnosticDeepLink(
+      "quietroommobileqa://quiet-room?voiceDiag=%7B%22enabled%22%3Atrue%2C%22mode%22%3A%22live-proxy%22%2C%22proxyBaseUrl%22%3A%22http%3A%2F%2F10.0.2.2%3A8787%22%7D",
+      QA_RUNTIME,
+    ),
+    {
+      enabled: true,
+      mode: "live-proxy",
+      proxyBaseUrl: "http://10.0.2.2:8787",
+    },
+  );
+
+  assert.equal(
+    parseVoicePlaybackDiagnosticDeepLink(
+      "quietroommobileqa://quiet-room?voiceDiag=%7B%22enabled%22%3Atrue%2C%22mode%22%3A%22live-trace%22%2C%22fixtureSource%22%3A%22local%22%7D",
+      QA_RUNTIME,
+    ),
+    null,
+  );
+  assert.equal(
+    parseVoicePlaybackDiagnosticDeepLink(
+      "quietroommobileqa://quiet-room?voiceDiag=%7B%22enabled%22%3Atrue%2C%22mode%22%3A%22live-proxy%22%2C%22proxyBaseUrl%22%3A%22https%3A%2F%2Fexample.com%22%7D",
+      QA_RUNTIME,
+    ),
+    null,
+  );
+  assert.equal(
+    parseVoicePlaybackDiagnosticDeepLink(
+      "quietroommobileqa://quiet-room?voiceDiag=%7B%22enabled%22%3Atrue%2C%22mode%22%3A%22live-proxy%22%2C%22proxyBaseUrl%22%3A%22http%3A%2F%2F10.0.2.2%3A8787%22%2C%22fixtureSource%22%3A%22local%22%7D",
+      QA_RUNTIME,
+    ),
+    null,
+  );
+  assert.equal(
+    parseVoicePlaybackDiagnosticDeepLink(
+      "quietroommobileqa://quiet-room?voiceDiag=%7B%22enabled%22%3Atrue%2C%22mode%22%3A%22live-trace%22%2C%22proxyBaseUrl%22%3A%22http%3A%2F%2F10.0.2.2%3A8787%22%7D",
+      QA_RUNTIME,
+    ),
+    null,
+  );
+  assert.equal(
+    parseVoicePlaybackDiagnosticDeepLink(
+      "quietroommobileqa://quiet-room?voiceDiag=%7B%22enabled%22%3Atrue%2C%22mode%22%3A%22fixture%22%7D",
+      QA_RUNTIME,
+    ),
+    null,
+  );
+  assert.equal(
+    parseVoicePlaybackDiagnosticDeepLink(
+      "quietroommobileqa://quiet-room?voiceDiag=%7B%22enabled%22%3Atrue%2C%22mode%22%3A%22unknown%22%2C%22fixtureSource%22%3A%22local%22%7D",
+      QA_RUNTIME,
+    ),
+    null,
   );
 
   assert.equal(
@@ -72,6 +140,28 @@ test("fixture source classification rejects remote and credential-bearing source
     classification: "disallowed",
   });
   assert.deepEqual(classifyAllowedFixtureSource(undefined), { classification: "missing" });
+});
+
+test("proxy source classification accepts only allowlisted local URLs", () => {
+  assert.deepEqual(classifyAllowedProxySource("http://localhost:8787"), {
+    classification: "allowed-url",
+    baseUrl: "http://localhost:8787",
+  });
+  assert.deepEqual(classifyAllowedProxySource("http://10.0.2.2:8787/api/voice_stream"), {
+    classification: "allowed-url",
+    baseUrl: "http://10.0.2.2:8787/api/voice_stream",
+  });
+  assert.deepEqual(classifyAllowedProxySource("local"), { classification: "disallowed" });
+  assert.deepEqual(classifyAllowedProxySource("https://example.com/proxy"), {
+    classification: "disallowed",
+  });
+  assert.deepEqual(classifyAllowedProxySource("http://localhost:8787?token=secret"), {
+    classification: "disallowed",
+  });
+  assert.deepEqual(classifyAllowedProxySource("http://localhost:8787?mode=proxy"), {
+    classification: "disallowed",
+  });
+  assert.deepEqual(classifyAllowedProxySource(undefined), { classification: "missing" });
 });
 
 test("diagnostic fields are privacy-safe and bounded", () => {

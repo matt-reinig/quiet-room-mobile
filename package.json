@@ -58,6 +58,8 @@
     "test:ambient-audio": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/ambientAudioPlayback.test.mjs",
     "test:voice-fixture": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/voiceStreamFixtureServer.test.mjs",
     "voice:fixture:server": "node ./scripts/voice-stream-fixture-server.mjs",
+    "voice:tee": "node ./scripts/voice-stream-tee-proxy.mjs",
+    "test:voice-tee": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/voiceStreamTeeProxy.test.mjs",
     "test:voice-run-collector": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/voiceStreamRunCollector.test.mjs",
     "test:voice-capture-checker": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/voicePlaybackCaptureChecker.test.mjs",
     "voice:check-capture": "node ./scripts/check-voice-playback-capture.mjs",
