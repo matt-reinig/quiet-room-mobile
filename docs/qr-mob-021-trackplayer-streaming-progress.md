@@ -227,3 +227,65 @@ The saved source text was complete in the historical lookup and all four fresh d
 - JavaScript syntax checks for both changed E2Es and shell syntax for the live runner — passed.
 - Final Android QA/qa TrackPlayer Detox build — passed: 842 tasks, 22 executed, 820 up-to-date; `BUILD SUCCESSFUL in 11s`.
 - `git diff --check` — passed before final commit.
+
+## Spoken endings and genuine live-QA autoplay (2026-09-10)
+
+This round executes the plan entry added after `8812601`. Work stayed on the emulator and used Luna subagents for bounded ASR, source readback, native dependency inspection, API 35 follow-up, and independent review. The primary agent integrated and verified the returned evidence. No playback behavior, dependency, cloud data, physical device, deployment, merge, push, or release was changed.
+
+### Local spoken-content workflow
+
+An ignored Python 3.12.13 environment under `.local/qr-mob-021-asr/` runs `faster-whisper==1.1.1` locally; audio was not uploaded. The reproducible command shape is `.local/qr-mob-021-asr/venv/bin/python .local/qr-mob-021-asr/transcribe.py <local-media> <ignored-json> --model <model> --language en --beam-size 5`. Both passes use CPU `int8`, task `transcribe`, beam/best-of 5, temperature 0, previous-text conditioning enabled, VAD disabled, and no prompt or vocabulary hint. The independent models are:
+
+- `base.en`, `Systran/faster-whisper-base.en` revision `3d3d5dee26484f91867d81cb899cfcf72b96be6c`.
+- `small.en`, `Systran/faster-whisper-small.en` revision `d1d751a5f8271d482d14ca55e9d2deeebbae577f`.
+
+The intact synthetic control, SHA-256 `888d4c1dae1ef1fadb3c850b5bf886bb6bb0833cdbb91e15713d5ebb899295fa`, was complete in both passes. A copy with the whole final phrase silenced while retaining trailing silence, SHA-256 `706f94cfd98f3c3124c862935470b3a4c9d5d20f3a7d4e7f1bfee8b7c3b2de56`, and a copy with the final 750 ms silenced, SHA-256 `4fa4d1150da6b41cacd9e229bee1accc687817ef8383e97938b8695d695151ab`, were both classified `audible-tail-missing`. The recognizers therefore did not supply the requested ending when known final speech was absent.
+
+| Existing sample | Source/AAC or recording identity | Local recognition result | Bounded classification |
+| --- | --- | --- | --- |
+| Historical retained AAC | AAC `004e929896aba2bcf0c523fbaf3ceb82a33502e1c0fcaba8b9f53402d03a7548`; saved text ending present | Both models recovered the ending semantically; `small.en` rendered the final number as a digit. Prior waveform ending correlation was 0.9949. | `complete` |
+| Short retained proxy AAC | AAC `601d2cc46767b97c8ef12b8bdeaef60741f88aa0bf6b84437a9ea135f64cd370`; saved text ending present | Both models produced an ambiguous phonetic ending; prior waveform result remains overall inconclusive despite closing/ending correlations 0.9782/0.9979. | `inconclusive` |
+| Direct `133150Z` | recording `d3928224580544816b14e6c30b6f0506ebf11f9e6240354f130b0e1aac6ae68f`; saved source `ceae43cd574b464d8dd84e56e9c9b1778642762fd847beab9c06766f98fbeb48` | Both models omitted the expected ending in the full recording and an independent final-20-second crop. | `inconclusive`; no direct source bytes |
+| Direct `133553Z` | recording `30ae33113d0677724210d878fcb0f0575e1f941b4dc400130cc080c7b1550cef`; saved source `4a0036da9eb925a37e3dc0eace20ccaf8c00cfbafb8a5b3e2d2587963d002e26` | Both models omitted the expected ending in both passes. | `inconclusive`; no direct source bytes |
+| Direct `133935Z` | recording `a9644081a71499ca042ef592dc984ead1ec4c84aebb5a6eb622f20b296a1186f`; saved source `4f8410da4ad0c3d5dee5920b7130e78e5ea8b4cd2a7ba1ab987b12dc21fd12a9` | Both models omitted the expected ending in both passes. | `inconclusive`; no direct source bytes |
+
+Raw transcripts, derived crops, models, and summaries remain ignored. The shareable conclusion is deliberately bounded: repeated recognition absence is relevant evidence, but without the exact direct response bytes it cannot distinguish TTS generation loss from transport or emulator rendering loss.
+
+### Three genuine live-QA autoplay attempts
+
+The live harness now has an explicit `VOICE_QA_AUTOPLAY=1` mode. It requires `VOICE_QA_LONG_REPLY=1` and `VOICE_DIAGNOSTIC_MODE=live-trace`, rejects fixture variables, enables Voice Mode before sending the prompt, starts emulator audio recording before prompt submission, observes automatic playback without tapping the voice button, and records reply completion, source identity, native lifecycle, duration, cleanup, ownership release, and the final state. Manual live-trace and proxy modes keep their previous tap behavior. A strict collector produces `live-autoplay-evidence.json`; `tests/voiceAutoplayEvidence.test.mjs` covers correlation, fixture rejection, and Detox `device.log` discovery.
+
+Two DNS/login setup failures (`live-qa-20260911T021433Z` and `live-qa-20260911T021709Z`) and one user-interrupted setup (`live-qa-20260910T185732Z`) had no qualifying playback and are excluded. After restarting only `Pixel34AVD_2`, the three qualifying invocations used `VOICE_QA_SKIP_BUILD=1 VOICE_DIAGNOSTIC_MODE=live-trace VOICE_QA_LONG_REPLY=1 VOICE_QA_AUTOPLAY=1 VOICE_QA_LONG_REPLY_ATTEMPTS=1 ANDROID_SERIAL=emulator-15364 DETOX_AVD_NAME=Pixel34AVD_2 bash scripts/run-voice-stream-live-qa-android.sh`.
+
+| Evidence root | Run / attempt | Authoritative saved source | Playback / native result | Emulator recording | ASR ending assessment |
+| --- | --- | --- | --- | --- | --- |
+| `live-qa-20260911T022032Z` | `run-mtwbyfct-v09yto` / `attempt-mtwbyfct-axc1yr` | 1,865 code points / 1,872 bytes; `13a3ddd146503d36f9b0ae121eee477a6db2cf095246cbb06f891c107731d4b7`; ending present | 118.785 s (`target`); queue end at 120.241 s; cleanup/release; 2.001 s hold | 152.879 s; 84,785,819 bytes; `e30a7d846eafb766514ca9b343fc924ec3c900cbe659e0de4b527de598984e7f` | Both models omitted the ending in full and final-20-second passes; `inconclusive` |
+| `live-qa-20260911T022506Z` | `run-mtwc4gp8-8sx6be` / `attempt-mtwc4gp8-nissnl` | 2,028 code points / 2,054 bytes; `d4d31a6c215141b7972ab23b451ff669601518c08349baa7b5cd05e806d2c4eb`; ending present | 121.926 s (`long` by 1.926 s); queue end at 123.868 s; cleanup/release; 2.001 s hold | 151.402 s; 87,507,396 bytes; `74a7f2697cf7af49b33b6c1e42138d1f7171268915351fd93da89e7dc3ba0328` | Both models omitted the ending in both passes; `inconclusive` |
+| `live-qa-20260911T023010Z` | `run-mtwcar0k-simjvz` / `attempt-mtwcar0k-xhojoq` | 1,973 code points / 1,985 bytes; `cfaff864369c48a42f466e2a8d83a8abf03d84a902bb24c1f9508ee7ec0147d7`; ending present | 121.100 s (`long` by 1.100 s); queue end at 123.181 s; cleanup/release; 2.002 s hold | 151.400 s; 79,382,519 bytes; `0c26e17fa50b74c3619cfd85ff71300c25fb9e98301b1a5a2c0cd8714ff277a2` | Both models omitted the ending in both passes; `inconclusive` |
+
+All three strict collectors passed with exactly one matching native/UI attempt: live endpoint, no fixture routing, source assertion and identity present, reply completion recorded, native lifecycle and durations present, Voice Mode enabled before reply, recording started before prompt, automatic playback observed, and zero button taps. Read-only QA readback matched every native `source.identity` hash/count/slot and confirmed the requested ending. The screen accessibility hash also matched on the first attempt; the other two differed by two and four rendered characters because inline Markdown markers are removed from nested rendered text. The native hash is the exact `message.content` passed to `MessageVoiceButton` and is authoritative; future UI evidence now labels itself `rendered-accessibility-text` and explicitly non-comparable to the playback-source identity.
+
+The final-20-second crop hashes are `eb53f224b06634971d7e3aa47a77c4a11ba919951d232643384a29015433a113`, `7fc2030821f32ca08b10913a30fe9d1cca9ffb42bdd1ca68786b94afd1c421f4`, and `8a99fc72e36495ccac187b607428ff41f72495bc14a0ff60399c764a6a44085b`. The three observations are not clean audible-completeness passes: both validated recognizers omit the saved ending while native playback reaches queue end. They remain `inconclusive` because no exact bytes from those direct requests were retained.
+
+### Smallest normal-path byte-capture proposal
+
+Installed `react-native-track-player` 4.1.2 uses KotlinAudio 2.1.0 and legacy ExoPlayer 2.19.0 for this path; the unrelated Media3 1.8 transitive dependency is not the active player. The direct URL and authentication headers enter KotlinAudio's binary AAR, where `BaseAudioPlayer.getMediaSourceFromAudioItem` constructs a `DefaultHttpDataSource.Factory` and `ProgressiveMediaSource`. There is no public data-source-factory injection point, and the player/ExoPlayer members needed for an external listener are private/final; a transfer listener would provide counts/timing, not retained bytes.
+
+The smallest viable diagnostic is therefore a QA-only KotlinAudio fork/AAR patch that wraps the existing `DefaultHttpDataSource` in a capturing `DataSource`. It would forward the same direct request, headers, streaming reads, retries, exceptions, and cancellation while writing each request/retry to a separate ignored file and recording only byte count/hash, completion/error/cancellation, and timing. It must be gated to QA diagnostics, avoid URLs/tokens, sit before any future cache, and first prove unchanged progressive startup and acceptable overhead against a known fixture. This is a material dependency fork with build and maintenance cost, not a small application hook. Per the plan's scope boundary it is documented here and was not implemented without explicit expansion.
+
+### API 35 representative follow-up
+
+The earlier handshake warning was not an absent-image result. A controlled read-only launch of `QuietRoom_Play_API35` on explicit port 5584 reached ADB readiness, and a representative attached-device run under `artifacts/qr-mob-021/api35-emulator-followup/representative-20260911T024005Z/` passed on `emulator-5584` (API 35, arm64-v8a). Detox delivered the frozen 254,581-byte fixture in 26 chunks with normal EOF; TrackPlayer traversed loading, buffering, ready, playing, and ended, then reported queue end at 15.886 seconds. The 33.782-second screen/audio capture is 22,114,247 bytes, SHA-256 `c0797ad62eccf78cadad2abaef5f027d3d80d56b0d25c16f61f00933efe044cc`.
+
+The reproducible comparison command is `node scripts/check-voice-playback-capture.mjs --reference e2e/fixtures/voice-stream/closing-phrase-v1.mp3 --capture artifacts/qr-mob-021/api35-emulator-followup/representative-20260911T024005Z/api35-fixture-screen-audio.webm --manifest e2e/fixtures/voice-stream/manifest.json`. It classified the API 35 capture `complete`: full alignment 0.9664, closing correlation 0.9719, ending correlation 0.9669, and full coverage. Both local recognizers recovered the synthetic ending semantically, rendering the final number as `7`. A generic collector initially described the first connected ADB device (API 34); the attached-device Detox log proves assignment to `emulator-5584`, and `fixture-run-manifest.api35-corrected.json` records the corrected identity. Only the API 35 emulator started for this check was stopped; the primary API 34 emulator remained running.
+
+### Verification and stopping boundary
+
+- Three qualifying live-QA autoplay Detox invocations passed; each strict evidence collector passed.
+- API 35 representative retained-fixture Detox and audio capture — passed; waveform classification `complete`.
+- `npm run test:voice-autoplay-evidence` — passed, 4/4, including exclusion of later device logs when an earlier run is recollected.
+- `npm run typecheck` — passed.
+- Existing focused suites passed: playback diagnostics 9/9, tee 2/2, fixture 12/12, capture checker 8/8, run collector 3/3, ambient audio 5/5.
+- Syntax checks for the changed E2E and runner and `git diff --check` — passed.
+
+The relevant missing spoken ending is repeatable in local recognition across all three earlier direct recordings and all three genuine autoplay recordings, but the evidence still cannot locate the loss among TTS generation, direct transport, and rendering. The matrix stops at the requested three autoplay attempts. Native response-byte capture is the next discriminating experiment and requires explicit approval for the dependency fork described above. Physical-device testing remains a separately discussed last resort.

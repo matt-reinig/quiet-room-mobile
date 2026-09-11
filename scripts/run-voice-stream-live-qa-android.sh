@@ -14,6 +14,7 @@ DETOX_CONFIG="${VOICE_QA_DETOX_CONFIG:-android.emu.release}"
 DETOX_AVD_NAME="${DETOX_AVD_NAME:-Pixel34AVD_2}"
 DIAGNOSTIC_MODE="${VOICE_DIAGNOSTIC_MODE:-live-trace}"
 LONG_REPLY_MODE="${VOICE_QA_LONG_REPLY:-0}"
+AUTOPLAY_MODE="${VOICE_QA_AUTOPLAY:-0}"
 # Android emulator screenrecord caps each invocation at 180 seconds. Run one
 # bounded E2E attempt per invocation and repeat this wrapper for three captured
 # attempts when the full batch is needed.
@@ -31,6 +32,7 @@ PROXY_UPSTREAM="${VOICE_QA_TEE_PROXY_UPSTREAM:-${VOICE_QA_UPSTREAM_URL:-}}"
 SCREEN_TIME_LIMIT="${VOICE_QA_SCREEN_TIME_LIMIT:-180}"
 RUN_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 RUN_DIR="$ROOT_DIR/artifacts/qr-mob-021/live-qa-$RUN_STAMP"
+RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 DETOX_LOG="$RUN_DIR/detox.log"
 SCREENREC_LOG="$RUN_DIR/screenrecord.log"
 TEE_PROXY_LOG="$RUN_DIR/tee-proxy.log"
@@ -38,6 +40,7 @@ SCREENREC_PATH="$RUN_DIR/emulator.webm"
 PLAYBACK_READY_SIGNAL="$RUN_DIR/playback-ready.signal"
 RECORDING_STARTED_MARKER="$RUN_DIR/screenrecord.started"
 NO_RECORDING_MARKER="$RUN_DIR/no-recording.json"
+LIVE_AUTOPLAY_EVIDENCE="$RUN_DIR/live-autoplay-evidence.json"
 
 mkdir -p "$RUN_DIR"
 
@@ -53,6 +56,21 @@ fi
 
 if [[ "$LONG_REPLY_MODE" != "0" && "$LONG_REPLY_MODE" != "1" ]]; then
   echo "VOICE_QA_LONG_REPLY must be 0 or 1." >&2
+  exit 2
+fi
+
+if [[ "$AUTOPLAY_MODE" != "0" && "$AUTOPLAY_MODE" != "1" ]]; then
+  echo "VOICE_QA_AUTOPLAY must be 0 or 1." >&2
+  exit 2
+fi
+
+if [[ "$AUTOPLAY_MODE" == "1" && "$LONG_REPLY_MODE" != "1" ]]; then
+  echo "VOICE_QA_AUTOPLAY=1 requires VOICE_QA_LONG_REPLY=1." >&2
+  exit 2
+fi
+
+if [[ "$AUTOPLAY_MODE" == "1" && "$DIAGNOSTIC_MODE" != "live-trace" ]]; then
+  echo "VOICE_QA_AUTOPLAY=1 requires VOICE_DIAGNOSTIC_MODE=live-trace." >&2
   exit 2
 fi
 
@@ -195,11 +213,12 @@ trap cleanup EXIT INT TERM
 
 cat > "$RUN_DIR/run-context.json" <<EOF
 {
-  "runStartedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "runStartedAt": "${RUN_STARTED_AT}",
   "detoxConfig": "${DETOX_CONFIG}",
   "avdName": "${DETOX_AVD_NAME}",
   "diagnosticMode": "${DIAGNOSTIC_MODE}",
   "longReplyMode": ${LONG_REPLY_MODE},
+  "autoplayMode": ${AUTOPLAY_MODE},
   "longReplyAttempts": ${LONG_REPLY_ATTEMPTS},
   "captureScope": "one-attempt-per-invocation",
   "plannedBatchAttempts": 3,
@@ -269,6 +288,7 @@ VOICE_DIAGNOSTIC_MODE="$DIAGNOSTIC_MODE" \
 VOICE_DIAGNOSTIC_PROXY_BASE_URL="$PROXY_BASE_URL" \
 VOICE_QA_TEE_PROXY_UPSTREAM="$PROXY_UPSTREAM" \
 VOICE_QA_LONG_REPLY="$LONG_REPLY_MODE" \
+VOICE_QA_AUTOPLAY="$AUTOPLAY_MODE" \
 VOICE_QA_LONG_REPLY_ATTEMPTS="$LONG_REPLY_ATTEMPTS" \
 VOICE_QA_SETUP_TIMEOUT_MS="$SETUP_TIMEOUT_MS" \
 VOICE_QA_GENERATION_TIMEOUT_MS="$GENERATION_TIMEOUT_MS" \
@@ -290,6 +310,21 @@ set -e
 
 ensure_recording_classification || true
 
+evidence_status="not-requested"
+if [[ "$AUTOPLAY_MODE" == "1" ]] && node "$ROOT_DIR/scripts/collect-voice-autoplay-evidence.mjs" \
+  --root "$ROOT_DIR" \
+  --evidence "$RUN_DIR/long-reply-evidence.json" \
+  --output "$LIVE_AUTOPLAY_EVIDENCE" \
+  --run-started-at "$RUN_STARTED_AT" \
+  --strict; then
+  evidence_status="collected"
+elif [[ "$AUTOPLAY_MODE" == "1" ]]; then
+  evidence_status="collector-failed-or-assertion-failed"
+  if [[ "$detox_status" == "0" ]]; then
+    detox_status=4
+  fi
+fi
+
 if [[ -f "$RECORDING_STARTED_MARKER" ]]; then
   recording_status="recorded"
 elif [[ -f "$NO_RECORDING_MARKER" ]]; then
@@ -305,6 +340,8 @@ screen_recording=$SCREENREC_PATH
 detox_log=$DETOX_LOG
 tee_proxy_log=$TEE_PROXY_LOG
 long_reply_evidence=$RUN_DIR/long-reply-evidence.json
+live_autoplay_evidence=$LIVE_AUTOPLAY_EVIDENCE
+live_autoplay_evidence_status=$evidence_status
 recording_status=$recording_status
 recording_ready_signal=$PLAYBACK_READY_SIGNAL
 no_recording_marker=$NO_RECORDING_MARKER

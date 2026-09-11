@@ -14,6 +14,7 @@ const appScheme = process.env.E2E_APP_SCHEME || 'quietroommobileqa';
 const diagnosticMode = process.env.VOICE_DIAGNOSTIC_MODE || 'live-trace';
 const proxyBaseUrl = process.env.VOICE_DIAGNOSTIC_PROXY_BASE_URL || '';
 const longReplyMode = process.env.VOICE_QA_LONG_REPLY === '1';
+const autoplayMode = process.env.VOICE_QA_AUTOPLAY === '1';
 const evidenceDir = process.env.VOICE_QA_EVIDENCE_DIR || '';
 
 function parseBoundedInteger(value, fallback, minimum, maximum) {
@@ -135,6 +136,17 @@ async function startFreshChat(timeoutMs = 15000) {
   await waitFor(element(by.id(ids.openingMessage))).toExist().withTimeout(Math.min(timeoutMs, 15000));
 }
 
+async function enableVoiceMode(timeoutMs = 15000) {
+  const modelMenuButton = element(by.id(ids.modelMenuButton));
+  await modelMenuButton.tap();
+  await waitFor(element(by.id(ids.modelMenu))).toBeVisible().withTimeout(Math.min(timeoutMs, 10000));
+  await waitFor(element(by.id(ids.modelMenuVoiceToggle))).toBeVisible().withTimeout(Math.min(timeoutMs, 10000));
+  await element(by.id(ids.modelMenuVoiceToggle)).tap();
+  await device.pressBack();
+  await waitFor(element(by.id(ids.modelMenu))).not.toBeVisible().withTimeout(Math.min(timeoutMs, 5000));
+  await waitFor(element(by.id(ids.voiceModeIndicator))).toBeVisible().withTimeout(Math.min(timeoutMs, 10000));
+}
+
 async function sendSyntheticPrompt(timeoutMs = 120000, longReply = false) {
   const composer = element(by.id(ids.composerInput));
   const sendButton = element(by.id(ids.sendButton));
@@ -174,6 +186,8 @@ async function readAssistantEvidence() {
       sha256: crypto.createHash('sha256').update(rawText, 'utf8').digest('hex'),
       unicodeCharacterCount: Array.from(rawText).length,
       endsWithRequestedPhrase: comparableText.endsWith(SYNTHETIC_FINAL_PHRASE),
+      representation: 'rendered-accessibility-text',
+      playbackSourceIdentityComparable: false,
       readable: true,
     };
   } catch {
@@ -181,6 +195,8 @@ async function readAssistantEvidence() {
       sha256: null,
       unicodeCharacterCount: null,
       endsWithRequestedPhrase: false,
+      representation: 'unavailable',
+      playbackSourceIdentityComparable: false,
       readable: false,
     };
   }
@@ -201,6 +217,26 @@ function writePlaybackReadySignal() {
   );
   fs.renameSync(temporaryPath, signalPath);
   return true;
+}
+
+function diagnosticAssertions() {
+  const fixtureRoutingRejected =
+    diagnosticMode === 'live-trace' &&
+    !process.env.VOICE_FIXTURE_BASE_URL &&
+    !process.env.VOICE_FIXTURE_CASE;
+
+  if (diagnosticMode !== 'live-trace') {
+    throw new Error(`Long-reply autoplay requires live-trace mode; received ${diagnosticMode}.`);
+  }
+  if (!fixtureRoutingRejected) {
+    throw new Error('Long-reply autoplay must reject fixture routing.');
+  }
+
+  return {
+    diagnosticMode,
+    endpointMode: 'live',
+    fixtureRoutingRejected,
+  };
 }
 
 async function revealVoiceButton(timeoutMs) {
@@ -252,6 +288,27 @@ async function waitForPlaybackEnd(voiceButton, timeoutMs) {
   }
 
   throw new Error(`Timed out waiting for QA voice playback to end after ${timeoutMs}ms`);
+}
+
+async function waitForAutomaticPlaybackStart(voiceButton, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const label = await readLabel(voiceButton);
+    if (label === 'Starting voice...' || label === 'Pause voice') {
+      return label;
+    }
+    if (label === 'Retry voice') {
+      const autoplayError = new Error('QA Voice Mode autoplay entered Retry voice before native playback started.');
+      autoplayError.code = 'autoplay-error';
+      throw autoplayError;
+    }
+    await delay(300);
+  }
+
+  const autoplayTimeout = new Error(`Timed out waiting for Voice Mode autoplay after ${timeoutMs}ms`);
+  autoplayTimeout.code = 'autoplay-timeout';
+  throw autoplayTimeout;
 }
 
 async function waitForRecordingStartMarker(timeoutMs = 10000) {
@@ -321,7 +378,13 @@ function writeEvidenceFile(filename, evidence) {
 function writeLongReplyEvidence(attempts) {
   return writeEvidenceFile('long-reply-evidence.json', {
     diagnosticMode,
-    endpointMode: diagnosticMode === 'live-proxy' ? 'live-proxy' : 'direct-live-trace',
+    endpointMode: autoplayMode
+      ? 'live'
+      : diagnosticMode === 'live-proxy'
+        ? 'live-proxy'
+        : 'direct-live-trace',
+    fixtureRoutingRejected: autoplayMode ? true : null,
+    trigger: autoplayMode ? 'voice-mode-auto' : 'manual-voice-button',
     durationMeasurement: 'wall-clock from first Pause voice label to Play voice label',
     attemptsRequested: longReplyAttempts,
     timeoutsMs: {
@@ -339,6 +402,13 @@ function writeLongReplyEvidence(attempts) {
 }
 
 async function runLongReplyAttempt(attemptNumber) {
+  const diagnostic = autoplayMode
+    ? diagnosticAssertions()
+    : {
+        diagnosticMode,
+        endpointMode: diagnosticMode === 'live-proxy' ? 'live-proxy' : 'direct-live-trace',
+        fixtureRoutingRejected: null,
+      };
   const record = {
     attempt: attemptNumber,
     startedAt: new Date().toISOString(),
@@ -353,17 +423,36 @@ async function runLongReplyAttempt(attemptNumber) {
     postTerminalDurationMs: null,
     failurePhase: null,
     errorName: null,
+    ...diagnostic,
+    voiceModeEnabledBeforeReply: false,
+    recordingReadySignalEmittedAt: null,
+    recordingStartedBeforePrompt: false,
+    replyCompletedAt: null,
+    autoPlaybackObserved: false,
+    voiceButtonTapCount: 0,
   };
   const attemptStartedAtMs = monotonicNowMs();
 
   try {
     const setupStartedAtMs = monotonicNowMs();
     await startFreshChat(setupTimeoutMs);
+    if (autoplayMode) {
+      await enableVoiceMode(setupTimeoutMs);
+      record.voiceModeEnabledBeforeReply = true;
+    }
     record.setupDurationMs = Math.round(monotonicNowMs() - setupStartedAtMs);
+
+    if (autoplayMode) {
+      record.captureSignalEmitted = writePlaybackReadySignal();
+      record.recordingReadySignalEmittedAt = new Date().toISOString();
+      await waitForRecordingStartMarker();
+      record.recordingStartedBeforePrompt = true;
+    }
 
     const generationStartedAtMs = monotonicNowMs();
     await sendSyntheticPrompt(generationTimeoutMs, true);
     record.generationDurationMs = Math.round(monotonicNowMs() - generationStartedAtMs);
+    record.replyCompletedAt = new Date().toISOString();
     record.assistantEvidence = await readAssistantEvidence();
     if (
       !record.assistantEvidence?.readable ||
@@ -375,9 +464,16 @@ async function runLongReplyAttempt(attemptNumber) {
     }
 
     const voiceButton = await revealVoiceButton(setupTimeoutMs);
-    record.captureSignalEmitted = writePlaybackReadySignal();
-    await waitForRecordingStartMarker();
-    await voiceButton.tap();
+    if (autoplayMode) {
+      await waitForAutomaticPlaybackStart(voiceButton, playbackTimeoutMs);
+      record.autoPlaybackObserved = true;
+    } else {
+      record.captureSignalEmitted = writePlaybackReadySignal();
+      record.recordingReadySignalEmittedAt = new Date().toISOString();
+      await waitForRecordingStartMarker();
+      await voiceButton.tap();
+      record.voiceButtonTapCount = 1;
+    }
     const playback = await waitForPlaybackEnd(voiceButton, playbackTimeoutMs);
     record.actualPlaybackDurationMs = playback.actualPlaybackDurationMs;
     record.durationBand = classifyDuration(playback.actualPlaybackDurationMs);
@@ -412,6 +508,10 @@ async function runLongReplyAttempt(attemptNumber) {
       record.classification = `${record.failurePhase}-timeout`;
     } else if (error?.code === 'retry-voice') {
       record.classification = 'playback-error';
+    } else if (error?.code === 'autoplay-timeout' || error?.code === 'autoplay-error') {
+      record.failurePhase = 'autoplay';
+      record.timeoutPhase = error?.code === 'autoplay-timeout' ? 'autoplay' : null;
+      record.classification = error?.code === 'autoplay-timeout' ? 'autoplay-timeout' : 'autoplay-error';
     } else if (error?.code === 'source-incomplete') {
       record.failurePhase = 'source';
       record.classification = 'source-inconclusive';
@@ -429,7 +529,10 @@ async function runLongReplyAttempt(attemptNumber) {
 }
 
 async function runLongReplyTrace() {
-  if (diagnosticMode !== 'live-trace' && diagnosticMode !== 'live-proxy') {
+  if (autoplayMode && diagnosticMode !== 'live-trace') {
+    throw new Error('Long-reply autoplay requires live-trace mode.');
+  }
+  if (!autoplayMode && diagnosticMode !== 'live-trace' && diagnosticMode !== 'live-proxy') {
     throw new Error('Long-reply mode requires live-trace or live-proxy mode.');
   }
   if (process.env.VOICE_DIAGNOSTIC_URL) {
@@ -446,6 +549,14 @@ async function runLongReplyTrace() {
   }
 
   const evidencePath = writeLongReplyEvidence(attempts);
+  if (
+    autoplayMode &&
+    attempts.some((attempt) => !attempt.voiceModeEnabledBeforeReply || !attempt.recordingStartedBeforePrompt)
+  ) {
+    throw new Error(
+      `Long-reply autoplay preconditions were not proven${evidencePath ? `; evidence=${evidencePath}` : ''}`,
+    );
+  }
   const failedAttempts = attempts.filter((attempt) => !attempt.classification.startsWith('complete-'));
   if (failedAttempts.length > 0) {
     throw new Error(

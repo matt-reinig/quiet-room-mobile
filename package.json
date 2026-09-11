@@ -64,6 +64,7 @@
     "test:voice-capture-checker": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/voicePlaybackCaptureChecker.test.mjs",
     "voice:check-capture": "node ./scripts/check-voice-playback-capture.mjs",
     "test:voice-playback-diagnostics": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/voicePlaybackDiagnostics.test.mjs",
+    "test:voice-autoplay-evidence": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/voiceAutoplayEvidence.test.mjs",
     "typecheck": "tsc --noEmit",
     "mobile:configure:5556": "powershell -ExecutionPolicy Bypass -File .\\scripts\\configure-emulator-5556.ps1",
     "mobile:start:5556": "powershell -ExecutionPolicy Bypass -File .\\scripts\\start-mobile-dev-5556.ps1",

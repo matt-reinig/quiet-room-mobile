@@ -230,3 +230,58 @@ This section was executed in the implementation worktree with Luna subagents per
 - A second API 35 AVD was inventoried and launch attempts were preserved, but both installed API 35 AVD definitions exited before Android readiness. No second-image playback result is claimed.
 
 No emulator case reproduced the reported missing ending on the normal direct path, and no evidence-supported product fix was selected. Nothing was installed on a physical device, deployed, merged, pushed, or released. Remaining uncertainty is the lexical content of retained generated AAC without independent transcription, direct-path byte capture, physical output routes, and the unavailable second emulator image.
+
+## Next handoff: verify spoken endings and live-QA autoplay (2026-09-10)
+
+Continue from `8812601` (`Execute QR-MOB-021 emulator source investigation`) on the existing implementation branch/worktree. This entry follows review of the latest progress, results, lifecycle test, and emulator startup logs. It narrows the next round to unfinished evidence checks. The user continues to prefer emulator-only work; do not make a physical-device installation or user listening session a prerequisite or automatically escalate to one.
+
+### Evidence boundary to preserve
+
+- The source text hashes and read-only QA readbacks agree and include the expected ending. The three fully recorded long direct runs reached native queue end, but their spoken endings have no independent transcript or byte-identical source comparison. Describe them as completed native observations, not verified absence of lost words.
+- The lifecycle batch passed, but `e2e/quiet-room.voice-lifecycle-batch.test.js` selects `mode: 'fixture'`, including its automatic Voice Mode test. It proves automatic triggering with fixture audio; it does not satisfy the long-reply/live-QA-autoplay comparison. Its completion checks observe UI labels rather than audible ending content.
+- The retained AAC samples permit analysis now. Lack of an installed local speech recognizer is a tooling gap, not a reason to skip spoken-content verification or require a phone.
+- The API 35 launch logs explicitly report an existing system-image path. The available failure diagnostic is `child_port_handshake.cc:197: no client check-in`; the logs do not establish a missing image, port conflict, or resource cause. Preserve this distinction if revisiting the optional second emulator.
+
+### 1. Analyze existing recordings before generating more audio
+
+Provision a local speech-recognition tool/model in an isolated environment if needed, without changing the app's dependency set. Record its version, model identity, decoding settings, and reproducible commands. Use local processing for the retained recordings and recovered source text; do not upload them to a third-party transcription service as an implicit fallback. Do not stop at discovering that a recognizer executable is absent: attempt routine local setup and document a concrete blocker if setup cannot be completed.
+
+Start with the historical AAC under `artifacts/qr-mob-021/live-qa-20260909T225042Z/`, the retained short proxy sample under `artifacts/qr-mob-021/live-qa-20260910T180641Z/`, and the three complete direct recordings under `live-qa-20260910T133150Z`, `live-qa-20260910T133553Z`, and `live-qa-20260910T133935Z`. Resolve exact file names and hashes from the progress document/manifests. The earlier `live-qa-20260910T132311Z` recording lacks the ending and must remain timing-only.
+
+Recover each actual saved assistant ending read-only and correlate it with the recorded source identity. Transcribe the audio independently before comparing text: do not give the recognizer the expected phrase as a prompt, vocabulary hint, or forced output. Include sufficient preceding speech around the ending, and document any decoding, cropping, or gain adjustment while preserving original files. Normalize punctuation, case, and equivalent spoken numbers for comparison, without silently removing missing substantive words.
+
+Validate the recognizer workflow against an intact retained sample and deliberately shortened copies with known final speech removed while trailing silence remains. A recognizer that supplies the missing expected words on those controls cannot establish completeness. Transcription is supporting evidence, not a replacement for the waveform checker: use a second independent local recognition pass or additional signal inspection for disputed words, and retain `inconclusive` when the evidence is ambiguous. No user listening is required.
+
+Produce a compact per-sample table separating saved-text ending, generated-AAC ending when available, emulator-rendered ending, and confidence/limitations. Keep private text and raw transcripts in ignored local artifacts; commit only bounded classifications, hashes, and synthetic evidence appropriate for sharing. For direct recordings without source bytes, a missing rendered word does not by itself distinguish generation from transport or playback loss.
+
+### 2. Run three genuine long-reply live-QA autoplay attempts
+
+Extend the live-QA harness rather than counting the fixture autoplay test again. Use `live-trace`, the normal authenticated saved-message GET, automatic Voice Mode enabled before reply completion, and no scripted voice-button tap. Assert the selected endpoint mode and absence of fixture routing. Use synthetic replies targeting roughly 60–120 seconds of actual speech and record their measured durations, including out-of-band cases.
+
+Start emulator audio recording before the automatic trigger, with enough recording budget for the remaining generation, complete playback, and at least two seconds after termination. Preserve phase-specific timeouts and verify that the recording actually contains the final segment. Correlate reply completion, source identity, native start/progress/buffering, ownership, cleanup, and final state. Assess the recorded words using the validated local workflow above. A UI transition or queue-ended event alone is not an audible-completeness result.
+
+Keep the initial batch to three attempts. If a relevant missing ending is captured, stop expanding the matrix, preserve that attempt, and choose the next diagnostic comparison from its evidence. Do not change product playback behavior to make the test pass.
+
+### 3. If still ambiguous, capture bytes inside the normal Android playback path
+
+If direct playback remains inconclusive because its exact source bytes are unavailable, inspect the installed TrackPlayer/native dependency version and identify a QA-only data-source capture point. Retain bytes from the same native request while preserving its direct endpoint, authentication, streaming, retries, and cancellation behavior. Do not assume a particular Media3/ExoPlayer API is available without inspecting the installed dependency. Avoid a second request or full-response buffering before playback.
+
+Record each native request/retry separately with byte count/hash, completion/error/cancellation, and timing. Validate capture overhead and progressive startup with a known fixture before interpreting a live result. Compare the retained source ending against the emulator output from that exact attempt. This is diagnostic instrumentation, not a player replacement or product fix. If native capture requires a larger dependency change than expected, document the smallest proposed approach and tradeoffs before expanding scope.
+
+The long proxy timeout remains a startup observation. It does not establish final-word clipping or justify an arbitrary timeout increase as the product solution. Use direct capture to reduce transport ambiguity rather than assuming the local proxy is equivalent to the normal connection.
+
+### Optional second image and stopping rule
+
+After the content and live-autoplay checks, a bounded API 35 readiness investigation remains available without a phone. Inspect existing processes, port use, AVD configuration, and the installed image; attempt one controlled launch with explicit ports and complete stderr capture. Do not delete AVD data, kill unrelated emulator sessions, or reinstall an image solely because an earlier inventory command called it missing. If readiness succeeds, validate audio capture and repeat only representative cases. If it fails, report the observed cause or remaining uncertainty rather than inferring one from the handshake warning.
+
+Update the progress/results documents with exact commits, commands, model/tool versions, sample hashes, correlation IDs, transcript-control outcomes, actual autoplay endpoint mode, and per-attempt classifications. The immediate deliverables are an assessment of existing spoken endings and three real-QA-autoplay observations, or specific documented blockers. Preserve inconclusive results and distinguish source-generation loss from rendered loss wherever the evidence allows.
+
+If these checks remain clean or inconclusive, stop and review the remaining uncertainty with the user. Physical-device testing remains a separately discussed last resort. This entry does not authorize a merge, push, deployment, store release, production mutation, or physical-device run, and no field fix should be claimed without a relevant before/after reproduction.
+
+## Spoken-ending and live-autoplay execution result (2026-09-10)
+
+The requested local spoken-content workflow, controls, existing-sample analysis, and three genuine live-QA autoplay attempts are complete. Both independent recognizers omitted the saved requested ending from every prior direct recording and every new autoplay recording, while the historical retained AAC was complete and deliberate shortened controls were detected. All three autoplay attempts used the live endpoint with fixture routing rejected, enabled Voice Mode before reply completion, recorded before the prompt, performed zero scripted taps, reached native queue end, completed cleanup/ownership release, and retained the post-terminal segment. Read-only QA readback matched the native source identity and confirmed the ending in all three saved messages.
+
+The result remains `inconclusive` about the failing layer because direct response bytes were not retained: it cannot separate TTS generation, transport, and emulator rendering. Inspection established that the active Android path is KotlinAudio 2.1.0 over ExoPlayer 2.19.0 and has no public byte-capture injection point. The smallest next experiment is a QA-only KotlinAudio AAR fork wrapping its `DefaultHttpDataSource`; because that is a material dependency/build-maintenance expansion, the proposal and tradeoffs are recorded in the progress document and no fork was implemented without explicit approval. No product playback behavior, physical device, deployment, merge, push, or release was changed.
+
+The optional API 35 retry reached readiness on an explicit port. A representative retained-fixture run attached to that emulator passed, exhausted the full fixture normally, reached native queue end, and classified the recorded waveform `complete`. The primary API 34 emulator was not disturbed.
