@@ -3,6 +3,12 @@ export const TRACK_PLAYER_PACKAGE_NAME = "react-native-track-player";
 // Keep this explicit so captured runs identify the native dependency that was
 // installed when the diagnostic build was created.
 export const TRACK_PLAYER_PACKAGE_VERSION = "4.1.2";
+export const VOICE_NATIVE_CAPTURE_HEADERS = {
+  attemptId: "X-QR-MOB-021-Attempt-Id",
+  enabled: "X-QR-MOB-021-Native-Capture",
+  endpointMode: "X-QR-MOB-021-Capture-Endpoint",
+  runId: "X-QR-MOB-021-Run-Id",
+} as const;
 
 export type DiagnosticAppVariant = "prod" | "qa";
 export type DiagnosticReleaseEnv = "local" | "qa" | "prod";
@@ -148,6 +154,7 @@ const SENSITIVE_FIELD_PATTERN =
   /authorization|token|cookie|password|secret|api[_-]?key|message|content|prompt|transcript|text|body|url/i;
 const SAFE_FIXTURE_CASE_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$/;
 const SAFE_EVENT_NAME_PATTERN = /^[a-zA-Z][a-zA-Z0-9._-]{0,63}$/;
+const SAFE_CAPTURE_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,95}$/;
 const ALLOWED_LOCAL_FIXTURE_HOSTS = new Set(["localhost", "127.0.0.1", "10.0.2.2"]);
 
 function defaultClock(): number {
@@ -162,6 +169,26 @@ function defaultIdFactory(kind: "run" | "attempt"): string {
   const timestamp = Date.now().toString(36);
   const random = Math.random().toString(36).slice(2, 8);
   return `${kind}-${timestamp}-${random}`;
+}
+
+export function buildNativeVoiceCaptureHeaders(
+  mode: VoicePlaybackDiagnosticMode,
+  runId: string,
+  attemptId: string,
+): Record<string, string> {
+  if (mode === "live-proxy") {
+    return {};
+  }
+  if (!SAFE_CAPTURE_ID_PATTERN.test(runId) || !SAFE_CAPTURE_ID_PATTERN.test(attemptId)) {
+    throw new Error("Voice native-capture correlation ID is invalid.");
+  }
+
+  return {
+    [VOICE_NATIVE_CAPTURE_HEADERS.enabled]: "1",
+    [VOICE_NATIVE_CAPTURE_HEADERS.runId]: runId,
+    [VOICE_NATIVE_CAPTURE_HEADERS.attemptId]: attemptId,
+    [VOICE_NATIVE_CAPTURE_HEADERS.endpointMode]: mode === "fixture" ? "fixture" : "live",
+  };
 }
 
 function normalizeRuntime(runtime?: VoicePlaybackDiagnosticRuntime): Required<VoicePlaybackDiagnosticRuntime> {

@@ -15,6 +15,7 @@ DETOX_AVD_NAME="${DETOX_AVD_NAME:-Pixel34AVD_2}"
 DIAGNOSTIC_MODE="${VOICE_DIAGNOSTIC_MODE:-live-trace}"
 LONG_REPLY_MODE="${VOICE_QA_LONG_REPLY:-0}"
 AUTOPLAY_MODE="${VOICE_QA_AUTOPLAY:-0}"
+NATIVE_CAPTURE_MODE="${VOICE_NATIVE_CAPTURE:-0}"
 # Android emulator screenrecord caps each invocation at 180 seconds. Run one
 # bounded E2E attempt per invocation and repeat this wrapper for three captured
 # attempts when the full batch is needed.
@@ -41,6 +42,8 @@ PLAYBACK_READY_SIGNAL="$RUN_DIR/playback-ready.signal"
 RECORDING_STARTED_MARKER="$RUN_DIR/screenrecord.started"
 NO_RECORDING_MARKER="$RUN_DIR/no-recording.json"
 LIVE_AUTOPLAY_EVIDENCE="$RUN_DIR/live-autoplay-evidence.json"
+NATIVE_CAPTURE_DIR="$RUN_DIR/native-capture"
+NATIVE_CAPTURE_SUMMARY="$RUN_DIR/native-capture-summary.json"
 
 mkdir -p "$RUN_DIR"
 
@@ -61,6 +64,16 @@ fi
 
 if [[ "$AUTOPLAY_MODE" != "0" && "$AUTOPLAY_MODE" != "1" ]]; then
   echo "VOICE_QA_AUTOPLAY must be 0 or 1." >&2
+  exit 2
+fi
+
+if [[ "$NATIVE_CAPTURE_MODE" != "0" && "$NATIVE_CAPTURE_MODE" != "1" ]]; then
+  echo "VOICE_NATIVE_CAPTURE must be 0 or 1." >&2
+  exit 2
+fi
+
+if [[ "$NATIVE_CAPTURE_MODE" == "1" && "$DIAGNOSTIC_MODE" != "live-trace" ]]; then
+  echo "VOICE_NATIVE_CAPTURE=1 requires VOICE_DIAGNOSTIC_MODE=live-trace." >&2
   exit 2
 fi
 
@@ -219,6 +232,7 @@ cat > "$RUN_DIR/run-context.json" <<EOF
   "diagnosticMode": "${DIAGNOSTIC_MODE}",
   "longReplyMode": ${LONG_REPLY_MODE},
   "autoplayMode": ${AUTOPLAY_MODE},
+  "nativeCaptureMode": ${NATIVE_CAPTURE_MODE},
   "longReplyAttempts": ${LONG_REPLY_ATTEMPTS},
   "captureScope": "one-attempt-per-invocation",
   "plannedBatchAttempts": 3,
@@ -270,6 +284,8 @@ fi
 
 if [[ "${VOICE_QA_SKIP_BUILD:-0}" != "1" ]]; then
   EXPO_PUBLIC_VOICE_PLAYBACK_ENGINE=track-player \
+  EXPO_PUBLIC_QR_MOB_021_NATIVE_CAPTURE="$NATIVE_CAPTURE_MODE" \
+  ORG_GRADLE_PROJECT_QR_MOB_021_NATIVE_CAPTURE="$NATIVE_CAPTURE_MODE" \
     bash "$ROOT_DIR/scripts/with-mobile-env.sh" qa qa \
     npx detox build -c "$DETOX_CONFIG"
 fi
@@ -284,6 +300,7 @@ fi
 
 set +e
 EXPO_PUBLIC_VOICE_PLAYBACK_ENGINE=track-player \
+EXPO_PUBLIC_QR_MOB_021_NATIVE_CAPTURE="$NATIVE_CAPTURE_MODE" \
 VOICE_DIAGNOSTIC_MODE="$DIAGNOSTIC_MODE" \
 VOICE_DIAGNOSTIC_PROXY_BASE_URL="$PROXY_BASE_URL" \
 VOICE_QA_TEE_PROXY_UPSTREAM="$PROXY_UPSTREAM" \
@@ -325,6 +342,26 @@ elif [[ "$AUTOPLAY_MODE" == "1" ]]; then
   fi
 fi
 
+native_capture_status="not-requested"
+if [[ "$NATIVE_CAPTURE_MODE" == "1" && "$AUTOPLAY_MODE" == "1" && "$evidence_status" == "collected" ]]; then
+  emulator_serial="$(find_emulator_serial || true)"
+  if [[ -n "$emulator_serial" ]] && node "$ROOT_DIR/scripts/collect-native-trackplayer-capture.mjs" \
+    --evidence "$LIVE_AUTOPLAY_EVIDENCE" \
+    --serial "$emulator_serial" \
+    --package com.quietroom.mobile.qa \
+    --output-dir "$NATIVE_CAPTURE_DIR" \
+    --summary "$NATIVE_CAPTURE_SUMMARY" \
+    --expected-endpoint live \
+    --strict; then
+    native_capture_status="collected"
+  else
+    native_capture_status="collector-failed-or-assertion-failed"
+    if [[ "$detox_status" == "0" ]]; then
+      detox_status=5
+    fi
+  fi
+fi
+
 if [[ -f "$RECORDING_STARTED_MARKER" ]]; then
   recording_status="recorded"
 elif [[ -f "$NO_RECORDING_MARKER" ]]; then
@@ -342,6 +379,8 @@ tee_proxy_log=$TEE_PROXY_LOG
 long_reply_evidence=$RUN_DIR/long-reply-evidence.json
 live_autoplay_evidence=$LIVE_AUTOPLAY_EVIDENCE
 live_autoplay_evidence_status=$evidence_status
+native_capture_summary=$NATIVE_CAPTURE_SUMMARY
+native_capture_status=$native_capture_status
 recording_status=$recording_status
 recording_ready_signal=$PLAYBACK_READY_SIGNAL
 no_recording_marker=$NO_RECORDING_MARKER

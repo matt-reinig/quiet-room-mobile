@@ -5,6 +5,8 @@ import {
   TRACK_PLAYER_PACKAGE_NAME,
   TRACK_PLAYER_PACKAGE_VERSION,
   VOICE_PLAYBACK_DIAGNOSTIC_PREFIX,
+  VOICE_NATIVE_CAPTURE_HEADERS,
+  buildNativeVoiceCaptureHeaders,
   classifyAllowedFixtureSource,
   classifyAllowedProxySource,
   createVoicePlaybackDiagnosticEmitter,
@@ -19,6 +21,23 @@ const QA_RUNTIME = {
   releaseEnv: "local",
   voicePlaybackEngine: "track-player",
 };
+
+test("native capture headers are bounded to fixture and direct live diagnostics", () => {
+  assert.deepEqual(buildNativeVoiceCaptureHeaders("live-trace", "run-123", "attempt-456"), {
+    [VOICE_NATIVE_CAPTURE_HEADERS.enabled]: "1",
+    [VOICE_NATIVE_CAPTURE_HEADERS.runId]: "run-123",
+    [VOICE_NATIVE_CAPTURE_HEADERS.attemptId]: "attempt-456",
+    [VOICE_NATIVE_CAPTURE_HEADERS.endpointMode]: "live",
+  });
+  assert.equal(buildNativeVoiceCaptureHeaders("fixture", "run-123", "attempt-456")[
+    VOICE_NATIVE_CAPTURE_HEADERS.endpointMode
+  ], "fixture");
+  assert.deepEqual(buildNativeVoiceCaptureHeaders("live-proxy", "run-123", "attempt-456"), {});
+  assert.throws(
+    () => buildNativeVoiceCaptureHeaders("live-trace", "../unsafe", "attempt-456"),
+    /correlation ID is invalid/,
+  );
+});
 
 test("diagnostic deep links require QA/local enablement and a local fixture source", () => {
   assert.deepEqual(

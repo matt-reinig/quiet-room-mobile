@@ -4,7 +4,7 @@ index b2409a0..cde61d5 100644
 +++ b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
 @@ -545,7 +545,7 @@ class MusicModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaM
          if (verifyServiceBoundOrReject(callback)) return@launch
- 
+
          if (index >= 0 && index < musicService.tracks.size) {
 -            callback.resolve(Arguments.fromBundle(musicService.tracks[index].originalItem))
 +            callback.resolve(Arguments.fromBundle(musicService.tracks[index].originalItem ?: Bundle()))
@@ -20,3 +20,19 @@ index b2409a0..cde61d5 100644
              )
          )
      }
+diff --git a/node_modules/react-native-track-player/android/build.gradle b/node_modules/react-native-track-player/android/build.gradle
+index 25b6834..0b78978 100644
+--- a/node_modules/react-native-track-player/android/build.gradle
++++ b/node_modules/react-native-track-player/android/build.gradle
+@@ -46,7 +46,11 @@ repositories {
+ }
+
+ dependencies {
+-    implementation 'com.github.doublesymmetry:kotlinaudio:v2.1.0'
++    if ((findProperty('QR_MOB_021_NATIVE_CAPTURE') ?: 'false').toBoolean()) {
++        implementation project(':qrMob021KotlinAudio')
++    } else {
++        implementation 'com.github.doublesymmetry:kotlinaudio:v2.1.0'
++    }
+     // used when building against local maven
+ //    implementation "com.github.doublesymmetry:kotlin-audio:2.1.0"

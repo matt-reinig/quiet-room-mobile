@@ -12,11 +12,19 @@ FIXTURE_MANIFEST="${VOICE_FIXTURE_MANIFEST:-}"
 FIXTURE_EVENTS="${VOICE_FIXTURE_EVENTS:-}"
 DETOX_CONFIG="${VOICE_DIAGNOSTICS_DETOX_CONFIG:-android.emu.release}"
 DETOX_AVD_NAME="${DETOX_AVD_NAME:-Pixel34AVD_2}"
+NATIVE_CAPTURE_MODE="${VOICE_NATIVE_CAPTURE:-0}"
 RUN_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 RUN_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 RUN_DIR="$ROOT_DIR/artifacts/qr-mob-021/$RUN_STAMP-$FIXTURE_CASE"
 SERVER_LOG="$RUN_DIR/fixture-server.log"
 RUN_MANIFEST="$RUN_DIR/run-manifest.json"
+NATIVE_CAPTURE_DIR="$RUN_DIR/native-capture"
+NATIVE_CAPTURE_SUMMARY="$RUN_DIR/native-capture-summary.json"
+
+if [[ "$NATIVE_CAPTURE_MODE" != "0" && "$NATIVE_CAPTURE_MODE" != "1" ]]; then
+  echo "VOICE_NATIVE_CAPTURE must be 0 or 1." >&2
+  exit 2
+fi
 
 mkdir -p "$RUN_DIR"
 export EXPO_PUBLIC_VOICE_PLAYBACK_ENGINE="track-player"
@@ -24,11 +32,14 @@ export EXPO_PUBLIC_VOICE_PLAYBACK_ENGINE="track-player"
 node "$ROOT_DIR/scripts/verify-mobile-config.js" "$APP_VARIANT" "$RELEASE_ENV"
 
 if [[ "${VOICE_DIAGNOSTICS_SKIP_SYNC:-0}" != "1" ]]; then
-  bash "$ROOT_DIR/scripts/sync-native-variant.sh" "$APP_VARIANT" "$RELEASE_ENV"
+  EXPO_PUBLIC_QR_MOB_021_NATIVE_CAPTURE="$NATIVE_CAPTURE_MODE" \
+    bash "$ROOT_DIR/scripts/sync-native-variant.sh" "$APP_VARIANT" "$RELEASE_ENV" android
 fi
 
 if [[ "${VOICE_DIAGNOSTICS_SKIP_BUILD:-0}" != "1" ]]; then
-  npx detox build -c "$DETOX_CONFIG"
+  EXPO_PUBLIC_QR_MOB_021_NATIVE_CAPTURE="$NATIVE_CAPTURE_MODE" \
+  ORG_GRADLE_PROJECT_QR_MOB_021_NATIVE_CAPTURE="$NATIVE_CAPTURE_MODE" \
+    npx detox build -c "$DETOX_CONFIG"
 fi
 
 fixture_args=(
@@ -70,6 +81,7 @@ curl --silent --fail --head \
 
 set +e
 DETOX_AVD_NAME="$DETOX_AVD_NAME" \
+EXPO_PUBLIC_QR_MOB_021_NATIVE_CAPTURE="$NATIVE_CAPTURE_MODE" \
 VOICE_FIXTURE_BASE_URL="http://10.0.2.2:$FIXTURE_PORT" \
 VOICE_FIXTURE_CASE="$FIXTURE_CASE" \
 npx detox test \
@@ -107,5 +119,29 @@ else
   echo "QR-MOB-021 run manifest: $RUN_MANIFEST"
 fi
 
+native_capture_status="not-requested"
+if [[ "$NATIVE_CAPTURE_MODE" == "1" && "$collector_status" == "0" ]]; then
+  emulator_serial="${ANDROID_SERIAL:-$(adb devices | awk '$1 ~ /^emulator-[0-9]+$/ && $2 == "device" { print $1; exit }')}"
+  expected_capture_sha="$(node -e 'const fs=require("fs"); const value=JSON.parse(fs.readFileSync(process.argv[1], "utf8")); process.stdout.write(value.fixture.sha256)' "$RUN_MANIFEST")"
+  if [[ -n "$emulator_serial" ]] && node "$ROOT_DIR/scripts/collect-native-trackplayer-capture.mjs" \
+    --evidence "$RUN_MANIFEST" \
+    --serial "$emulator_serial" \
+    --package com.quietroom.mobile.qa \
+    --output-dir "$NATIVE_CAPTURE_DIR" \
+    --summary "$NATIVE_CAPTURE_SUMMARY" \
+    --expected-endpoint fixture \
+    --expected-sha256 "$expected_capture_sha" \
+    --strict; then
+    native_capture_status="collected"
+  else
+    native_capture_status="collector-failed-or-assertion-failed"
+    if [[ "$detox_status" == "0" ]]; then
+      detox_status=4
+    fi
+  fi
+fi
+
 echo "QR-MOB-021 fixture server log: $SERVER_LOG"
+echo "QR-MOB-021 native capture status: $native_capture_status"
+echo "QR-MOB-021 native capture summary: $NATIVE_CAPTURE_SUMMARY"
 exit "$detox_status"

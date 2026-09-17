@@ -4,6 +4,7 @@ const path = require('path');
 const androidDir = path.join(__dirname, '..', 'android');
 const appBuildGradlePath = path.join(androidDir, 'app', 'build.gradle');
 const rootBuildGradlePath = path.join(androidDir, 'build.gradle');
+const settingsGradlePath = path.join(androidDir, 'settings.gradle');
 const mainManifestPath = path.join(androidDir, 'app', 'src', 'main', 'AndroidManifest.xml');
 const networkSecurityConfigPath = path.join(
   androidDir,
@@ -25,6 +26,11 @@ if (!fs.existsSync(rootBuildGradlePath)) {
   process.exit(1);
 }
 
+if (!fs.existsSync(settingsGradlePath)) {
+  console.error(`Android settings.gradle not found at ${settingsGradlePath}`);
+  process.exit(1);
+}
+
 if (!fs.existsSync(mainManifestPath)) {
   console.error(`Android main manifest not found at ${mainManifestPath}`);
   process.exit(1);
@@ -32,6 +38,7 @@ if (!fs.existsSync(mainManifestPath)) {
 
 let appSource = fs.readFileSync(appBuildGradlePath, 'utf8');
 let rootSource = fs.readFileSync(rootBuildGradlePath, 'utf8');
+let settingsSource = fs.readFileSync(settingsGradlePath, 'utf8');
 let manifestSource = fs.readFileSync(mainManifestPath, 'utf8');
 
 function ensureLineAfter(anchor, line) {
@@ -110,6 +117,20 @@ function ensureRootRepositoryFirst(line) {
   }
 
   rootSource = rootSource.replace(anchor, `${anchor}\n    ${line}`);
+}
+
+function ensureSettingsBlock(block) {
+  const normalizedBlock = block.replace(/\s+$/, '');
+  if (settingsSource.includes(normalizedBlock)) {
+    return;
+  }
+
+  const anchor = `include ':app'`;
+  if (!settingsSource.includes(anchor)) {
+    throw new Error(`Unable to find settings.gradle anchor: ${anchor}`);
+  }
+
+  settingsSource = settingsSource.replace(anchor, `${anchor}\n${normalizedBlock}`);
 }
 
 function replaceOnce(before, after) {
@@ -301,6 +322,8 @@ ensureDependencyAfter(`    androidTestImplementation("androidx.test:rules:1.7.0"
 ensureDependencyAfter(`    androidTestImplementation("androidx.test.ext:junit:1.3.0")`, `androidTestImplementation("androidx.test.services:storage:1.6.0")`);
 ensureDependencyAfter(`    androidTestImplementation("androidx.test.services:storage:1.6.0")`, `androidTestImplementation("junit:junit:4.13.2")`);
 ensureRootRepositoryFirst(`maven { url("$rootDir/../node_modules/detox/Detox-android") }`);
+ensureSettingsBlock(`include ':qrMob021KotlinAudio'
+project(':qrMob021KotlinAudio').projectDir = new File(rootProject.projectDir, '../vendor/kotlinaudio-2.1.0')`);
 ensureManifestAttribute();
 
 const packageName = resolveAndroidPackageName();
@@ -309,9 +332,11 @@ writeNetworkSecurityConfig();
 
 fs.writeFileSync(appBuildGradlePath, appSource);
 fs.writeFileSync(rootBuildGradlePath, rootSource);
+fs.writeFileSync(settingsGradlePath, settingsSource);
 fs.writeFileSync(mainManifestPath, manifestSource);
 console.log(`Patched Android Detox Gradle config in ${appBuildGradlePath}`);
 console.log(`Patched Android Detox repository config in ${rootBuildGradlePath}`);
+console.log(`Patched QR-MOB-021 KotlinAudio project in ${settingsGradlePath}`);
 console.log(`Patched Android manifest config in ${mainManifestPath}`);
 console.log(`Patched Android network security config in ${networkSecurityConfigPath}`);
 console.log(`Patched Android Detox test source in ${detoxTestPath}`);

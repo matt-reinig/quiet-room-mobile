@@ -289,3 +289,71 @@ The reproducible comparison command is `node scripts/check-voice-playback-captur
 - Syntax checks for the changed E2E and runner and `git diff --check` — passed.
 
 The relevant missing spoken ending is repeatable in local recognition across all three earlier direct recordings and all three genuine autoplay recordings, but the evidence still cannot locate the loss among TTS generation, direct transport, and rendering. The matrix stops at the requested three autoplay attempts. Native response-byte capture is the next discriminating experiment and requires explicit approval for the dependency fork described above. Physical-device testing remains a separately discussed last resort.
+
+## 2026-09-17 QA-only native response-byte capture
+
+The user approved the dependency-fork experiment described above. Work remained isolated on `codex/qr-mob-021-trackplayer-streaming-implementation`; no physical device, backend mutation, deployment, merge, push, or release was used.
+
+### Implementation and privacy boundary
+
+- `vendor/kotlinaudio-2.1.0/` is a source vendoring of KotlinAudio `v2.1.0` at upstream commit `bf71120704bfe4be2311cf86fc1e2ee1c3c702b7`, with the upstream Apache-2.0 license retained. The only functional fork is the opt-in native HTTP capture.
+- `patches/react-native-track-player+4.1.2.patch` selects the local project only when `QR_MOB_021_NATIVE_CAPTURE=true`. Gradle dependency readback without the property selected `com.github.doublesymmetry:kotlinaudio:v2.1.0`; with the property it selected `project :qrMob021KotlinAudio`.
+- `scripts/patch-android-gradle.js` idempotently registers the local project in generated `android/settings.gradle`. The fixture/live runners pass the matching `EXPO_PUBLIC_QR_MOB_021_NATIVE_CAPTURE=1` and Gradle property only for requested diagnostic builds.
+- `NativeHttpCapture.kt` wraps the actual ExoPlayer `DataSource` before any cache. Each `open()` gets a separate body/metadata record. Four internal correlation headers are removed before the upstream request. Capture records include only bounded run/attempt/endpoint identity, request position/length/sequence, byte count/hash, EOF/error/cancellation state, monotonic timing, capture-write timing, response-header names, and a bounded body filename. They exclude URI, query, authentication/header values, prompt, assistant text, messages, and transcript.
+- `scripts/collect-native-trackplayer-capture.mjs` pulls only the exact correlated app-scoped directory, rehashes every body, rejects privacy-unsafe keys and correlation mismatch, detects duplicate sequences/gaps/conflicts, and reconstructs ranges without overwriting conflicting bytes. A completed position-zero request, or an independently expected fixture SHA, is required for `direct` comparison.
+- `.detoxrc.js` now uses app-scoped Android test build tasks. The earlier root-level `assembleAndroidTest` attempted instrumentation APKs for every library and exhausted D8 memory after adding the local library; app-scoped tasks produced the same Detox app/test APKs without that unrelated packaging work.
+
+Operational caveats from the independent Luna audit: the JavaScript gate is compiled into the bundle, so `VOICE_QA_SKIP_BUILD=1` must reuse an APK built with the same capture-mode value; changing the runner environment alone cannot change a prebuilt bundle. Also, a fresh generated Android tree must run the normal native sync/patch step before a capture-enabled build so `:qrMob021KotlinAudio` is registered in `android/settings.gradle`. The checked run used a freshly synced capture-enabled build before its build-skipped live invocation.
+
+### Known-fixture validation
+
+Command shape: `VOICE_NATIVE_CAPTURE=1 VOICE_FIXTURE_CASE=steady bash scripts/with-mobile-env.sh qa local bash scripts/run-voice-stream-diagnostics.sh`.
+
+Evidence root: `artifacts/qr-mob-021/20260917T151522Z-steady/`.
+
+| Check | Result |
+| --- | --- |
+| Detox | passed |
+| Correlation | run `run-mu5oa1mx-81yazx`, attempt `attempt-mu5oa1mx-dp64ey`, one request |
+| Captured source | 254,581 bytes, SHA-256 `888d4c1dae1ef1fadb3c850b5bf886bb6bb0833cdbb91e15713d5ebb899295fa` |
+| Exact fixture comparison | matched expected byte count and SHA; zero gaps/conflicts/capture errors |
+| Streaming | fixture server sent 26 chunks over 6.304 seconds and recorded normal EOF |
+| Native terminal | `closed-before-eof`; ExoPlayer consumed all known bytes but made no extra EOF read |
+| Capture overhead | 16,949,930 ns total synchronous writes; 7,769,209 ns maximum write |
+| Classification | `direct`, based on the independent expected fixture SHA |
+
+The native terminal wording is not treated as completion by itself. Exact equality to the independently known fixture plus server normal EOF proves completeness for this control.
+
+### One live-QA autoplay sample
+
+Setup attempts that failed before authenticated QA use generated no conversation, TTS request, or native capture and are excluded. The sole TTS/autoplay sample used the normal authenticated `live-trace` endpoint and evidence root `artifacts/qr-mob-021/live-qa-20260917T193055Z/`.
+
+| Check | Result |
+| --- | --- |
+| Detox / evidence collector | passed; `detox_status=0`, strict autoplay and native collectors passed |
+| Correlation | run `run-mu5xei7u-ndfltn`, attempt `attempt-mu5xei7u-pg7y9b`; one native request at position 0 |
+| Saved source | 1,963 rendered characters; requested final phrase present; playback-source SHA `342df5d6d02a42ab4259a636531f1dd3a7a6481fb295c9e63f21b516002226a3` |
+| Native source | 1,142,871-byte AAC LC mono 24 kHz; SHA-256 `e3c3ab89c7b0e12a46bad296667c8462d9eb16580d86505f4d74a9481ac22920` |
+| Native transport | one GET, real EOF observed, zero gaps/conflicts/errors, `direct` classification |
+| Progressive timing | first byte about `19:31:58.060Z`; playback state `playing` at `19:31:58.458Z`; final byte about `19:33:00.595Z`, approximately 62.1 seconds after playback began |
+| Playback terminal | queue end at position 121.908 seconds; cleanup/reset, ownership release, and post-terminal evidence completed |
+| Emulator recording | 97,807,976-byte WebM; SHA-256 `107f333ebccfc4681c5a1a9a71a802a240f53381c0d12404f989d8db3daab639`; 145.488-second container |
+| Capture overhead | 40,885,713 ns total synchronous writes; 1,752,375 ns maximum write over about 62.5 seconds of native receipt |
+
+FFmpeg decoded the raw AAC to 121.899 seconds; its initial `ffprobe` duration estimate of 115.430 seconds was bitrate-based and explicitly warned that it may be inaccurate. The decoded duration agrees with TrackPlayer's 121.864-second duration and queue end.
+
+The exact native source was then compared with the same emulator recording using checker v2. `native-source-vs-emulator-check.json` classified `complete`: alignment `0.8982796`, closing `0.9962911`, ending `0.9900167`, and full closing/ending coverage. The final-speech interval was derived locally from the exact source with FFmpeg silence detection and used only to place the waveform windows; the classifier still compares the captured waveform to the native bytes.
+
+The isolated `faster-whisper==1.1.1` workflow was rerun on full source/full recording and independent final-20-second crops with `base.en` and `small.en`, using the already documented no-prompt CPU/int8 settings. Both recognizers recover the requested ending semantically in all four views. Raw transcripts remain ignored local artifacts.
+
+### Verification and interpretation
+
+- `npm run test:voice-native-capture` — 4/4 passed.
+- `npm run test:voice-playback-diagnostics` — 10/10 passed.
+- `npm run test:voice-autoplay-evidence` — 4/4 passed.
+- `npm run typecheck` — passed.
+- `ORG_GRADLE_PROJECT_QR_MOB_021_NATIVE_CAPTURE=true ./android/gradlew -p android :qrMob021KotlinAudio:testDebugUnitTest --no-daemon` — passed.
+- Capture-enabled `:app:assembleDebug` and app-scoped release Detox build — passed.
+- `git diff --check` — passed.
+
+For this exact live sample, the saved text contained the ending, the native direct response contained spoken ending audio and reached EOF, and the emulator recording retained that same ending. This closes the generation/transport/rendering ambiguity for this attempt. It does not reproduce or disprove an intermittent field failure, and it does not justify a product playback change. Retain the QA-only capture for a future failing attempt; do not select a fix until native source versus rendered output differs in a captured failure.

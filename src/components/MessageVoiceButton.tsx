@@ -32,6 +32,7 @@ import {
   subscribeVoicePlayback,
 } from "../lib/voicePlaybackBus";
 import {
+  buildNativeVoiceCaptureHeaders,
   createVoicePlaybackDiagnosticEmitter,
   parseVoicePlaybackDiagnosticDeepLink,
   resolveVoicePlaybackSourceIdentity,
@@ -49,6 +50,7 @@ type ActiveVoiceDiagnostic = {
 };
 
 const DEFAULT_ANDROID_FIXTURE_BASE_URL = "http://10.0.2.2:8787";
+const NATIVE_CAPTURE_ENABLED = process.env.EXPO_PUBLIC_QR_MOB_021_NATIVE_CAPTURE === "1";
 
 type MessageVoiceButtonProps = {
   audioSrc?: string;
@@ -756,15 +758,25 @@ export default function MessageVoiceButton({
       );
 
       if (VOICE_PLAYBACK_ENGINE === "track-player") {
+        const nativeCaptureHeaders = NATIVE_CAPTURE_ENABLED && diagnostic && activeDiagnostic
+          ? buildNativeVoiceCaptureHeaders(
+              diagnostic.mode,
+              activeDiagnostic.emitter.runId,
+              activeDiagnostic.attemptId,
+            )
+          : {};
         const playbackHeaders = diagnostic?.mode === "fixture"
-          ? {}
+          ? nativeCaptureHeaders
           : diagnostic?.mode === "live-proxy" && activeDiagnostic
             ? {
                 ...authHeaders,
                 "X-QR-MOB-021-Attempt-Id": activeDiagnostic.attemptId,
                 "X-QR-MOB-021-Run-Id": activeDiagnostic.emitter.runId,
               }
-            : authHeaders;
+            : {
+                ...authHeaders,
+                ...nativeCaptureHeaders,
+              };
         return startTrackPlayerConversationPlayback(
           playbackHeaders,
           remoteUri,
