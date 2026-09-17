@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "45",
+      "buildNumber": "46",
       "bundleIdentifier": "com.quietroom.mobile",
       "usesAppleSignIn": true,
       "infoPlist": {
@@ -106,7 +106,7 @@
     },
     "android": {
       "package": "com.quietroom.mobile",
-      "versionCode": 37,
+      "versionCode": 38,
       "softwareKeyboardLayoutMode": "resize",
       "blockedPermissions": [
         "android.permission.READ_EXTERNAL_STORAGE",
