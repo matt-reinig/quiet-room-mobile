@@ -2,23 +2,31 @@ import { setAudioModeAsync } from "expo-audio";
 import { Platform } from "react-native";
 import { ambientAudioInterruptionMode } from "./audioSessionPolicy";
 
-const COMMON_AUDIO_MODE = {
+const AMBIENT_AUDIO_MODE = {
   allowsRecording: false,
   playsInSilentMode: true,
   shouldPlayInBackground: false,
   shouldRouteThroughEarpiece: false,
 } as const;
 
-export async function configureQuietRoomAudioSession(): Promise<void> {
-  await setAudioModeAsync({
-    ...COMMON_AUDIO_MODE,
-    interruptionMode: "duckOthers",
-  });
-}
+let ambientAudioSessionConfiguration: Promise<void> = Promise.resolve();
 
 export async function configureAmbientAudioSession(): Promise<void> {
-  await setAudioModeAsync({
-    ...COMMON_AUDIO_MODE,
-    interruptionMode: ambientAudioInterruptionMode(Platform.OS),
+  ambientAudioSessionConfiguration = ambientAudioSessionConfiguration
+    .catch(() => {
+      // A later configuration attempt must remain usable after a native failure.
+    })
+    .then(() =>
+      setAudioModeAsync({
+        ...AMBIENT_AUDIO_MODE,
+        interruptionMode: ambientAudioInterruptionMode(Platform.OS),
+      }),
+    );
+  await ambientAudioSessionConfiguration;
+}
+
+export async function waitForAmbientAudioSessionConfiguration(): Promise<void> {
+  await ambientAudioSessionConfiguration.catch(() => {
+    // TrackPlayer can still establish its own session after an ambient failure.
   });
 }

@@ -5,11 +5,15 @@ import {
   AMBIENT_AUDIO_DUCK_FACTOR,
   resolveAmbientAudioPlaybackIntent,
 } from "../src/lib/ambientAudioPlayback.ts";
-import { ambientAudioInterruptionMode } from "../src/lib/audioSessionPolicy.ts";
+import {
+  ambientAudioInterruptionMode,
+  shouldConfigureAmbientAudioSession,
+} from "../src/lib/audioSessionPolicy.ts";
 import {
   publishVoicePlayback,
   publishVoicePlaybackStarted,
   publishVoicePlaybackStopped,
+  subscribeVoicePlayback,
   subscribeVoicePlaybackActivity,
 } from "../src/lib/voicePlaybackBus.ts";
 
@@ -53,6 +57,23 @@ test("ducks only during produced voice playback and restores for the active owne
   publishVoicePlaybackStopped("voice-a");
   assert.equal(activeVoiceId, null);
   assert.equal(playbackIntent().targetVolume, NORMAL_VOLUME);
+  unsubscribe();
+});
+
+test("a loading voice claim reserves the shared audio session before playback starts", () => {
+  let claimedVoiceId = null;
+  const unsubscribe = subscribeVoicePlayback((activeId) => {
+    claimedVoiceId = activeId;
+  });
+
+  assert.equal(shouldConfigureAmbientAudioSession(Boolean(claimedVoiceId)), true);
+  publishVoicePlayback("voice-loading");
+  assert.equal(claimedVoiceId, "voice-loading");
+  assert.equal(shouldConfigureAmbientAudioSession(Boolean(claimedVoiceId)), false);
+
+  publishVoicePlaybackStopped("voice-loading");
+  assert.equal(claimedVoiceId, null);
+  assert.equal(shouldConfigureAmbientAudioSession(Boolean(claimedVoiceId)), true);
   unsubscribe();
 });
 
@@ -115,4 +136,9 @@ test("microphone-only activity does not change ambient playback intent", () => {
 test("ambient audio mixes on Android without changing the existing iOS policy", () => {
   assert.equal(ambientAudioInterruptionMode("android"), "mixWithOthers");
   assert.equal(ambientAudioInterruptionMode("ios"), "duckOthers");
+});
+
+test("TrackPlayer owns the shared audio session during spoken playback", () => {
+  assert.equal(shouldConfigureAmbientAudioSession(false), true);
+  assert.equal(shouldConfigureAmbientAudioSession(true), false);
 });

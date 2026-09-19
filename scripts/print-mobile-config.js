@@ -23,10 +23,7 @@ const summary = {
   runtime: {
     apiBase: process.env.EXPO_PUBLIC_API_BASE || null,
     streamingBase: process.env.EXPO_PUBLIC_STREAMING_BASE || "",
-    voicePlaybackEngine:
-      process.env.EXPO_PUBLIC_VOICE_PLAYBACK_ENGINE ||
-      config.extra?.voicePlaybackEngine ||
-      (config.extra?.appVariant === "qa" ? "track-player" : "expo-audio"),
+    voicePlaybackEngine: "track-player",
     webAppUrl: process.env.EXPO_PUBLIC_WEB_APP_URL || null,
     firebaseProjectId: process.env.EXPO_PUBLIC_FB_PROJECT_ID || null,
   },

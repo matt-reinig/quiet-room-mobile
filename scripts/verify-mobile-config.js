@@ -48,10 +48,8 @@ const iosGoogleServicesFile = config.ios?.googleServicesFile ?? "";
 const androidGoogleServicesFile = config.android?.googleServicesFile ?? "";
 const apiBase = process.env.EXPO_PUBLIC_API_BASE ?? "";
 const streamingBase = process.env.EXPO_PUBLIC_STREAMING_BASE ?? "";
-const voicePlaybackEngine =
-  process.env.EXPO_PUBLIC_VOICE_PLAYBACK_ENGINE ||
-  config.extra?.voicePlaybackEngine ||
-  (expectedVariant === "qa" ? "track-player" : "expo-audio");
+const voicePlaybackEngine = "track-player";
+const iosBackgroundModes = config.ios?.infoPlist?.UIBackgroundModes ?? [];
 const webAppUrl = process.env.EXPO_PUBLIC_WEB_APP_URL ?? "";
 const firebaseProjectId = process.env.EXPO_PUBLIC_FB_PROJECT_ID ?? "";
 const firebaseAuthEmulatorHost = process.env.EXPO_PUBLIC_FB_AUTH_EMULATOR_HOST ?? "";
@@ -99,12 +97,16 @@ if (expectedVariant === "qa") {
   expectEqual("scheme", scheme, "quietroommobileqa");
   expectEqual("iOS bundle identifier", bundleIdentifier, "com.quietroom.mobile.qa");
   expectEqual("Android package", packageId, "com.quietroom.mobile.qa");
-  expectEqual("voice playback engine", voicePlaybackEngine, "track-player");
 } else {
   expectEqual("app name", appName, "Quiet Room");
   expectEqual("scheme", scheme, "quietroommobile");
   expectEqual("iOS bundle identifier", bundleIdentifier, "com.quietroom.mobile");
   expectEqual("Android package", packageId, "com.quietroom.mobile");
+}
+
+expectEqual("voice playback engine", voicePlaybackEngine, "track-player");
+if (!Array.isArray(iosBackgroundModes) || !iosBackgroundModes.includes("audio")) {
+  failures.push("iOS UIBackgroundModes must include 'audio' for TrackPlayer background playback");
 }
 
 if (expectedReleaseEnv === "local") {
@@ -194,6 +196,7 @@ const summary = {
   apiBase,
   streamingBase,
   voicePlaybackEngine,
+  iosBackgroundModes,
   webAppUrl,
   firebaseProjectId,
   firebaseAuthEmulatorHost,

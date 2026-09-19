@@ -10,8 +10,12 @@ import {
   type AmbientAudioEnvironment,
 } from "../lib/ambientAudio";
 import { configureAmbientAudioSession } from "../lib/audioSession";
+import { shouldConfigureAmbientAudioSession } from "../lib/audioSessionPolicy";
 import { resolveAmbientAudioPlaybackIntent } from "../lib/ambientAudioPlayback";
-import { subscribeVoicePlaybackActivity } from "../lib/voicePlaybackBus";
+import {
+  subscribeVoicePlayback,
+  subscribeVoicePlaybackActivity,
+} from "../lib/voicePlaybackBus";
 
 export type AmbientAudioPlaybackStatus = "error" | "off" | "paused" | "playing" | "starting";
 
@@ -80,6 +84,7 @@ function removePlayer(player: AudioPlayer): void {
 
 export function useAmbientAudio(enabled: boolean): UseAmbientAudioResult {
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
+  const [foregroundVoiceClaimed, setForegroundVoiceClaimed] = useState(false);
   const [foregroundVoiceActive, setForegroundVoiceActive] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [playbackStatus, setPlaybackStatus] = useState<AmbientAudioPlaybackStatus>("off");
@@ -139,6 +144,13 @@ export function useAmbientAudio(enabled: boolean): UseAmbientAudioResult {
   }, []);
 
   useEffect(() => {
+    return subscribeVoicePlayback((activeId) => {
+      operationRef.current += 1;
+      setForegroundVoiceClaimed(Boolean(activeId));
+    });
+  }, []);
+
+  useEffect(() => {
     return subscribeVoicePlaybackActivity((activeId) => {
       operationRef.current += 1;
       setForegroundVoiceActive(Boolean(activeId));
@@ -192,7 +204,12 @@ export function useAmbientAudio(enabled: boolean): UseAmbientAudioResult {
         }
 
         try {
-          await configureAmbientAudioSession();
+          if (
+            operation === currentOperation() &&
+            shouldConfigureAmbientAudioSession(foregroundVoiceClaimed)
+          ) {
+            await configureAmbientAudioSession();
+          }
           if (operation !== currentOperation()) {
             return;
           }
@@ -236,7 +253,12 @@ export function useAmbientAudio(enabled: boolean): UseAmbientAudioResult {
       }
 
       try {
-        await configureAmbientAudioSession();
+        if (
+          operation === currentOperation() &&
+          shouldConfigureAmbientAudioSession(foregroundVoiceClaimed)
+        ) {
+          await configureAmbientAudioSession();
+        }
         if (operation !== currentOperation()) {
           return;
         }
@@ -266,7 +288,14 @@ export function useAmbientAudio(enabled: boolean): UseAmbientAudioResult {
         // Keep later selections usable after an unexpected transition failure.
       })
       .then(reconcile);
-  }, [appState, enabled, foregroundVoiceActive, hydrated, selectedEnvironment]);
+  }, [
+    appState,
+    enabled,
+    foregroundVoiceActive,
+    foregroundVoiceClaimed,
+    hydrated,
+    selectedEnvironment,
+  ]);
 
   useEffect(() => {
     return () => {

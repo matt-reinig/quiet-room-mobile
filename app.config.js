@@ -55,7 +55,6 @@ function pickExistingFile(...candidates) {
 
 const appVariant = resolveAppVariant(process.env.EXPO_PUBLIC_APP_VARIANT);
 const releaseEnv = resolveReleaseEnv(process.env.EXPO_PUBLIC_RELEASE_ENV);
-const voicePlaybackEngine = process.env.EXPO_PUBLIC_VOICE_PLAYBACK_ENGINE || "";
 const variantConfig = APP_VARIANTS[appVariant];
 const androidGoogleServicesFile = pickExistingFile(
   process.env.EXPO_PUBLIC_GOOGLE_SERVICES_FILE,
@@ -117,7 +116,6 @@ module.exports = {
       ...extraConfig,
       appVariant,
       releaseEnv,
-      voicePlaybackEngine,
     },
     android: androidConfig,
     ios: iosConfig,
