@@ -299,3 +299,353 @@ Exactly one qualifying live-QA autoplay sample was then generated after setup-on
 The exact native AAC versus the same attempt's emulator recording classified `complete`: full alignment 0.8983, closing correlation 0.9963, and final-750-ms correlation 0.9900, all with full coverage. The saved assistant source identity and UI readback both contain the requested synthetic ending. Local `base.en` and `small.en` transcription of the full source, full recording, and independent final-20-second crops is retained as supporting evidence in ignored artifacts; both models recover the requested ending from both the native source and rendered emulator recording. This resolves the earlier ambiguity for this exact attempt: QA generated the ending, the normal Android request delivered it through native EOF, and emulator TrackPlayer rendered it. It is one bounded clean sample, not proof that the intermittent field symptom cannot occur.
 
 No product playback behavior was changed, and no physical-device run, backend mutation, deployment, merge, push, store release, or player replacement was performed. The reusable QA-only capture instrumentation remains available for a future captured failure. The next meaningful step is review/merge of this diagnostic branch if the team wants to retain the instrumentation; otherwise stop rather than expand into unbounded emulator retries. A product fix still requires a relevant failing sample and byte-identical before/after evidence.
+
+
+## Next handoff: investigate a captured upstream omission (2026-09-17)
+
+The follow-up used the same saved assistant reply as the suspect 2026-09-11 autoplay sample, rather than generating another chat reply. Read-only QA lookup and the normal voice button both matched source SHA-256 `13a3ddd146503d36f9b0ae121eee477a6db2cf095246cbb06f891c107731d4b7`, slot 1, and conversation SHA-256 `fedc6a8525c9a5f212a974140d84e82630ea10b239b8a6648219fa257fa285a5`. The retained historical identity establishes the intended ending `copper meadow nine`. These follow-ups are manual replay of an existing reply, not a recreation of the original autoplay timing.
+
+The first published-library replay again omitted the ending in local transcription. More decisively, the capture-enabled replay retained a complete position-zero AAC response through native EOF (1,085,039 bytes; SHA-256 `c37d9680c9d027eb2ec91ccd72b5847ba0cfef5e427f13e734e8a940dba885be`). Both local recognizers omit the expected phrase from the native source. The source-to-emulator waveform check is `complete`, with full correlation 0.9523, closing 0.9932, final-750-ms correlation 0.9912, and full coverage. This supports an omission before TrackPlayer rendering for this attempt. ASR agreement is supporting semantic evidence, not a byte-level proof of which words the AAC encodes. It does not yet separate incomplete TTS input, speech generation, or an upstream response ending early. HTTP EOF alone does not establish provider-side semantic completeness.
+
+A second capture on September 18 confirms the same boundary: both recognizers omit the sentinel from source and recording, while waveform comparison is `complete` (ending correlation 0.9532). Its native response SHA-256 is `1f157068dd2973a50a8a48fb560e8c1b9cce4a908300819cb188dcc86f0c6ddc` (1,124,878 bytes, real EOF). This repeat occurred after a continuation gap; backend parity across that gap is unverified. Artifacts are under `artifacts/qr-mob-021/controlled-comparison-20260917/`; see progress/results for the confirmation pair and harness caveats. No physical-device test is required for the next discriminator. Stop broad player A/B repetition once source-versus-rendering evidence is confirmed; a third arbitrary pair adds less information than correlating the server request.
+
+### 1. Correlate the captured request with QA backend evidence
+
+The attempted read-only AWS lookup was blocked by an expired local AWS session. Restore the existing QA read access before investigating logs; do not deploy a backend change as a substitute. Identify the actual deployed streaming function/version and its configuration. A local backend checkout is not proof of deployed code.
+
+For capture run `run-mu68fahj-ooqihy` / attempt `attempt-mu68fahj-9vqt4o`, use the original event timestamps in `capture-1/events.json` and the ignored saved-conversation locator to find the matching `voice_stream.request`, `voice_stream.openai_call_started`, `voice_stream.stop`, and any error events. The mobile attempt ID is not automatically a backend request ID: the capture-only correlation headers are stripped before HTTP. Match the time window, saved conversation, message index, and server TTS request ID; preserve ambiguity if more than one request fits.
+
+Compare the server's actual TTS input SHA-256/byte count with the saved source, allowing only explicitly verified normalization such as outer whitespace trimming. Record model, voice, format, speed, instructions, upstream completion/error, chunk count, and emitted byte count. Compare the latter with the exact native byte count; equal length alone is not byte equality. Existing native metadata retains response-header names, including `x-gabriel-tts-request-id` and `x-gabriel-tts-text-sha256`, but deliberately excludes values. Those names cannot establish the TTS input hash or request identity for this capture.
+
+If logs cannot uniquely correlate requests, propose a narrow QA-only allowlist for those diagnostic header values (validated request identifier, SHA-256, bounded numeric counts), with tests preserving exclusion of authorization, cookies, URLs, and response text. Do not broadly retain headers. This is a proposed instrumentation change, not an assertion that the current capture contains these values.
+
+### 2. Choose the next experiment from the boundary that fails
+
+- Server TTS input differs from the complete saved reply: trace source selection, normalization, or truncation and reproduce that exact transformation locally before changing playback.
+- Input matches but provider output omits the ending: retain the exact provider response and compare with native bytes. Use the same frozen text/settings for a bounded TTS-side control. If testing shorter chunks, codec/container behavior and continuous playback must be measured; do not concatenate arbitrary AAC files or accept waiting for the whole reply as a streaming fix.
+- Provider output contains the ending but server/native bytes do not: investigate server iteration, exceptions, response closure, and transport, preserving byte hashes and terminal signals at both boundaries.
+- Native bytes contain the ending but emulator output does not in another attempt: return to the player/lifecycle branch using that exact response and recording. The current captured omission does not support this branch.
+
+A product change needs a failing same-source case, a relevant before/after comparison, and evidence that playback still starts before generation completes. Keep ASR corroborated by source/recording comparisons and distinguish recognizer uncertainty from proven byte loss. Continue emulator and backend evidence collection; physical hardware remains a last resort for a remaining device-specific question. This handoff authorizes no deployment, merge, release, production mutation, or automatic physical-device escalation.
+
+### Execution result (2026-09-18)
+
+The read-only QA backend correlation is complete. The deployed `gabriel_streaming_lambda` was active on image `78ea789` with the expected observability, QA environment, and AAC override. Both captured requests used the exact saved-source SHA and full 1,865-character / 1,872-byte input with `gpt-4o-mini-tts`, `cedar`, AAC, and speed `1.0`; neither logged an error. Backend stop counts exactly matched native receipt for both attempts: 1,085,039 bytes and 1,124,878 bytes, respectively. Native capture reached EOF with zero gaps, conflicts, or errors in both cases.
+
+This executes section 1 and selects the second branch in section 2: input matches, while the captured audio semantically omits the ending. Equal server/native byte counts are not byte identity because the backend did not log response hashes, but there is no observed count-level relay loss. The next bounded experiment is a direct frozen-input TTS control retaining the exact provider response locally. It requires a new paid provider request and was not implicitly authorized by the read-only AWS correlation. No deployment or product change was made.
+
+### Direct provider control execution (2026-09-18)
+
+The separately authorized provider control is complete. The frozen input SHA/byte count and deployed model, voice, exact instruction identity/value, speed, and AAC format were verified before the request. OpenAI returned HTTP 200 with no error; the complete 1,133,777-byte AAC response and completion metadata are retained locally. Both established offline recognizers omit every expected ending token from the full decoded response and an independent final-25-second crop.
+
+This bounded control reproduces the omission without the backend relay, native data source, or TrackPlayer in the path. Because TTS output can vary across calls, the control is not required to byte-match either historical response, and ASR remains semantic rather than byte-level lexical evidence. The combined evidence now supports generation-side omission as the working cause and does not support a mobile playback change. No additional provider call, deployment, product mutation, physical-device run, merge, push, or release was performed.
+
+### Pinned-snapshot instruction isolation (2026-09-18)
+
+Two explicitly authorized Speech API controls pinned `gpt-4o-mini-tts-2025-12-15`; Realtime was deliberately excluded. Frozen source, `cedar`, speed `1.0`, and AAC were identical. The only payload difference was including the exact deployed instruction string versus omitting the `instructions` key.
+
+Both responses completed and decoded without error. With deployed instructions, both full recognizers and both independent tail crops omit all ending tokens. Without instructions, both full recognizers recover the complete ending, and `small.en` recovers it in both tail crops; `base.en` is inconsistent on isolated tail crops. The pair therefore supports, but does not conclusively prove, an instruction-dependent generation omission. Pinning the newer snapshot alone did not correct the behavior.
+
+The next product-oriented work should remain within the dedicated Speech API: design a smaller instruction prompt (or no instruction) that preserves voice quality, then repeat enough frozen-input controls to establish reliability before a QA backend change. Do not expand into Realtime or mobile playback changes from this evidence.
+
+### Append-only fidelity experiment (2026-09-18)
+
+Three explicitly authorized direct controls retained the complete deployed persona and appended a sentence requiring exact, complete, non-paraphrased reading. The deployed alias `gpt-4o-mini-tts`, frozen source, `cedar`, speed `1.0`, and AAC were held constant. All three provider responses completed and decoded normally.
+
+Both local recognizers omit every expected ending token from the full audio and final-25-second crop in all three runs. The append-only mitigation is therefore rejected at 3/3: it does not restore the ending and should not be deployed. Persona retention remains a valid product goal, but the next candidate must materially simplify/reorder the instruction prompt rather than merely append a fidelity suffix. Realtime and mobile playback changes remain out of scope.
+
+### Fidelity-first condensed persona execution (2026-09-18)
+
+Three explicitly authorized direct controls tested the materially shorter, reordered instruction while holding the deployed alias, frozen source, voice, speed, and AAC constant. All three responses completed and decoded normally. Both recognizers omit every expected ending token from both full audio and final-25-second crops in all three runs.
+
+This mitigation is also rejected at 3/3. The failure survives both an append-only fidelity requirement and a condensed fidelity-first persona. Current evidence therefore points beyond prompt length/order toward an instructions-present or persona-style generation effect for this frozen text. Before changing QA, the next useful discriminator is repeated no-instructions or minimal style-only controls; do not deploy either failed prompt, switch to Realtime, or change mobile playback.
+
+### Deployed-alias no-instructions gate (2026-09-18)
+
+Three explicitly authorized controls used the deployed `gpt-4o-mini-tts` alias with the same frozen source, `cedar`, speed `1.0`, and AAC, while omitting the `instructions` key entirely. All three responses completed with HTTP 200, decoded successfully, and retained independent completion metadata and response hashes. Both local recognizers omitted `copper`, `meadow`, and `nine`/`9` from both the complete response and final-25-second crop in all three runs.
+
+The strict first-stage gate therefore failed 3/3, so the conditional minimal-style stage was not run. This revises the earlier instruction-only inference: omission also occurs without instructions on the floating deployed alias. The earlier single success without instructions used the pinned `gpt-4o-mini-tts-2025-12-15` snapshot, leaving alias-versus-snapshot behavior and generation variability confounded. No QA prompt should be changed from these results. The next bounded discriminator, if separately authorized, is three repeats of the pinned snapshot with instructions omitted; no deployment, Realtime experiment, or mobile playback change is warranted first.
+
+### Pinned no-instructions repeatability result (2026-09-18)
+
+The separately authorized discriminator ran three valid calls with exact model `gpt-4o-mini-tts-2025-12-15`, frozen source, `cedar`, speed `1.0`, AAC, and the `instructions` property absent. Every response completed with HTTP 200, decoded successfully, and was checked by `base.en` and `small.en` on full audio and an independent final-25-second crop.
+
+Only run 2 recovered `copper meadow nine` in all four checks. In runs 1 and 3, neither recognizer recovered any of the three tokens in either view. The pinned no-instructions configuration therefore fails the strict repeatability criterion: 1/3 passes and 2/3 ASR non-recoveries. The prior one-off recovery was not a reliable snapshot-specific fix, and removing instructions is insufficient to make the result dependable. Do not deploy a prompt-only change from this evidence. Outputs varied across identical requests, leaving stochastic generation or other provider-side variability possible; any next product experiment should address request/content structure or use an explicit completeness/retry strategy rather than further unbounded persona wording variants.
+
+## Next handoff: Gemini 3.1 verified streaming and sacrificial-tail gate (2026-09-18)
+
+The next bounded direction is a provider-only feasibility experiment with `gemini-3.1-flash-tts-preview`, followed only conditionally by a chunked-streaming UX prototype. The worktree-local ignored `.env` now contains `GEMINI_API_KEY`; the key value, authorization material, and request URL/query credentials must never be printed, committed, or retained in artifacts. Credential availability does not itself authorize a provider call, backend/mobile implementation, deployment, merge, push, release, billing change, or physical-device work.
+
+### Evidence boundary and hypothesis
+
+Google's current Gemini Developer API supports streaming TTS through the Interactions API with `stream: true`. Audio arrives as raw PCM deltas, normally 24 kHz, 16-bit, mono. A successful Interactions stream ends with `interaction.completed` and `status: completed`; failed, cancelled, or incomplete statuses are distinct terminal outcomes. If the legacy `streamGenerateContent` route is used for diagnostic parity, require `finishReason: STOP`. HTTP 200, nonempty PCM, a closed connection, or an SSE `[DONE]` marker alone is not completion evidence.
+
+Public Gemini 3.1 reports show partial playable PCM with HTTP 200 and `finishReason: OTHER`, often around 60–70 seconds but sometimes earlier. Google acknowledged reproducing the streaming issue. A sacrificial suffix can protect the real ending only when generation reaches the suffix before an abort; it cannot repair a stream that stops inside the real content. The hypothesis is therefore narrower: bounded segments plus a distinctive expendable suffix, terminal validation, lexical verification, trimming, and retry/fallback can make incomplete or leaked endings operationally rare while retaining reply-level progressive playback.
+
+### Phase 1: provider-only frozen-input experiment
+
+Build a local ignored harness; do not route through the app or QA backend. Use the existing frozen Quiet Room source SHA-256 `13a3ddd146503d36f9b0ae121eee477a6db2cf095246cbb06f891c107731d4b7` only after re-hashing the local file and failing closed on any mismatch. Preserve the known expected ending separately from the prompt. Use one fixed single-speaker voice, one exact persona/director prompt, one API revision, and one endpoint for the measured matrix. Explicitly label the transcript so style directions are not read aloud. Record those choices and their hashes before the first request.
+
+Start with three repeats for each condition:
+
+1. **Control:** frozen transcript without a suffix.
+2. **Tail A:** frozen transcript followed by the exact distinctive sentence `Violet window thirteen.`
+3. **Tail B:** frozen transcript followed by that exact sentence three times.
+
+The transcript is intentionally long enough to exercise the reported streaming-risk range. Do not expand the initial nine-call matrix after a decisive failure; preserve and analyze it first. A shorter synthetic fixture may be added only to separate basic request/decoder correctness from long-stream behavior, not to replace the frozen-source result.
+
+### Required retained evidence
+
+Create an ignored timestamped provider-control directory. For every attempt retain:
+
+- a redacted request manifest with input/prompt/payload hashes, character/byte counts, endpoint family, API revision, exact model, voice, and start/end timing;
+- every ordered SSE/SDK event with credential-bearing fields removed, plus interaction/response ID, resolved model/version when exposed, usage, terminal event/status, and any error metadata;
+- HTTP status and a safe allowlist of response headers, never cookies, authorization, API keys, or credential-bearing URLs;
+- per-delta timing, MIME, PCM byte count, total chunks/bytes, final duration, and SHA-256;
+- concatenated raw PCM and a single WAV wrapper created after concatenation; do not treat arbitrary transport chunks as independent audio files;
+- complete and tail analyses from both established local recognizers, including tool/model versions, commands, input hashes, and phrase-presence classifications;
+- candidate marker onset, trim sample/time, low-energy/fade decision, trimmed-output hash/duration, and post-trim verification.
+
+### Provider and trimming gates
+
+A provider attempt passes only when all of the following are true:
+
+- Interactions emits `interaction.completed` with `status: completed` and no error, cancellation, or incomplete outcome; a legacy control instead requires `finishReason: STOP`;
+- the PCM format is expected and the concatenated body is nonempty, structurally valid, and long enough for the transcript;
+- both `base.en` and `small.en` recover the intended real ending from the full audio and an independently derived tail view;
+- for tail conditions, both recognizers recover the distinctive suffix after the real ending and provide a usable boundary estimate.
+
+For a tail run, trim the decoded PCM before marker onset at a defensible low-energy sample boundary with a short fade. Re-wrap or re-encode only for playback simulation, decode it again, and require both recognizers to retain the real ending while neither recovers any suffix word. A missing/ambiguous marker is `trim_uncertain`, not success. `OTHER`, missing terminal metadata, partial audio, either recognizer missing the real ending, real speech removed by trimming, or any marker leakage is a failed attempt. Stop and analyze the first decisive failure rather than hiding it with unbounded retries.
+
+Three clean repeats establish only initial feasibility. Even ten clean repetitions cannot justify saying truncation is impossible; production confidence requires fail-closed runtime validation, bounded retries or an alternate-provider/error path, and a broader content/reliability corpus.
+
+### Phase 2: conditional chunked-streaming UX prototype
+
+Begin this phase only if the provider gate demonstrates that the real ending survives and the suffix can be located and removed consistently. Prototype locally before any QA backend change:
+
+1. Split a reply at sentence or short-paragraph boundaries, targeting request durations comfortably below the reported long-stream cliff.
+2. Append the verified suffix to each segment and collect its raw PCM without immediately exposing unverified bytes to playback.
+3. Validate the terminal outcome, real ending, and marker; trim the marker; then queue only the sanitized segment.
+4. Generate and verify the next segment concurrently while the prior verified segment plays, maintaining at least one verified segment ahead when possible.
+5. Preserve the same voice and persona across segments, join at natural low-energy boundaries, and assess whether a small crossfade is necessary without duplicating or losing speech.
+6. Compare against the current baseline for time to first audible speech, inter-segment gaps, total latency, retries, voice/prosody consistency, complete ending recovery, and zero marker leakage.
+
+This preserves streaming at the reply/pipeline level, but intentionally does not claim byte-immediate playback of unverified provider output. Evaluate a rolling PCM holdback only after the segment-buffered prototype; online recognition necessarily lags playback, and Gemini provides no authoritative transcript boundary for the suffix.
+
+### Stop conditions and deliverable
+
+Stop before UX prototyping if the provider matrix produces a non-completed terminal state, an unrecovered real ending, inconsistent marker detection, unsafe trimming, or unacceptable provider instability. Stop the UX prototype if first-audio latency, joins, retries, or voice discontinuity materially degrade the experience, or if any sacrificial word reaches the rendered output. Preserve the failure and choose the next discriminator rather than broadening the matrix.
+
+The immediate deliverable is a privacy-safe provider summary with exact configuration hashes, terminal outcomes, PCM/timing evidence, both-recognizer results, trim/leak classifications, and a clear pass/fail recommendation for Phase 2. If Phase 2 is reached, add measured emulator evidence distinguishing first-audio latency, continuous playback, retry behavior, and spoken completeness. Update the progress/results documents with actual evidence and limitations. This entry authorizes planning and local credential placement only; provider calls and product implementation remain separate execution steps.
+
+## Gemini 3.1 provider-gate execution result (2026-09-18)
+
+The user separately authorized the bounded paid provider matrix. A local harness now verifies the frozen-source hash, defaults to no-network dry-run, requires two explicit execution flags, uses the API key only in the `x-goog-api-key` header, parses SSE incrementally, retains ordered sanitized events plus concatenated PCM/WAV, and stops on the first decisive terminal or format failure. Offline analysis uses the existing local `faster-whisper==1.1.1` `base.en` and `small.en` models without an expected-phrase prompt, derives an independent final-25-second view, and has fail-closed marker alignment, low-energy trim, fade, and leakage gates. Twenty focused tests pass.
+
+The first control call used source SHA-256 `13a3ddd146503d36f9b0ae121eee477a6db2cf095246cbb06f891c107731d4b7`, prompt SHA-256 `3cb37c26fc573e7a86c80063f7f37ebe5b5b1305e54ae1cd70ac6c82f4973e69`, payload SHA-256 `149ce043e09672afabced433654eace2cbdc9a1521d1c3378b7e18db475e27d6`, model `gemini-3.1-flash-tts-preview`, voice `Kore`, and API revision `2026-05-20`. It returned HTTP 200 and 2,283 `audio/l16` deltas totaling 4,383,360 bytes of valid 24 kHz, 16-bit, mono PCM (91.32 seconds), but the stream closed without `interaction.completed` or any other terminal event. Both recognizers omitted `copper`, `meadow`, and `nine`/`9` from both the complete partial audio and its independent tail view.
+
+This is a decisive `provider_failed` / `ending_missing` result under the predeclared gate. The harness therefore stopped after one of the planned nine calls; Tail A, Tail B, trimming, and the conditional Phase 2 UX prototype were not run. HTTP 200 and playable PCM are not treated as completion. The result directly exercises the reported partial-stream risk and shows that a sacrificial suffix cannot help when generation stops before the real ending. No QA/backend/mobile change, deployment, merge, push, release, or physical-device work was performed.
+
+## User-authorized Phase 2 exception and result (2026-09-18)
+
+The user explicitly authorized one bounded Phase 2 segmented attempt despite the failed whole-source gate, to test whether shorter generations avoid the long-stream failure. This exception remained provider-only and did not authorize backend or mobile integration. The frozen 1,865-character source was split at natural boundaries into six segments of 362, 361, 181, 384, 262, and 306 characters. Each request retained the same model, voice, API revision, raw-PCM format, and exact expendable suffix; the runner was configured to stop on the first non-2xx response, conflicting or missing terminal outcome, malformed PCM, ending failure, or marker failure.
+
+The first 362-character request returned HTTP 200 and 1,272,960 bytes of valid 24 kHz mono PCM (26.52 seconds) in 663 audio deltas. First audio arrived at 857.143 ms, but the stream ended after 9.126 seconds of wall time without `interaction.completed` or any other terminal event. Its 666 events comprised one `interaction.created`, one `interaction.status_update`, one `step.start`, and 663 `step.delta` events. The runner therefore stopped after one paid call; the remaining five segments were not requested.
+
+As a diagnostic only, both local recognizers examined the unverified full PCM and an independently derived final-12-second view. Neither `base.en` nor `small.en` recovered the segment's expected ending or the suffix in either view. The strict result is `provider_failed` / `segment_sequence_incomplete`, and the PCM remains ineligible for playback. Chunking reduced first-audio latency and request size, but did not avoid the same missing-terminal/semantic-omission failure even for a 362-character segment. No concatenation, playback simulation, QA/backend/mobile change, deployment, merge, push, release, or physical-device work was performed.
+
+
+## Next handoff: validate Gemini completion and compare delivery modes (2026-09-18)
+
+Continue in the existing implementation worktree, preserving its uncommitted scripts, tests, and findings. This entry follows review of both retained Gemini failures and 49 passing focused tests. The immediate objective is to distinguish a streaming-delivery failure from a generation/input problem before integrating Gemini into the app. Keep physical-device testing as a last resort; it is not needed for this discriminator. Use Luna for bounded test/evidence reviews while the primary agent owns execution and interpretation.
+
+### Evidence to preserve
+
+- Whole-source control: 91.32 seconds of PCM, HTTP 200, no terminal event, and neither local recognizer recovered the intended ending. Evidence: `artifacts/qr-mob-021/gemini-provider-control/20260918T201807084Z-matrix/01-control/`.
+- First short segment: 362 characters, 26.52 seconds of PCM, HTTP 200, no terminal event, and neither recognizer recovered the real ending or expendable suffix. Evidence: `artifacts/qr-mob-021/gemini-segment-pipeline/20260918T204833520Z-segments/segment-001/`. The remaining five segments were never requested.
+- Review independently matched both PCM hashes and the stored event counts. No terminal exists in either parsed event log. This establishes failed end-to-end attempts, not a definitive provider-model diagnosis: the retained logs are parsed events, not an independent raw-wire capture.
+- Read-only retrieval of both retained interaction IDs returned HTTP 404 / `not_found`. Preserve this as unavailable server-side evidence, not proof of either completed or failed generation. Review summaries are under `artifacts/qr-mob-021/gemini-review-20260918/`.
+- The short request's 857 ms is time to the first received audio delta. It is not time to verified audible playback. No successful marker trim, complete segment sequence, or Gemini emulator playback has been demonstrated.
+
+### 1. Repair acceptance and measurement before more provider spend
+
+Make local changes and run offline tests first. These defects do not explain the already-recorded missing terminal events, but would undermine future success claims or stopping rules.
+
+1. Share one strict provider acceptance implementation across the whole-source and segment runners/analyzers. Require HTTP 2xx, exact `interaction.completed` with status `completed`, valid expected PCM, and no conflicting failure/error/cancellation/incomplete event anywhere in the stream. For non-streaming responses, validate the returned interaction object's completed status instead of requiring an SSE event. Reject `step.completed`, unknown completion-like names, or a later success overwriting an earlier failure. Add regression cases for HTTP 500 plus plausible audio/completion, failed-then-completed, missing terminal, and conflicting format deltas.
+2. Verify the real ending as an ordered contiguous lexical phrase in the appropriate final region, with explicit numeric/punctuation normalization. Earlier scattered occurrences of `copper`, `meadow`, and `nine` must not certify a missing ending. Test earlier-occurrence and reordered-word negatives. Keep full and independently cropped tail views from both recognizers; do not prompt recognition with the expected text.
+3. Require a contiguous suffix after the real ending, agreement between recognizers on order/boundary, and a defensible trim point. Test separated marker words, repeated markers, absent markers, trimming into real speech, and leaked suffix fragments. Marker vocabulary must not collide with the source: detect collisions before a paid request, and record any deliberately selected replacement. Do not weaken leakage checks merely to make a run pass.
+4. Connect per-segment completion, lexical, and trim verification to the execution loop. A semantic failure must stop subsequent ordinary segment requests, not be discovered only after the entire paid sequence has been generated. The two-arm diagnostic comparison below is an explicit exception to that ordinary stop rule.
+5. Record generation start, first delta, response completion, full/tail ASR durations, trimming/re-encoding, post-trim verification, queue readiness, and actual audible start separately. Remove the implicit zero-verification-time assumption from UX acceptance. Simulations may remain as clearly labeled estimates, but must include measured per-segment verification time and the proposed worker/concurrency limits.
+6. Preserve partial evidence on read errors, timeout, or cancellation. Add explicit bounded request timeouts and record the local abort reason separately from provider status. Capture parser fixtures with split network chunks, CRLF, and a final event without a trailing blank line. Keep requests and retained events credential-safe; no URL query keys or authorization values in artifacts.
+
+Run all `tests/geminiTts*.test.mjs`, dry-run both harnesses without credentials/network, and run `git diff --check`. Review the new negative tests before running the paid comparison. Passing unit tests establish harness behavior, not provider reliability.
+
+### 2. Run a bounded official-SDK delivery-mode comparison
+
+Use Google's supported SDK as an independent client control. Pin and record its installed version and the supported API revision. Confirm request fields against the current official [TTS documentation](https://ai.google.dev/gemini-api/docs/speech-generation) and [Interactions streaming contract](https://ai.google.dev/gemini-api/docs/streaming). Keep this dependency/tooling isolated from the mobile runtime.
+
+Recover the exact first 362-character segment and suffix from the ignored prior run. Verify its segment hash against the original manifest and the parent frozen-source SHA-256 `13a3ddd146503d36f9b0ae121eee477a6db2cf095246cbb06f891c107731d4b7`. Use the same prompt, model `gemini-3.1-flash-tts-preview`, voice `Kore`, suffix, and exposed generation settings for both arms. Record the effective serialized request and hashes with credentials excluded. If the SDK cannot reproduce the API revision or settings, document that incompatibility before spending; do not silently change model, prompt, or voice.
+
+The initial diagnostic budget is exactly two new generation requests, with automatic SDK generation retries disabled or explicitly accounted for within that budget:
+
+- **A — streaming:** collect every ordered event and audio delta through the official SDK, plus final status/error and timing.
+- **B — non-streaming:** request the same content with streaming disabled and retain the complete returned interaction/audio and status. Change only delivery mode where the API permits.
+
+Finish the two-arm comparison even if A has a missing terminal or ending; that failure is the reason for B. Stop instead on invalid credentials, billing/permission errors, incompatible request/schema, rate limiting, or an inability to preserve evidence. Do not substitute extra retries or an unrelated short prompt. These are separate stochastic generations: compare completeness and settings, not waveform equality across A and B.
+
+For each arm retain locally the input/prompt/payload hashes, model/version when exposed, voice, SDK/revision, safe response metadata, interaction ID, completion/error, usage when available, PCM format/hash/duration, full and tail ASR, and suffix trim/post-trim checks. Parse non-streaming output according to the documented schema and preserve ordered audio content without dropping blocks or duplicating a convenience output field. An HTTP success or playable file alone does not pass.
+
+Where available, retrieve an existing interaction immediately after a missing-terminal result to inspect its status; record unavailable/404 responses without treating them as generation failures. Do not assume stream resumption works for this TTS mode merely because another Interactions feature documents it.
+
+### 3. Decide from the pair, then confirm only the viable mode
+
+| Result | Interpretation and next action |
+| --- | --- |
+| A fails; B passes completion, endings, and safe trimming | Supports a streaming-path-specific problem for this pair. Confirm B before considering a segment-buffered pipeline; do not claim the model is universally reliable. |
+| Both pass | The older failure remains intermittent or client/path-dependent. Select a mode using verified-ready latency and implementation complexity, not first-byte latency alone. |
+| A passes; B fails | Preserve the asymmetry and inspect response handling/settings. Only A is a candidate for bounded confirmation. |
+| Neither passes | Stop Gemini integration work. Identify whether failure is terminal/transport, lexical, or trimming; prepare evidence for provider investigation or a separately scoped alternative. Do not keep shrinking segments or changing prompts in an unbounded search. |
+
+If one mode passes all gates, allow at most two additional identical requests to that mode, stopping at the first failure. Together with its initial arm, three clean observations establish limited feasibility only. The entire initial pair plus confirmation budget is at most four new generations. A different model, prompt, suffix, or API revision is a new experiment, not a hidden retry. Record current cost assumptions and the request cap before execution; use existing explicit authorization only if it covers this new matrix. This documentation edit itself does not initiate or authorize paid generation.
+
+### 4. Conditional emulator prototype: verified complete segments
+
+Only proceed after the selected mode's completion, ending, and trimming gates pass. First specify the additional six-segment generation budget and local implementation scope; do not count those calls as part of the four-call discriminator. No QA deployment is needed to evaluate the local prototype.
+
+For a viable non-streaming mode, each short segment may be generated as a complete response, verified and trimmed, then queued while the next segment is generated. This preserves progressive playback across the reply; it does not provide immediate playback of the first unverified provider bytes. A viable streaming mode must likewise hold each segment until verification passes. Never expose the expendable suffix while awaiting recognition.
+
+Build the smallest local/QA-only emulator path compatible with the existing normal voice-button ownership, cancellation, and cleanup behavior. Keep production routing unchanged. Show the frozen full reply playing in order with no missing/duplicated segments or audible marker, and exercise a failed middle segment and cancellation so later segments cannot leak through. Failed verification must produce the declared bounded retry/error behavior; do not silently skip text.
+
+Measure first verified audible speech, per-segment ready/play times, gaps, total generation/verification time, queue depth, cancellation, and joins against an explicitly recorded current baseline. Set the first-audio acceptance budget before the run; the existing 30-second simulation ceiling is not evidence of acceptable UX. Preserve the existing clean-join target of at most 250 ms between segments, reporting larger gaps separately rather than masking them. Require playback of an earlier verified segment before generation of the final segment completes. Assess joins/prosody with retained emulator audio in addition to ASR; lexical correctness alone cannot establish natural speech continuity.
+
+Stop if verification cost defeats the first-audio budget, the queue repeatedly empties, a real ending is lost, a marker leaks, or cancellation fails. No physical-device escalation follows automatically.
+
+### Deliverable and scope
+
+Update progress/results with actual commands, source/configuration hashes, exact request count, terminal outcomes, both-recognizer findings, trim/leak checks, measured verification overhead, and a clear proceed/stop recommendation. Separate offline harness tests, provider generation, simulated timing, and actual emulator playback. Keep partial/failed attempts visible and raw text/audio/transcripts ignored.
+
+Complete the authorized local harness work before seeking any missing provider-call approval, so the request is a concrete bounded experiment. This handoff does not authorize deployment, QA/production routing changes, merge, push, release, or physical-device work. Do not declare the original voice-ending bug fixed from a provider feasibility sample.
+
+### Official-SDK delivery comparison result (2026-09-19)
+
+The handoff is implemented and the separately authorized initial comparison is complete. Before provider spend, the shared strict acceptance/PCM implementation, incremental SSE parser, lexical and marker gates, segment-loop semantic stop, measured verification timing, bounded timeouts, partial-evidence handling, marker-collision checks, and official-SDK runner were covered by 72 passing focused tests. Type checking, both no-network dry runs, and `git diff --check` passed. The official client was isolated at `@google/genai@2.23.0` with API `v1beta`, revision `2026-05-20`, retries disabled, and a 120-second timeout. Luna's final bounded review found no launch blocker and noted that HTTP success is SDK-mediated: the SDK throws HTTP failures, so the harness does not independently retain a raw HTTP status.
+
+Exactly two new generation requests used the frozen 362-character segment and unchanged prompt/model/voice/settings. Streaming returned an exact `interaction.completed` / `completed` terminal, 801 ordered PCM blocks, 1,537,920 bytes (32.04 seconds), first delta at 987.726 ms, and total generation time 13,378.720 ms. Non-streaming returned a completed interaction with one ordered audio block, 1,367,040 bytes (28.48 seconds), ready at 14,460.358 ms. Both local recognizers recovered the real segment ending as one contiguous occurrence in the final region from both the full audio and independent tail view in both arms.
+
+Neither recognizer recovered any of the three suffix tokens in either view for either arm. Both arms therefore failed closed as `trim_uncertain` / `marker_missing_or_unusable`; no trim, post-trim release, confirmation request, or emulator prototype was attempted. Verification took 9,360.346 ms for streaming and 7,289.906 ms for non-streaming. Reported usage totaled 290 input text tokens and 2,514 output audio tokens, approximately $0.05057 at the recorded pricing assumption, above the pre-run estimate because the two outputs were longer or more highly tokenized than that estimate assumed.
+
+This pair shows that official-SDK streaming and non-streaming can both expose completed interactions and preserve the real short-segment ending, but neither satisfied the declared safe-suffix gate. It does not isolate the older missing-terminal failures as a deterministic delivery-mode defect, and it does not establish a viable segment-buffered product path. Per the decision table, stop Gemini integration work rather than spend the optional confirmation budget or proceed to emulator integration. Evidence is retained under `artifacts/qr-mob-021/gemini-sdk-delivery-comparison/20260919T131746681Z-official-sdk/`. No QA/backend/mobile routing change, deployment, merge, push, release, or physical-device work occurred.
+
+
+## Next handoff: remove the spoken-suffix prompt conflict (2026-09-19)
+
+Continue in the existing implementation worktree and preserve all earlier uncommitted changes and evidence. This is a narrow prompt-control experiment, not authorization to integrate Gemini or relax verification. Use Luna for bounded prompt/test and evidence reviews; the primary agent should freeze the experiment, reconcile returned findings, and own the final decision. Physical-device testing is not needed.
+
+### Why this changes the next step
+
+The latest official-SDK pair completed successfully in both streaming and non-streaming modes. Independent review of all four full-audio transcripts (`base.en` and `small.en` for each arm) found exactly the real segment's 59 normalized tokens, in order, with no additional or missing tokens. Both full and tail views recovered the real ending, but neither recovered the suffix. This is semantic evidence of complete source-only speech, not evidence that a generated suffix was clipped.
+
+The retained prompt explains a plausible confound: `scripts/run-gemini-tts-segment-pipeline.mjs` says to read **only** text between `BEGIN SEGMENT` and `END SEGMENT`, then puts `EXPENDABLE SUFFIX: Violet window thirteen.` outside those delimiters while separately asking for it to be spoken. The official-SDK runner deliberately reused that exact prompt. Compliance with the first instruction could explain the missing suffix. This is a hypothesis to test, not proof of model behavior.
+
+Keep the earlier `trim_uncertain` classifications intact: rejecting those outputs was correct under the declared gate. The inference to revise is that this pair establishes the suffix strategy as unworkable. Neither mode has demonstrated safe trimming, and neither is ready for integration.
+
+### 1. Implement one unambiguous spoken script, offline first
+
+Retain the same 362-character source segment and exact suffix. Put both inside one spoken-text region, with all directions outside it. Use this initial prompt shape:
+
+```text
+Read every word between BEGIN SPOKEN TEXT and END SPOKEN TEXT aloud, in order, in one consistent, calm, single-speaker voice. Do not read the delimiter labels.
+BEGIN SPOKEN TEXT
+{exact frozen segment text}
+Violet window thirteen.
+END SPOKEN TEXT
+```
+
+Do not label the suffix as expendable in the model's spoken script or give a separate instruction that excludes it from what should be read. Keep segment index, total count, source boundaries, expected real ending, and trim-marker metadata in the local manifest rather than inside spoken text. Preserve the frozen source bytes; explicitly record the separator inserted before the suffix and the resulting spoken-script hash.
+
+Update the shared segment prompt builder and the official-SDK experiment entry point together. The SDK runner currently reads and pins the old artifact's prompt hash: changing only the builder would leave the paid comparison using the contradictory prompt. Keep historical artifacts immutable. Give the corrected experiment an explicit prompt version and new expected prompt/payload hashes; retain separate parent-source, real-segment, and complete-spoken-script hashes. Do not replace a hash check with acceptance of any caller-supplied prompt.
+
+Required offline checks:
+
+- The exact real source and suffix each occur once inside the single spoken region, in that order; no suffix or spoken-only content sits outside it.
+- The prompt cannot contain conflicting old delimiters or instructions. Reject delimiter collisions in source/marker text and retain the existing marker-vocabulary collision check.
+- Both delivery arms use the corrected pinned prompt and differ only in streaming mode. The dry-run exposes version/hashes/settings/request budget without loading credentials or touching the network.
+- Existing completion, HTTP/error, PCM, lexical ordering, marker boundary, post-trim leakage, partial-evidence, timeout, and paid-request-cap tests still pass. Add a regression specifically covering the old outside-delimiter layout and SDK reuse of a stale prompt artifact.
+
+Run `node --test tests/geminiTts*.test.mjs`, type checking, the relevant no-network dry runs, and `git diff --check`. Have a bounded reviewer inspect the actual corrected prompt and dry-run manifest before execution. Do not infer provider success from offline tests.
+
+### 2. Run the corrected two-arm experiment only within covered authorization
+
+This is a new prompt condition, not one of the previous unchanged-prompt confirmation runs. Prepare the runnable command, exact request cap, configuration hashes, timeout, and updated cost estimate before obtaining any missing authorization. Prior requests must not be silently treated as approval for additional spend. This plan edit makes no provider calls.
+
+Once this new matrix is explicitly covered, make exactly two generation requests through the existing isolated `@google/genai@2.23.0` client: streaming first, then non-streaming. Keep `gemini-3.1-flash-tts-preview`, `Kore`, API `v1beta`, revision `2026-05-20`, the real segment, suffix, and exposed generation settings unchanged. Keep retries disabled and the 120-second timeout. The prompt change is the intentional experimental difference from the retained September 19 pair; record it as such. If compatibility requires another change, stop and document it rather than introducing another variable silently.
+
+Complete arm B after an ordinary completion/lexical/marker failure in A, because the pair is the discriminator. Stop on invalid credentials, permission/billing/rate-limit errors, incompatible schema, or failure to preserve evidence. Retain every attempted request, including partial output. Do not perform automatic prompt edits, regenerate until a favorable sample appears, or launch the six-segment sequence.
+
+Retain the same privacy-safe manifests, ordered audio/events, completion and error metadata, interaction ID, SDK-mediated HTTP-success caveat, usage, PCM hashes, and timing as the preceding comparison. Do not expect waveform equality between separate stochastic generations. Historical and corrected prompt samples must remain independently identifiable.
+
+### 3. Verify source, suffix, trimming, and release separately
+
+For each arm, require all of these stages before marking audio eligible:
+
+1. **Provider completion:** exact completed status with no conflicting error and valid expected PCM. Keep the streaming and non-streaming completion contracts distinct.
+2. **Real-source fidelity:** both local recognizers recover the contiguous real ending in full and independently cropped tail views. Also compare the full recognized token sequence with the entire real segment, not just its last words. Freeze normalization rules before inspecting the new result; preserve mismatch details privately and mark ambiguous recognition inconclusive rather than silently tolerating missing content. Do not provide expected words as ASR hints.
+3. **Suffix evidence:** both recognizers locate one contiguous `Violet window thirteen` (with the predeclared numeric normalization) after the real ending, with compatible boundary estimates. Missing or ambiguous suffix remains `trim_uncertain`; completion and a correct real ending do not waive this stage.
+4. **Safe trim:** remove the suffix at the established low-energy sample boundary, retain the trim/fade decision and output hash, then decode and transcribe the trimmed output again. Both recognizers must preserve the real source/ending, and no suffix fragment may remain. A trim that removes real speech or lacks a defensible boundary fails.
+
+If a marker is absent again, first verify the exact corrected request was sent and preserve the result. Do not claim that suffix audio was generated and lost merely because its text was in the request. Conversely, a suffix present in the raw source but missing only after playback is a different failure and requires same-response capture evidence.
+
+### 4. Use explicit stop and confirmation rules
+
+| Corrected pair result | Next step |
+| --- | --- |
+| At least one mode passes every stage | Select one mode using measured verification-ready time and implementation complexity; at most two identical confirmation generations may follow if that budget is covered. Stop at the first failure. |
+| Real source is complete but suffix remains missing/ambiguous in both | Stop this marker-based design. Do not integrate it or reinterpret absence as a successful trim. A marker-free or different-marker approach would require a separately designed experiment and new acceptance criteria. |
+| Real source is incomplete, provider completion fails, or safe trim fails in both | Preserve the specific failure boundary and stop; do not expand into unbounded prompt tuning. |
+
+The maximum budget for this prompt condition is four generations: the initial pair and two confirmations of one qualifying mode. Three clean observations of that mode establish limited feasibility only, not production reliability. A repeated success must include post-trim fidelity and zero leakage, not merely successful synthesis. Preserve earlier failures in the report.
+
+### 5. Treat latency as an independent feasibility gate
+
+The preceding local pair spent approximately 22.739 seconds (streaming) and 21.750 seconds (non-streaming) in generation plus verification before rejection. These are measured local diagnostic-path costs, not intrinsic provider latency or actual audible-start measurements. No trim/post-trim release occurred, so a successful verification path can incur additional work.
+
+For corrected runs, retain timings for generation, first received delta, full/tail ASR, alignment, trim/re-encoding, post-trim ASR, and verified-ready time. Do not headline sub-second first-byte latency as the buffered design's startup latency. Separate the comprehensive offline validation suite from any proposed runtime verifier, and measure any proposed faster verifier independently.
+
+Use retained audio for local profiling before paying for more generations. Parallelizing independent recognition work or reusing decoded PCM may be evaluated without weakening gates; report actual wall time and resource contention. Do not remove a recognizer, skip post-trim validation, or assume zero verification cost just to meet a latency target. Any changed runtime verifier needs deliberate missing-ending, marker-leak, and bad-trim negative controls.
+
+Even after prompt/trim confirmation succeeds, do not launch emulator integration automatically. First state an explicit first-audio budget against the existing baseline and demonstrate a credible verification-ready path to it. The previously specified emulator sequence, cancellation/middle-segment failure checks, maximum 250 ms clean-join target, and requirement to start playback before final-segment generation completes remain the later gates. Additional generation for that prototype has a separate budget. Physical hardware remains unnecessary at this stage.
+
+### Deliverable and scope
+
+Append actual results to the progress/results documents: corrected prompt version and hashes, exact request count, per-arm provider/source/marker/trim outcomes, full-source token comparison, measured timing breakdown, repeatability count, and proceed/stop decision. Preserve raw transcripts, source text, and audio in ignored local artifacts. Distinguish the prompt-conflict hypothesis from what the corrected experiment demonstrates.
+
+Only local preparation and the separately authorized bounded provider experiment belong to this handoff. No QA/backend/mobile routing change, deployment, merge, push, release, or physical-device run is authorized by this documentation request. Keep the original issue open until a relevant complete-reply before/after comparison passes.
+
+### Corrected-prompt offline preparation result (2026-09-19)
+
+The local preparation portion is implemented without making a provider request. Prompt version `single-spoken-region-v2` deterministically places the unchanged 362-character segment, one LF separator, and `Violet window thirteen.` inside a single `BEGIN SPOKEN TEXT` / `END SPOKEN TEXT` region. Directions remain outside that region. The builder rejects current and historical delimiter labels in source/marker text and rejects marker-vocabulary collisions. The historical ignored prompt artifact remains unchanged and is no longer read by the SDK comparison.
+
+The frozen identities are parent source `13a3ddd146503d36f9b0ae121eee477a6db2cf095246cbb06f891c107731d4b7`, segment `f2a5b6a925dc1b8ac2d9a953c61a12f6c49e3ee0af0bfbdb14bd0782e55d42b7`, complete spoken script `b50552cef23605da7757bc890b06f76881360f0f387eef3f8dc3bd49b39de6f4`, and prompt `1093c966ca7f3847bd660d309bf0cdf5bfde597316bf4b9c31eae8ae4145979d`. The shared serialized payload hashes are `f9321d65559bd7ac4a74f21fa334f5e752cc5da7fa78b207c1656df752982c31` for streaming and `f63f1fe725b9aa69447563d36e5a5983b048f69dfa94ddb7d0dfc858a6bd8cd4` for non-streaming; only the `stream` boolean differs.
+
+The official-SDK path now validates those identities even when a caller supplies a segment object, before credential loading or SDK construction. The segment and SDK runners share the corrected prompt/payload builders. Privacy-safe per-segment metadata records index/total, normalized lexical source boundaries, expected-ending hash/count, marker hash/count, separator, prompt version, and hashes without placing private source text in manifests. Offline analysis now compares both full recognizer outputs against the entire normalized source sequence, requires the marker immediately after that source, and requires exact source fidelity again after trimming in addition to the existing ending/leakage gates.
+
+All 78 focused Gemini tests pass, including old-layout, stale injected prompt, delimiter/marker collision, full-source mismatch, segment-level marker timing, provider terminal, trimming, leakage, timeout, partial-evidence, and two-arm request-cap regressions. Type checking, SDK and segment no-network dry runs, and `git diff --check` pass. Both dry runs report zero network calls. The prepared paid command remains:
+
+```bash
+node scripts/run-gemini-tts-sdk-delivery-comparison.mjs \
+  --execute --confirm-paid-provider-call
+```
+
+Its cap is exactly two new generations, streaming then non-streaming, with retries disabled and a 120-second timeout. Using the preceding pair's reported usage gives a current estimate of approximately $0.05057. No paid request was made during this preparation because the new prompt condition requires separate explicit coverage under this handoff.
+
+### Corrected-prompt two-arm execution result (2026-09-19)
+
+The user explicitly authorized the frozen initial pair. Exactly two new generations ran through `@google/genai@2.23.0`, streaming first and non-streaming second, with retries disabled and no additional generation. Both returned completed provider status and valid 24 kHz mono PCM.
+
+Streaming produced 1,574,400 PCM bytes (SHA-256 `a426afb04b8e97335c2408810b31a36699b24062add1bc7535b54f52907d20c1`, 32.8 seconds), first audio at 814.865 ms, and completed in 11,976.588 ms. Both recognizers recovered all 59 normalized source tokens exactly from full audio and recovered the real ending from full and tail views. Neither recovered any suffix token in either view. Its corrected outcome is therefore `trim_uncertain` / `marker_missing_or_unusable`; no trim was attempted.
+
+Non-streaming produced 1,895,040 PCM bytes (SHA-256 `31df4c210dbf46a66a9acf469760abbf7659888bbf40f55011420b4f339c4585`, 39.48 seconds) and completed in 19,697.982 ms. Both full recognizers recovered exactly the 59 source tokens followed by the three suffix tokens. Both tail views recovered the real ending followed by the suffix. Segment-level marker onsets were 35.8, 36.54, 36.48, and 36.52 seconds; their 0.74-second spread was within the frozen 0.75-second tolerance. The low-energy cut was at sample 837,239 / 34.884958 seconds. The sanitized WAV SHA-256 is `3f2242fc017bcf4cbfa494f725be9901ffd9f562570457206788fb0c1dfe62fd`. Both post-trim recognizers recovered exactly all 59 source tokens and no suffix fragment.
+
+The initial analysis incorrectly folded an absent marker into the source-fidelity classification and treated a whole-transcript timestamp as a marker onset. Those outputs remain preserved. A tested offline correction now keeps source and marker failures separate and uses only a sentence/segment consisting exactly of the marker as a segment-level onset. Re-analysis of the same retained bytes added zero provider calls. Non-streaming passes provider, entire-source, ending, marker, trim, post-trim source, and leakage stages, but measured generation plus verification reached 33,073.676 ms before simulated readiness (19,697.982 ms generation plus 13,375.694 ms verification). It therefore fails the existing diagnostic 30-second timing ceiling; no actual audible start was measured and that ceiling is not adopted as a product budget.
+
+The prompt-conflict hypothesis is supported for the non-streaming sample because the corrected request produced the suffix where the contradictory prompt did not. Streaming still omitted it, so the strategy is not delivery-mode independent or confirmed repeatable. No confirmation generation was authorized or attempted. No emulator, six-segment sequence, product integration, routing change, deployment, merge, push, release, or physical-device work occurred. The retained evidence root is `artifacts/qr-mob-021/gemini-sdk-delivery-comparison/20260919T135613542Z-official-sdk-prompt-v2/`.
