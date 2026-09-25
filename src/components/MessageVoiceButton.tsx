@@ -1,9 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  createAudioPlayer,
-  type AudioPlayer,
-  type AudioSource,
-} from "expo-audio";
 import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import { fromByteArray } from "base64-js";
@@ -19,14 +14,15 @@ import TrackPlayer, {
   State,
   type PlaybackState,
 } from "react-native-track-player";
-import { resolveVoiceUrl, VOICE_PLAYBACK_ENGINE } from "../config/env";
+import { resolveVoiceUrl } from "../config/env";
 import { mobileWeb } from "../theme/mobileWeb";
 import { useAuth } from "../contexts/AuthContext";
 import { getIdTokenWithAnonymousRecovery } from "../lib/firebase";
-import { configureQuietRoomAudioSession } from "../lib/audioSession";
+import { waitForAmbientAudioSessionConfiguration } from "../lib/audioSession";
 import {
   isVoicePlaybackOwner,
   publishVoicePlayback,
+  publishVoicePlaybackStarted,
   publishVoicePlaybackStopped,
   subscribeVoicePlayback,
 } from "../lib/voicePlaybackBus";
@@ -44,20 +40,6 @@ type MessageVoiceButtonProps = {
 
 function uniqueVoiceId(): string {
   return `voice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function removeVoicePlayer(player: AudioPlayer): void {
-  try {
-    player.pause();
-  } catch {
-    // The player may already have been released.
-  }
-
-  try {
-    player.remove();
-  } catch {
-    // The player may already have been released.
-  }
 }
 
 async function writeAudioToCache(bytes: Uint8Array): Promise<string> {
@@ -86,6 +68,16 @@ function buildConversationVoiceUri(baseUrl: string, conversationId: string, mess
 }
 
 let trackPlayerSetupPromise: Promise<void> | null = null;
+let trackPlayerCommandChain: Promise<unknown> = Promise.resolve();
+
+function runTrackPlayerCommand<T>(command: () => Promise<T>): Promise<T> {
+  const result = trackPlayerCommandChain.then(command, command);
+  trackPlayerCommandChain = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
 
 function isTrackPlayerAlreadyInitialized(error: unknown): boolean {
   if (!error || typeof error !== "object") {
@@ -155,8 +147,6 @@ export default function MessageVoiceButton({
   const [status, setStatus] = useState<VoiceStatus>("idle");
 
   const abortControllerRef = useRef<AbortController | null>(null);
-  const playerRef = useRef<AudioPlayer | null>(null);
-  const statusIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileUriRef = useRef<string | null>(null);
   const instanceIdRef = useRef(uniqueVoiceId());
   const playbackOperationRef = useRef(0);
@@ -189,6 +179,23 @@ export default function MessageVoiceButton({
     trackPlayerSubscriptionsRef.current = [];
   }, []);
 
+  const deleteCachedVoiceFile = useCallback(async (expectedUri?: string) => {
+    const localUri = expectedUri || fileUriRef.current;
+    if (!localUri) {
+      return;
+    }
+
+    if (fileUriRef.current === localUri) {
+      fileUriRef.current = null;
+    }
+
+    try {
+      await FileSystem.deleteAsync(localUri, { idempotent: true });
+    } catch {
+      // Intentionally ignored.
+    }
+  }, []);
+
   const cleanupTrackPlayer = useCallback(async () => {
     clearTrackPlayerWatchers();
 
@@ -203,8 +210,10 @@ export default function MessageVoiceButton({
     }
 
     try {
-      await TrackPlayer.stop();
-      await TrackPlayer.reset();
+      await runTrackPlayerCommand(async () => {
+        await TrackPlayer.stop();
+        await TrackPlayer.reset();
+      });
     } catch {
       // Intentionally ignored.
     }
@@ -221,40 +230,10 @@ export default function MessageVoiceButton({
     }
 
     await cleanupTrackPlayer();
-
-    if (statusIntervalRef.current) {
-      clearInterval(statusIntervalRef.current);
-      statusIntervalRef.current = null;
-    }
-
-    if (playerRef.current) {
-      try {
-        playerRef.current.pause();
-      } catch {
-        // Intentionally ignored.
-      }
-
-      try {
-        playerRef.current.remove();
-      } catch {
-        // Intentionally ignored.
-      }
-
-      playerRef.current = null;
-    }
-
-    if (fileUriRef.current) {
-      const localUri = fileUriRef.current;
-      fileUriRef.current = null;
-      try {
-        await FileSystem.deleteAsync(localUri, { idempotent: true });
-      } catch {
-        // Intentionally ignored.
-      }
-    }
+    await deleteCachedVoiceFile();
 
     publishVoicePlaybackStopped(instanceIdRef.current);
-  }, [cleanupTrackPlayer]);
+  }, [cleanupTrackPlayer, deleteCachedVoiceFile]);
 
   const pausePlayback = useCallback(async () => {
     playbackOperationRef.current += 1;
@@ -267,73 +246,20 @@ export default function MessageVoiceButton({
     if (trackPlayerActiveRef.current) {
       if (isVoicePlaybackOwner(instanceIdRef.current)) {
         try {
-          await TrackPlayer.pause();
+          await runTrackPlayerCommand(() => TrackPlayer.pause());
         } catch {
           await cleanupTrackPlayer();
         }
       } else {
         trackPlayerActiveRef.current = false;
         clearTrackPlayerWatchers();
-      }
-    }
-
-    if (playerRef.current) {
-      try {
-        playerRef.current.pause();
-      } catch {
-        // Intentionally ignored.
+        await deleteCachedVoiceFile();
       }
     }
 
     setStatus("idle");
     publishVoicePlaybackStopped(instanceIdRef.current);
-  }, [cleanupTrackPlayer, clearTrackPlayerWatchers]);
-
-  const loadAndPlayFromSource = useCallback(
-    async (source: AudioSource, operation: number) => {
-      await configureQuietRoomAudioSession();
-      if (operation !== playbackOperationRef.current) {
-        return false;
-      }
-
-      if (statusIntervalRef.current) {
-        clearInterval(statusIntervalRef.current);
-        statusIntervalRef.current = null;
-      }
-
-      const player = createAudioPlayer(source, {
-        updateInterval: 1000,
-      });
-
-      if (operation !== playbackOperationRef.current) {
-        removeVoicePlayer(player);
-        return false;
-      }
-
-      playerRef.current = player;
-
-      statusIntervalRef.current = setInterval(() => {
-        const playbackStatus = player.currentStatus;
-        if (playbackStatus.didJustFinish) {
-          setStatus("idle");
-          void cleanup();
-        }
-      }, 1000);
-
-      player.play();
-      if (operation !== playbackOperationRef.current) {
-        removeVoicePlayer(player);
-        if (playerRef.current === player) {
-          playerRef.current = null;
-        }
-        return false;
-      }
-
-      setStatus("playing");
-      return true;
-    },
-    [cleanup]
-  );
+  }, [cleanupTrackPlayer, clearTrackPlayerWatchers, deleteCachedVoiceFile]);
 
   const resolveAuthHeaders = useCallback(async (): Promise<Record<string, string>> => {
     if (!user) {
@@ -344,9 +270,27 @@ export default function MessageVoiceButton({
     return tokenResult.idToken ? { Authorization: `Bearer ${tokenResult.idToken}` } : {};
   }, [user]);
 
-  const startTrackPlayerConversationPlayback = useCallback(
-    async (authHeaders: Record<string, string>, remoteUri: string, operation: number) => {
+  const startTrackPlayerVoicePlayback = useCallback(
+    async (
+      authHeaders: Record<string, string>,
+      sourceUri: string,
+      operation: number,
+      cachedFileUri?: string,
+    ) => {
       let settled = false;
+      let localSubscriptions: Array<{ remove: () => void }> = [];
+
+      const removeLocalSubscriptions = () => {
+        localSubscriptions.forEach((subscription) => subscription.remove());
+        if (trackPlayerSubscriptionsRef.current === localSubscriptions) {
+          trackPlayerSubscriptionsRef.current = [];
+        }
+        localSubscriptions = [];
+      };
+
+      const stillOwnsPlayback = () =>
+        operation === playbackOperationRef.current &&
+        isVoicePlaybackOwner(instanceIdRef.current);
 
       const finish = async (error?: string) => {
         if (settled) {
@@ -354,16 +298,44 @@ export default function MessageVoiceButton({
         }
 
         settled = true;
+
+        // A native event can arrive after a rapid replay or another message has
+        // claimed the process-wide player. That stale event may clean up only
+        // its own cache file; it must not stop or update the newer playback.
+        if (!stillOwnsPlayback()) {
+          removeLocalSubscriptions();
+          if (cachedFileUri) {
+            await deleteCachedVoiceFile(cachedFileUri);
+          }
+          return;
+        }
+
         clearTrackPlayerWatchers();
         trackPlayerActiveRef.current = false;
 
         if (isVoicePlaybackOwner(instanceIdRef.current)) {
           try {
-            await TrackPlayer.stop();
-            await TrackPlayer.reset();
+            await runTrackPlayerCommand(async () => {
+              if (!stillOwnsPlayback()) {
+                return;
+              }
+              await TrackPlayer.stop();
+              await TrackPlayer.reset();
+            });
           } catch {
             // Intentionally ignored.
           }
+        }
+
+        if (!stillOwnsPlayback()) {
+          if (cachedFileUri) {
+            await deleteCachedVoiceFile(cachedFileUri);
+          }
+          return;
+        }
+
+        if (cachedFileUri) {
+          await deleteCachedVoiceFile(cachedFileUri);
         }
 
         if (error) {
@@ -378,10 +350,6 @@ export default function MessageVoiceButton({
         setError("");
         publishVoicePlaybackStopped(instanceIdRef.current);
       };
-
-      const stillOwnsPlayback = () =>
-        operation === playbackOperationRef.current &&
-        isVoicePlaybackOwner(instanceIdRef.current);
 
       const pollStatus = async () => {
         try {
@@ -401,41 +369,67 @@ export default function MessageVoiceButton({
         }
       };
 
-      await ensureTrackPlayerSetup();
-      if (!stillOwnsPlayback()) {
-        return false;
-      }
-      await TrackPlayer.reset();
-      if (!stillOwnsPlayback()) {
-        return false;
-      }
+      const started = await runTrackPlayerCommand(async () => {
+        await waitForAmbientAudioSessionConfiguration();
+        await ensureTrackPlayerSetup();
+        if (!stillOwnsPlayback()) {
+          return false;
+        }
+        await TrackPlayer.reset();
+        if (!stillOwnsPlayback()) {
+          return false;
+        }
 
-      trackPlayerSubscriptionsRef.current = [
-        TrackPlayer.addEventListener(Event.PlaybackError, (event) => {
-          void finish(event.message);
-        }),
-        TrackPlayer.addEventListener(Event.PlaybackQueueEnded, () => {
-          void finish();
-        }),
-      ];
+        localSubscriptions = [
+          TrackPlayer.addEventListener(Event.PlaybackError, (event) => {
+            void finish(event.message);
+          }),
+          TrackPlayer.addEventListener(Event.PlaybackQueueEnded, () => {
+            void finish();
+          }),
+        ];
+        trackPlayerSubscriptionsRef.current = localSubscriptions;
 
-      await TrackPlayer.add({
-        artist: "Quiet Room",
-        headers: authHeaders,
-        id: uniqueVoiceId(),
-        title: "Quiet Room voice",
-        url: remoteUri,
+        await TrackPlayer.add({
+          artist: "Quiet Room",
+          headers: authHeaders,
+          id: uniqueVoiceId(),
+          title: "Quiet Room voice",
+          url: sourceUri,
+        });
+        if (!stillOwnsPlayback()) {
+          removeLocalSubscriptions();
+          await TrackPlayer.reset();
+          return false;
+        }
+        trackPlayerActiveRef.current = true;
+        await TrackPlayer.play();
+        if (!stillOwnsPlayback()) {
+          trackPlayerActiveRef.current = false;
+          removeLocalSubscriptions();
+          await TrackPlayer.reset();
+          return false;
+        }
+        return true;
       });
-      if (!stillOwnsPlayback()) {
-        return false;
-      }
-      trackPlayerActiveRef.current = true;
-      await TrackPlayer.play();
-      if (!stillOwnsPlayback()) {
-        trackPlayerActiveRef.current = false;
+
+      if (!started || settled || !trackPlayerActiveRef.current) {
+        removeLocalSubscriptions();
+        if (cachedFileUri) {
+          await deleteCachedVoiceFile(cachedFileUri);
+        }
         return false;
       }
 
+      if (!stillOwnsPlayback()) {
+        removeLocalSubscriptions();
+        if (cachedFileUri) {
+          await deleteCachedVoiceFile(cachedFileUri);
+        }
+        return false;
+      }
+
+      publishVoicePlaybackStarted(instanceIdRef.current);
       trackPlayerStatusIntervalRef.current = setInterval(() => {
         void pollStatus();
       }, 1000);
@@ -445,7 +439,7 @@ export default function MessageVoiceButton({
       void pollStatus();
       return true;
     },
-    [clearTrackPlayerWatchers]
+    [clearTrackPlayerWatchers, deleteCachedVoiceFile]
   );
 
   const startConversationPlayback = useCallback(
@@ -460,24 +454,13 @@ export default function MessageVoiceButton({
         messageIndex as number
       );
 
-      if (VOICE_PLAYBACK_ENGINE === "track-player") {
-        return startTrackPlayerConversationPlayback(authHeaders, remoteUri, operation);
-      }
-
-      return loadAndPlayFromSource(
-        {
-          headers: authHeaders,
-          uri: remoteUri,
-        },
-        operation,
-      );
+      return startTrackPlayerVoicePlayback(authHeaders, remoteUri, operation);
     },
     [
       conversationId,
       hasConversationAudio,
-      loadAndPlayFromSource,
       messageIndex,
-      startTrackPlayerConversationPlayback,
+      startTrackPlayerVoicePlayback,
       voiceUrl,
     ]
   );
@@ -491,26 +474,11 @@ export default function MessageVoiceButton({
       const operation = ++playbackOperationRef.current;
       try {
         publishVoicePlayback(instanceIdRef.current);
-        await TrackPlayer.play();
+        await runTrackPlayerCommand(() => TrackPlayer.play());
         if (operation !== playbackOperationRef.current || !isVoicePlaybackOwner(instanceIdRef.current)) {
           return;
         }
-        setStatus("playing");
-        setError("");
-        return;
-      } catch {
-        await cleanup();
-      }
-    }
-
-    if (playerRef.current) {
-      const operation = ++playbackOperationRef.current;
-      try {
-        publishVoicePlayback(instanceIdRef.current);
-        playerRef.current.play();
-        if (operation !== playbackOperationRef.current || !isVoicePlaybackOwner(instanceIdRef.current)) {
-          return;
-        }
+        publishVoicePlaybackStarted(instanceIdRef.current);
         setStatus("playing");
         setError("");
         return;
@@ -530,9 +498,25 @@ export default function MessageVoiceButton({
     setError("");
 
     try {
+      // Claiming another message must silence the old process-wide queue before
+      // authentication or fallback generation can take time.
+      await runTrackPlayerCommand(async () => {
+        await waitForAmbientAudioSessionConfiguration();
+        await ensureTrackPlayerSetup();
+        if (operation !== playbackOperationRef.current || !isVoicePlaybackOwner(instanceIdRef.current)) {
+          return;
+        }
+        await TrackPlayer.reset();
+      });
+      if (operation !== playbackOperationRef.current || !isVoicePlaybackOwner(instanceIdRef.current)) {
+        return;
+      }
+
       if (hasPresetAudio) {
-        await loadAndPlayFromSource({ uri: resolvedAudioSrc }, operation);
-        abortControllerRef.current = null;
+        await startTrackPlayerVoicePlayback({}, resolvedAudioSrc, operation);
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null;
+        }
         return;
       }
 
@@ -545,11 +529,17 @@ export default function MessageVoiceButton({
         try {
           const startedConversationPlayback = await startConversationPlayback(authHeaders, operation);
           if (startedConversationPlayback) {
-            abortControllerRef.current = null;
+            if (abortControllerRef.current === controller) {
+              abortControllerRef.current = null;
+            }
             return;
           }
         } catch (conversationError) {
           if ((conversationError as Error | null)?.name === "AbortError") {
+            return;
+          }
+
+          if (operation !== playbackOperationRef.current || !isVoicePlaybackOwner(instanceIdRef.current)) {
             return;
           }
 
@@ -583,11 +573,14 @@ export default function MessageVoiceButton({
           fileUriRef.current = localUri;
 
           if (operation !== playbackOperationRef.current || fallbackController.signal.aborted) {
+            await deleteCachedVoiceFile(localUri);
             return;
           }
 
-          await loadAndPlayFromSource({ uri: localUri }, operation);
-          abortControllerRef.current = null;
+          await startTrackPlayerVoicePlayback({}, localUri, operation, localUri);
+          if (abortControllerRef.current === fallbackController) {
+            abortControllerRef.current = null;
+          }
           return;
         }
       }
@@ -616,19 +609,27 @@ export default function MessageVoiceButton({
       fileUriRef.current = localUri;
 
       if (operation !== playbackOperationRef.current || controller.signal.aborted) {
+        await deleteCachedVoiceFile(localUri);
         return;
       }
 
-      await loadAndPlayFromSource({ uri: localUri }, operation);
-      abortControllerRef.current = null;
+      await startTrackPlayerVoicePlayback({}, localUri, operation, localUri);
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
     } catch (rawError) {
       if ((rawError as Error | null)?.name === "AbortError") {
+        return;
+      }
+
+      if (operation !== playbackOperationRef.current || !isVoicePlaybackOwner(instanceIdRef.current)) {
         return;
       }
 
       const message =
         rawError instanceof Error ? rawError.message : "Unable to start voice playback.";
 
+      await cleanup(false);
       console.warn("Voice playback failed", rawError);
       setStatus("error");
       setError(message);
@@ -636,14 +637,15 @@ export default function MessageVoiceButton({
     }
   }, [
     cleanup,
+    deleteCachedVoiceFile,
     hasPlayableContent,
     hasConversationAudio,
     hasPresetAudio,
-    loadAndPlayFromSource,
     messageIndex,
     resolveAuthHeaders,
     resolvedAudioSrc,
     startConversationPlayback,
+    startTrackPlayerVoicePlayback,
     trimmedText,
     voiceUrl,
   ]);
@@ -801,6 +803,3 @@ const styles = StyleSheet.create({
     maxWidth: 180,
   },
 });
-
-
-

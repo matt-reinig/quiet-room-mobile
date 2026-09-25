@@ -23,6 +23,11 @@ import {
   queryKeys,
   removeConversationQuery,
 } from "../lib/queryClient";
+import { sendClientEvent } from "../lib/clientEvents";
+import {
+  createSseAccumulator,
+  type SseAccumulatorResult,
+} from "../lib/sseAccumulator";
 import type {
   ChatMessage,
   Conversation,
@@ -34,6 +39,7 @@ const STREAM_FLUSH_INTERVAL_MS = 120;
 const CONVERSATIONS_PAGE_SIZE = 20;
 const MIN_LOADING_MORE_VISIBLE_MS = 800;
 const ACTIVE_CONVERSATION_STORAGE_PREFIX = "quiet-room.active-conversation";
+const CANONICAL_READBACK_DELAYS_MS = [0, 250, 750] as const;
 
 type ConversationListPage = {
   items: Record<string, unknown>[];
@@ -191,89 +197,38 @@ async function fetchChatModelCatalog(
   });
 }
 
-function decodeSseChunk(data: string): string {
-  if (!data || data === "[DONE]" || data === "[ERROR]") {
-    return "";
+type ChatStreamFailureReason =
+  | "aborted"
+  | "explicit_error"
+  | "missing_done"
+  | "network_error";
+
+class ChatStreamIntegrityError extends Error {
+  readonly reason: ChatStreamFailureReason;
+  readonly receivedCharacterCount: number;
+  readonly receivedChunkCount: number;
+
+  constructor(
+    reason: ChatStreamFailureReason,
+    result: Pick<SseAccumulatorResult, "receivedCharacterCount" | "receivedChunkCount">,
+  ) {
+    super("The response was interrupted. Please try again.");
+    this.name = "ChatStreamIntegrityError";
+    this.reason = reason;
+    this.receivedCharacterCount = result.receivedCharacterCount;
+    this.receivedChunkCount = result.receivedChunkCount;
   }
-
-  try {
-    const parsed = JSON.parse(data) as unknown;
-
-    if (typeof parsed === "string") {
-      return parsed;
-    }
-
-    if (isRecord(parsed)) {
-      if (typeof parsed.chunk === "string") {
-        return parsed.chunk;
-      }
-
-      if (typeof parsed.delta === "string") {
-        return parsed.delta;
-      }
-    }
-  } catch {
-    return data;
-  }
-
-  return "";
 }
 
-function createSseAccumulator(onChunk: (chunk: string) => void) {
-  let buffer = "";
-  let fullContent = "";
+function requireCompletedStream(result: SseAccumulatorResult): string {
+  if (result.terminal === "done") {
+    return result.content;
+  }
 
-  const handleFrame = (frame: string) => {
-    const lines = frame.split("\n");
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-
-      if (!trimmed.startsWith("data:")) {
-        continue;
-      }
-
-      const payload = trimmed.slice(5).trimStart();
-
-      if (payload === "[DONE]" || payload === "[ERROR]") {
-        continue;
-      }
-
-      const chunk = decodeSseChunk(payload);
-
-      if (!chunk) {
-        continue;
-      }
-
-      fullContent += chunk;
-      onChunk(chunk);
-    }
-  };
-
-  return {
-    append(textChunk: string) {
-      if (!textChunk) {
-        return;
-      }
-
-      buffer += textChunk;
-
-      const frames = buffer.split("\n\n");
-      buffer = frames.pop() || "";
-
-      for (const frame of frames) {
-        handleFrame(frame);
-      }
-    },
-    flush() {
-      if (buffer.trim()) {
-        handleFrame(buffer);
-      }
-
-      buffer = "";
-      return fullContent;
-    },
-  };
+  throw new ChatStreamIntegrityError(
+    result.terminal === "error" ? "explicit_error" : "missing_done",
+    result,
+  );
 }
 
 async function readSseResponse(
@@ -282,33 +237,41 @@ async function readSseResponse(
 ): Promise<string> {
   const accumulator = createSseAccumulator(onChunk);
 
-  const hasReadableStream =
-    response.body && typeof response.body.getReader === "function";
+  try {
+    const hasReadableStream =
+      response.body && typeof response.body.getReader === "function";
 
-  if (hasReadableStream) {
-    const reader = response.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
+    if (hasReadableStream) {
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
 
-    while (true) {
-      const { done, value } = await reader.read();
+      while (true) {
+        const { done, value } = await reader.read();
 
-      if (done) {
-        break;
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        accumulator.append(buffer);
+        buffer = "";
       }
 
-      buffer += decoder.decode(value, { stream: true });
+      buffer += decoder.decode();
       accumulator.append(buffer);
-      buffer = "";
+      return requireCompletedStream(accumulator.flush());
     }
 
-    buffer += decoder.decode();
-    accumulator.append(buffer);
-    return accumulator.flush();
-  }
+    accumulator.append(await response.text());
+    return requireCompletedStream(accumulator.flush());
+  } catch (error) {
+    if (error instanceof ChatStreamIntegrityError) {
+      throw error;
+    }
 
-  accumulator.append(await response.text());
-  return accumulator.flush();
+    throw new ChatStreamIntegrityError("network_error", accumulator.flush());
+  }
 }
 
 async function readSseResponseFromXhr(options: {
@@ -356,7 +319,13 @@ async function readSseResponseFromXhr(options: {
       consumeProgress();
 
       if (xhr.status >= 200 && xhr.status < 300) {
-        settle(() => resolve(accumulator.flush()));
+        settle(() => {
+          try {
+            resolve(requireCompletedStream(accumulator.flush()));
+          } catch (error) {
+            reject(error);
+          }
+        });
         return;
       }
 
@@ -365,15 +334,131 @@ async function readSseResponseFromXhr(options: {
     };
 
     xhr.onerror = () => {
-      settle(() => reject(new Error("Chat failed: network request failed.")));
+      settle(() => {
+        const result = accumulator.flush();
+        reject(new ChatStreamIntegrityError("network_error", result));
+      });
     };
 
     xhr.onabort = () => {
-      settle(() => reject(new Error("Chat request was aborted.")));
+      settle(() => {
+        const result = accumulator.flush();
+        reject(new ChatStreamIntegrityError("aborted", result));
+      });
     };
 
     xhr.send(options.body);
   });
+}
+
+async function fetchConversationDetail(options: {
+  conversationId: string;
+  idToken: string;
+  signal?: AbortSignal;
+}): Promise<Record<string, unknown>> {
+  const response = await fetch(
+    `${API_BASE}/api/conversations/${options.conversationId}`,
+    {
+      headers: { Authorization: `Bearer ${options.idToken}` },
+      signal: options.signal,
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to load conversation ${options.conversationId}: ${response.status}`,
+    );
+  }
+
+  const payload = (await response.json()) as unknown;
+  return isRecord(payload) ? payload : {};
+}
+
+function normalizedMessagesFromConversation(
+  data: Record<string, unknown>,
+): ChatMessage[] {
+  const messages = Array.isArray(data.messages) ? data.messages : [];
+  return messages
+    .map((message) => normalizeMessage(message))
+    .filter((message): message is ChatMessage => Boolean(message));
+}
+
+function hasCanonicalAssistantForUser(
+  messages: readonly ChatMessage[],
+  userMessage: ChatMessage,
+): boolean {
+  const assistantMessage = messages[messages.length - 1];
+  const precedingMessage = messages[messages.length - 2];
+
+  return (
+    assistantMessage?.role === "assistant" &&
+    precedingMessage?.role === "user" &&
+    precedingMessage.content === userMessage.content
+  );
+}
+
+async function fetchCanonicalConversationForTurn(options: {
+  conversationId: string;
+  idToken: string;
+  userMessage: ChatMessage;
+}): Promise<Record<string, unknown> | null> {
+  for (const delayMs of CANONICAL_READBACK_DELAYS_MS) {
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+
+    try {
+      const data = await fetchConversationDetail(options);
+      const messages = normalizedMessagesFromConversation(data);
+
+      if (hasCanonicalAssistantForUser(messages, options.userMessage)) {
+        return data;
+      }
+    } catch (error) {
+      console.warn("Canonical conversation readback failed", error);
+    }
+  }
+
+  return null;
+}
+
+function mergeCanonicalConversation(options: {
+  conversationId: string;
+  data: Record<string, unknown>;
+  modelOptions: readonly ChatModelOption[];
+  previous?: Conversation;
+}): Conversation {
+  const { conversationId, data, modelOptions, previous } = options;
+  const messages = normalizedMessagesFromConversation(data);
+  const latestModelFromMessages = [...messages]
+    .reverse()
+    .find((message) => typeof message.model === "string")?.model;
+  const currentModel = normalizeChatModelKey(
+    typeof data.logicalModelKey === "string"
+      ? data.logicalModelKey
+      : typeof data.currentModel === "string"
+        ? data.currentModel
+        : latestModelFromMessages || previous?.currentModel || DEFAULT_MODEL,
+    modelOptions,
+  );
+
+  return {
+    ...previous,
+    currentModel,
+    id: conversationId,
+    logicalModelKey:
+      typeof data.logicalModelKey === "string"
+        ? data.logicalModelKey
+        : previous?.logicalModelKey,
+    messages,
+    messagesLoaded: true,
+    title:
+      typeof data.title === "string"
+        ? data.title
+        : previous?.title || "New Chat",
+    updatedAt:
+      typeof data.updatedAt === "number" ? data.updatedAt : previous?.updatedAt,
+  };
 }
 
 function buildConversationTitle(message: string): string {
@@ -692,7 +777,7 @@ export function useChatController({
     }
 
     const requestId = (chatLoadRequestIdRef.current += 1);
-    const conversationQueryKey = queryKeys.conversation(user.uid, currentId);
+    const abortController = new AbortController();
 
     setChatLoading(true);
 
@@ -710,78 +795,29 @@ export function useChatController({
           return;
         }
 
-        const resolvedConversationQueryKey = queryKeys.conversation(
-          tokenResult.user.uid,
-          currentId,
-        );
-        const dataRaw = await queryClient.fetchQuery({
-          queryKey: resolvedConversationQueryKey,
-          retry: false,
-          queryFn: async ({ signal }) => {
-            const response = await fetch(`${API_BASE}/api/conversations/${currentId}`, {
-              headers: { Authorization: `Bearer ${tokenResult.idToken}` },
-              signal,
-            });
-
-            if (!response.ok) {
-              throw new Error(`Failed to load conversation ${currentId}: ${response.status}`);
-            }
-
-            return (await response.json()) as unknown;
-          },
+        const data = await fetchConversationDetail({
+          conversationId: currentId,
+          idToken: tokenResult.idToken,
+          signal: abortController.signal,
         });
+        queryClient.setQueryData(
+          queryKeys.conversation(tokenResult.user.uid, currentId),
+          data,
+        );
 
         if (requestId !== chatLoadRequestIdRef.current) {
           return;
         }
 
-        const data = isRecord(dataRaw) ? dataRaw : {};
-
-        const fetchedMessagesRaw = Array.isArray(data.messages) ? data.messages : [];
-        const fetchedMessages = fetchedMessagesRaw
-          .map((message) => normalizeMessage(message))
-          .filter((message): message is ChatMessage => Boolean(message));
-
-        const latestModelFromMessages = [...fetchedMessages]
-          .reverse()
-          .find((message) => typeof message.model === "string")?.model;
-
-        const resolvedModel = normalizeChatModelKey(
-          typeof data.logicalModelKey === "string"
-            ? data.logicalModelKey
-            : typeof data.currentModel === "string"
-              ? data.currentModel
-              : latestModelFromMessages || DEFAULT_MODEL,
-          modelOptions,
-        );
-
         setConversations((previous) => {
-          const previousConversation = previous[currentId] || {
-            id: currentId,
-            messages: [],
-          };
-
           return {
             ...previous,
-            [currentId]: {
-              ...previousConversation,
-              currentModel: resolvedModel,
-              id: currentId,
-              logicalModelKey:
-                typeof data.logicalModelKey === "string"
-                  ? data.logicalModelKey
-                  : previousConversation.logicalModelKey,
-              messages: fetchedMessages,
-              messagesLoaded: true,
-              title:
-                typeof data.title === "string"
-                  ? data.title
-                  : previousConversation.title || "New Chat",
-              updatedAt:
-                typeof data.updatedAt === "number"
-                  ? data.updatedAt
-                  : previousConversation.updatedAt,
-            },
+            [currentId]: mergeCanonicalConversation({
+              conversationId: currentId,
+              data,
+              modelOptions,
+              previous: previous[currentId],
+            }),
           };
         });
       } catch (error) {
@@ -818,10 +854,7 @@ export function useChatController({
     void loadConversation();
 
     return () => {
-      void queryClient.cancelQueries({
-        exact: true,
-        queryKey: conversationQueryKey,
-      });
+      abortController.abort();
     };
   }, [conversations, currentId, modelOptions, user]);
 
@@ -873,30 +906,42 @@ export function useChatController({
         return;
       }
 
-      if (typeof selection !== "string") {
-        setConversations((previous) => {
-          const existing = previous[conversationId];
-          return {
-            ...previous,
-            [conversationId]: {
-              ...existing,
-              createdAt: selection.createdAt ?? existing?.createdAt,
-              currentModel:
-                existing?.currentModel ||
-                ("messages" in selection ? selection.currentModel : undefined),
-              id: conversationId,
-              logicalModelKey:
-                existing?.logicalModelKey ||
-                ("messages" in selection ? selection.logicalModelKey : undefined),
-              messages: existing?.messages || ("messages" in selection ? selection.messages : []),
-              messagesLoaded: existing?.messagesLoaded ?? false,
-              title: selection.title || existing?.title || "New Chat",
-              updatedAt: selection.updatedAt ?? existing?.updatedAt,
-            },
-          };
-        });
-      }
+      setConversations((previous) => {
+        const existing = previous[conversationId];
+        const selectedConversation =
+          typeof selection === "string" ? null : selection;
 
+        return {
+          ...previous,
+          [conversationId]: {
+            ...existing,
+            createdAt: selectedConversation?.createdAt ?? existing?.createdAt,
+            currentModel:
+              existing?.currentModel ||
+              (selectedConversation && "messages" in selectedConversation
+                ? selectedConversation.currentModel
+                : DEFAULT_MODEL),
+            id: conversationId,
+            logicalModelKey:
+              existing?.logicalModelKey ||
+              (selectedConversation && "messages" in selectedConversation
+                ? selectedConversation.logicalModelKey
+                : undefined),
+            messages:
+              existing?.messages ||
+              (selectedConversation && "messages" in selectedConversation
+                ? selectedConversation.messages
+                : []),
+            messagesLoaded: false,
+            title: selectedConversation?.title || existing?.title || "New Chat",
+            updatedAt: selectedConversation?.updatedAt ?? existing?.updatedAt,
+          },
+        };
+      });
+
+      setPartial("");
+      setShowThinking(false);
+      setStreamingModel(null);
       setCurrentId(conversationId);
     },
     [],
@@ -994,6 +1039,25 @@ export function useChatController({
       setShowThinking(true);
 
       let flushTimer: ReturnType<typeof setTimeout> | null = null;
+      let renderedContent = "";
+      let pendingForRender = "";
+      const streamStartedAt = Date.now();
+
+      const applyCanonicalData = (data: Record<string, unknown>) => {
+        queryClient.setQueryData(
+          queryKeys.conversation(tokenResult.user.uid, conversationId),
+          data,
+        );
+        setConversations((previous) => ({
+          ...previous,
+          [conversationId]: mergeCanonicalConversation({
+            conversationId,
+            data,
+            modelOptions,
+            previous: previous[conversationId],
+          }),
+        }));
+      };
 
       try {
         const payload: Record<string, unknown> = {
@@ -1011,9 +1075,6 @@ export function useChatController({
           Authorization: `Bearer ${tokenResult.idToken}`,
           "Content-Type": "application/json",
         };
-
-        let renderedContent = "";
-        let pendingForRender = "";
 
         const flushPartial = () => {
           if (!pendingForRender) {
@@ -1084,38 +1145,84 @@ export function useChatController({
           role: "assistant",
         };
 
-        setConversations((previous) => {
-          const previousConversation = previous[conversationId];
-          const baselineMessages = previousConversation?.messages || outgoingMessages;
-
-          const shouldAppendUserMessage =
-            !baselineMessages.length ||
-            baselineMessages[baselineMessages.length - 1].role !== "user" ||
-            baselineMessages[baselineMessages.length - 1].content !== userMessage.content;
-
-          const messagesWithUser = shouldAppendUserMessage
-            ? [...baselineMessages, userMessage]
-            : baselineMessages;
-
-          return {
-            ...previous,
-            [conversationId]: {
-              createdAt: previousConversation?.createdAt || now,
-              currentModel,
-              id: conversationId,
-              logicalModelKey: requestLogicalKey,
-              messages: [...messagesWithUser, assistantMessage],
-              messagesLoaded: true,
-              title,
-              updatedAt: Date.now(),
-            },
-          };
+        const canonicalData = await fetchCanonicalConversationForTurn({
+          conversationId,
+          idToken: tokenResult.idToken,
+          userMessage,
         });
+
+        if (canonicalData) {
+          applyCanonicalData(canonicalData);
+        } else {
+          // A verified [DONE] stream is safe to retain if the defensive
+          // canonical readback is temporarily unavailable.
+          setConversations((previous) => {
+            const previousConversation = previous[conversationId];
+            const baselineMessages = previousConversation?.messages || outgoingMessages;
+
+            const shouldAppendUserMessage =
+              !baselineMessages.length ||
+              baselineMessages[baselineMessages.length - 1].role !== "user" ||
+              baselineMessages[baselineMessages.length - 1].content !== userMessage.content;
+
+            const messagesWithUser = shouldAppendUserMessage
+              ? [...baselineMessages, userMessage]
+              : baselineMessages;
+
+            return {
+              ...previous,
+              [conversationId]: {
+                createdAt: previousConversation?.createdAt || now,
+                currentModel,
+                id: conversationId,
+                logicalModelKey: requestLogicalKey,
+                messages: [...messagesWithUser, assistantMessage],
+                messagesLoaded: true,
+                title,
+                updatedAt: Date.now(),
+              },
+            };
+          });
+        }
 
         setPartial("");
         await invalidateConversationQueries(tokenResult.user.uid, conversationId);
       } catch (error) {
         console.error(error);
+
+        setPartial("");
+
+        if (error instanceof ChatStreamIntegrityError) {
+          const [canonicalData] = await Promise.all([
+            fetchCanonicalConversationForTurn({
+              conversationId,
+              idToken: tokenResult.idToken,
+              userMessage,
+            }),
+            sendClientEvent({
+              event: "chat_stream.incomplete",
+              payload: {
+                conversationId,
+                elapsedMs: Date.now() - streamStartedAt,
+                model: requestModel,
+                platform: Platform.OS,
+                reason: error.reason,
+                receivedCharacterCount: error.receivedCharacterCount,
+                receivedChunkCount: error.receivedChunkCount,
+                renderedPartial: renderedContent.length > 0,
+              },
+              user: tokenResult.user,
+            }).catch((telemetryError) => {
+              console.warn("Failed to report incomplete chat stream", telemetryError);
+            }),
+          ]);
+
+          if (canonicalData) {
+            applyCanonicalData(canonicalData);
+            await invalidateConversationQueries(tokenResult.user.uid, conversationId);
+            return;
+          }
+        }
 
         const message =
           error instanceof Error

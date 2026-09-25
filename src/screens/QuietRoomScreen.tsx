@@ -47,6 +47,14 @@ import {
   type ReportResponseContextScope,
   type ReportResponseReason,
 } from "../lib/reportResponse";
+import {
+  adjacentSacredImageId,
+  DEFAULT_SACRED_IMAGE_ID,
+  isSacredImageId,
+  sacredImageForId,
+  SACRED_IMAGE_STORAGE_KEY,
+  type SacredImageId,
+} from "../lib/sacredImages";
 import { mobileWeb } from "../theme/mobileWeb";
 import {
   conversationSearchActiveMessageTestId,
@@ -210,6 +218,8 @@ export default function QuietRoomScreen() {
 
   const [showAbout, setShowAbout] = useState(false);
   const [showCrucifix, setShowCrucifix] = useState(false);
+  const [selectedSacredImageId, setSelectedSacredImageId] =
+    useState<SacredImageId>(DEFAULT_SACRED_IMAGE_ID);
   const [showChatOptions, setShowChatOptions] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showAiConsentModal, setShowAiConsentModal] = useState(false);
@@ -244,6 +254,7 @@ export default function QuietRoomScreen() {
 
 
   const hasHydratedVoiceModeRef = useRef(false);
+  const sacredImageInteractedRef = useRef(false);
   const lastVoiceAutoPlayKeyRef = useRef<string | null>(null);
   const prevLoadingRef = useRef(loading);
   const prevMessagesRef = useRef<ChatMessage[]>(messages);
@@ -459,6 +470,40 @@ export default function QuietRoomScreen() {
       cancelled = true;
     };
   }, [user?.isAnonymous, user?.uid]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void AsyncStorage.getItem(SACRED_IMAGE_STORAGE_KEY)
+      .then((value) => {
+        if (!cancelled && !sacredImageInteractedRef.current && isSacredImageId(value)) {
+          setSelectedSacredImageId(value);
+        }
+      })
+      .catch(() => {
+        // Preserve the default crucifix when the preference cannot be read.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const moveSacredImage = useCallback(
+    (direction: -1 | 1) => {
+      sacredImageInteractedRef.current = true;
+      setSelectedSacredImageId((currentId) => {
+        const nextId = adjacentSacredImageId(currentId, direction);
+        void AsyncStorage.setItem(SACRED_IMAGE_STORAGE_KEY, nextId).catch(() => {
+          // Keep the in-memory selection even if local persistence is unavailable.
+        });
+        return nextId;
+      });
+    },
+    [],
+  );
+
+  const selectedSacredImage = sacredImageForId(selectedSacredImageId);
 
   useEffect(() => {
     const hydrateVoiceModePreference = async () => {
@@ -1494,7 +1539,7 @@ export default function QuietRoomScreen() {
       <StatusBar style="dark" />
 
       <View style={styles.root}>
-        {(showProfileMenu || showChatOptions) ? (
+        {showProfileMenu ? (
           <Pressable
             onPress={() => {
               setShowProfileMenu(false);
@@ -1612,12 +1657,14 @@ export default function QuietRoomScreen() {
                 style={styles.crucifixButton}
                 testID={testIds.crucifixButton}
                 accessibilityRole="button"
-                accessibilityLabel="Open crucifix image"
+                accessibilityLabel={`Open ${selectedSacredImage.accessibilityLabel} image`}
               >
                 <Image
-                  source={require("../../assets/crucifix-web.png")}
+                  accessibilityLabel={selectedSacredImage.accessibilityLabel}
+                  source={selectedSacredImage.source}
                   style={styles.crucifixImage}
                   resizeMode="contain"
+                  testID={testIds.sacredImageMain}
                 />
               </Pressable>
             </View>
@@ -1928,13 +1975,36 @@ export default function QuietRoomScreen() {
                 </Pressable>
 
                 {showChatOptions ? (
-                  <View style={styles.modelMenu} testID={testIds.modelMenu}>
-                    <ScrollView
-                      bounces={false}
-                      contentContainerStyle={styles.modelMenuScrollContent}
-                      showsVerticalScrollIndicator={false}
-                      style={styles.modelMenuScroll}
-                    >
+                  <Modal
+                    animationType="none"
+                    onRequestClose={() => setShowChatOptions(false)}
+                    presentationStyle="overFullScreen"
+                    statusBarTranslucent
+                    transparent
+                    visible
+                  >
+                    <View style={styles.modelMenuOverlay}>
+                      <Pressable
+                        onPress={() => setShowChatOptions(false)}
+                        style={StyleSheet.absoluteFill}
+                      />
+                      <View
+                        style={[
+                          styles.modelMenu,
+                          {
+                            bottom: composerKeyboardOffset + composerBottomPadding + 56,
+                          },
+                        ]}
+                      >
+                        <ScrollView
+                          bounces={false}
+                          contentContainerStyle={styles.modelMenuScrollContent}
+                          directionalLockEnabled
+                          nestedScrollEnabled
+                          showsVerticalScrollIndicator
+                          style={styles.modelMenuScroll}
+                          testID={testIds.modelMenu}
+                        >
                       {ambientAudioEnabled ? (
                         <AmbientAudioSelector
                           hydrated={ambientAudioHydrated}
@@ -2015,8 +2085,10 @@ export default function QuietRoomScreen() {
                           })}
                         </>
                       ) : null}
-                    </ScrollView>
-                  </View>
+                        </ScrollView>
+                      </View>
+                    </View>
+                  </Modal>
                 ) : null}
               </View>
             ) : null}
@@ -2280,7 +2352,7 @@ export default function QuietRoomScreen() {
           >
             <View style={styles.crucifixModalHeader}>
               <Pressable
-                accessibilityLabel="Close crucifix"
+                accessibilityLabel="Close sacred image"
                 hitSlop={10}
                 onPress={() => setShowCrucifix(false)}
                 style={({ pressed }) => [
@@ -2295,11 +2367,40 @@ export default function QuietRoomScreen() {
 
             <View style={styles.crucifixModalImageWrap}>
               <Image
-                source={require("../../assets/crucifix-web.png")}
+                accessibilityLabel={selectedSacredImage.accessibilityLabel}
+                source={selectedSacredImage.source}
                 style={styles.crucifixModalImage}
                 resizeMode="contain"
                 testID={testIds.crucifixImage}
               />
+              <Pressable
+                accessibilityLabel="Previous sacred image"
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={() => moveSacredImage(-1)}
+                style={({ pressed }) => [
+                  styles.sacredImagePrevious,
+                  styles.sacredImageArrow,
+                  pressed && styles.sacredImageArrowPressed,
+                ]}
+                testID={testIds.sacredImagePrevious}
+              >
+                <Ionicons name="chevron-back" size={26} color={mobileWeb.colors.gray700} />
+              </Pressable>
+              <Pressable
+                accessibilityLabel="Next sacred image"
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={() => moveSacredImage(1)}
+                style={({ pressed }) => [
+                  styles.sacredImageNext,
+                  styles.sacredImageArrow,
+                  pressed && styles.sacredImageArrowPressed,
+                ]}
+                testID={testIds.sacredImageNext}
+              >
+                <Ionicons name="chevron-forward" size={26} color={mobileWeb.colors.gray700} />
+              </Pressable>
             </View>
           </SafeAreaView>
         </Modal>
@@ -2478,11 +2579,11 @@ const styles = StyleSheet.create({
     borderRadius: mobileWeb.radii.lg,
     height: 128,
     overflow: "hidden",
-    width: 96,
+    width: 128,
   },
   crucifixImage: {
     height: 128,
-    width: 96,
+    width: 128,
   },
   crucifixModalCloseButton: {
     alignItems: "center",
@@ -2520,6 +2621,25 @@ const styles = StyleSheet.create({
     height: 128,
     justifyContent: "center",
     marginTop: crucifixTopMargin(),
+  },
+  sacredImageArrow: {
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.82)",
+    borderRadius: 999,
+    height: 44,
+    justifyContent: "center",
+    position: "absolute",
+    top: "47%",
+    width: 44,
+  },
+  sacredImageArrowPressed: {
+    backgroundColor: "rgba(255, 255, 255, 0.96)",
+  },
+  sacredImageNext: {
+    right: 12,
+  },
+  sacredImagePrevious: {
+    left: 12,
   },
   footerWrap: {
     minHeight: 18,
@@ -2822,7 +2942,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     bottom: 56,
     elevation: 20,
-    left: 0,
+    left: 16,
+    maxHeight: Dimensions.get("window").height * 0.62,
+    overflow: "hidden",
     position: "absolute",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
@@ -2831,12 +2953,16 @@ const styles = StyleSheet.create({
     width: 272,
     zIndex: 45,
   },
-  modelMenuScroll: {
-    maxHeight: Dimensions.get("window").height * 0.62,
-  },
   modelMenuScrollContent: {
     paddingBottom: 8,
     paddingTop: 0,
+  },
+  modelMenuScroll: {
+    flexShrink: 1,
+    maxHeight: Dimensions.get("window").height * 0.62,
+  },
+  modelMenuOverlay: {
+    ...StyleSheet.absoluteFillObject,
   },
   modelMenuDivider: {
     backgroundColor: mobileWeb.colors.border,

@@ -9,8 +9,13 @@ import {
   isAmbientAudioEnvironment,
   type AmbientAudioEnvironment,
 } from "../lib/ambientAudio";
-import { configureQuietRoomAudioSession } from "../lib/audioSession";
-import { subscribeVoicePlayback } from "../lib/voicePlaybackBus";
+import { configureAmbientAudioSession } from "../lib/audioSession";
+import { shouldConfigureAmbientAudioSession } from "../lib/audioSessionPolicy";
+import { resolveAmbientAudioPlaybackIntent } from "../lib/ambientAudioPlayback";
+import {
+  subscribeVoicePlayback,
+  subscribeVoicePlaybackActivity,
+} from "../lib/voicePlaybackBus";
 
 export type AmbientAudioPlaybackStatus = "error" | "off" | "paused" | "playing" | "starting";
 
@@ -79,6 +84,7 @@ function removePlayer(player: AudioPlayer): void {
 
 export function useAmbientAudio(enabled: boolean): UseAmbientAudioResult {
   const [appState, setAppState] = useState<AppStateStatus>(AppState.currentState);
+  const [foregroundVoiceClaimed, setForegroundVoiceClaimed] = useState(false);
   const [foregroundVoiceActive, setForegroundVoiceActive] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [playbackStatus, setPlaybackStatus] = useState<AmbientAudioPlaybackStatus>("off");
@@ -139,20 +145,14 @@ export function useAmbientAudio(enabled: boolean): UseAmbientAudioResult {
 
   useEffect(() => {
     return subscribeVoicePlayback((activeId) => {
-      if (activeId) {
-        operationRef.current += 1;
-        const ambientPlayer = playerRef.current;
-        if (ambientPlayer) {
-          try {
-            ambientPlayer.player.volume = 0;
-            ambientPlayer.player.pause();
-          } catch {
-            // Reconciliation will recreate the player if the native object was released.
-          }
-          setPlaybackStatus("paused");
-        }
-      }
+      operationRef.current += 1;
+      setForegroundVoiceClaimed(Boolean(activeId));
+    });
+  }, []);
 
+  useEffect(() => {
+    return subscribeVoicePlaybackActivity((activeId) => {
+      operationRef.current += 1;
       setForegroundVoiceActive(Boolean(activeId));
     });
   }, []);
@@ -160,8 +160,17 @@ export function useAmbientAudio(enabled: boolean): UseAmbientAudioResult {
   useEffect(() => {
     const operation = ++operationRef.current;
     const currentOperation = () => operationRef.current;
-    const shouldOwnPlayer = enabled && hydrated && selectedEnvironment !== "off";
-    const shouldPlay = shouldOwnPlayer && appState === "active" && !foregroundVoiceActive;
+    const normalVolume =
+      selectedEnvironment === "off" ? 0 : ambientAudioVolume(selectedEnvironment);
+    const { shouldOwnPlayer, shouldPlay, targetVolume } =
+      resolveAmbientAudioPlaybackIntent({
+        appActive: appState === "active",
+        enabled,
+        foregroundVoiceActive,
+        hydrated,
+        normalVolume,
+        selectionActive: selectedEnvironment !== "off",
+      });
 
     const reconcile = async () => {
       let ambientPlayer = playerRef.current;
@@ -195,7 +204,12 @@ export function useAmbientAudio(enabled: boolean): UseAmbientAudioResult {
         }
 
         try {
-          await configureQuietRoomAudioSession();
+          if (
+            operation === currentOperation() &&
+            shouldConfigureAmbientAudioSession(foregroundVoiceClaimed)
+          ) {
+            await configureAmbientAudioSession();
+          }
           if (operation !== currentOperation()) {
             return;
           }
@@ -239,8 +253,18 @@ export function useAmbientAudio(enabled: boolean): UseAmbientAudioResult {
       }
 
       try {
-        ambientPlayer.player.play();
-        const targetVolume = ambientAudioVolume(ambientPlayer.environment);
+        if (
+          operation === currentOperation() &&
+          shouldConfigureAmbientAudioSession(foregroundVoiceClaimed)
+        ) {
+          await configureAmbientAudioSession();
+        }
+        if (operation !== currentOperation()) {
+          return;
+        }
+        if (!ambientPlayer.player.playing) {
+          ambientPlayer.player.play();
+        }
         const faded = await fadePlayer(
           ambientPlayer.player,
           ambientPlayer.player.volume,
@@ -264,7 +288,14 @@ export function useAmbientAudio(enabled: boolean): UseAmbientAudioResult {
         // Keep later selections usable after an unexpected transition failure.
       })
       .then(reconcile);
-  }, [appState, enabled, foregroundVoiceActive, hydrated, selectedEnvironment]);
+  }, [
+    appState,
+    enabled,
+    foregroundVoiceActive,
+    foregroundVoiceClaimed,
+    hydrated,
+    selectedEnvironment,
+  ]);
 
   useEffect(() => {
     return () => {

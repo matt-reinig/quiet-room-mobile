@@ -2,7 +2,7 @@
   "expo": {
     "name": "Quiet Room",
     "slug": "quiet-room-mobile",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "scheme": "quietroommobile",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -15,12 +15,15 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "31",
+      "buildNumber": "32",
       "bundleIdentifier": "com.quietroom.mobile",
       "usesAppleSignIn": true,
       "infoPlist": {
         "CFBundleAllowMixedLocalizations": true,
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "audio"
+        ]
       },
       "privacyManifests": {
         "NSPrivacyCollectedDataTypes": [
@@ -106,7 +109,7 @@
     },
     "android": {
       "package": "com.quietroom.mobile",
-      "versionCode": 24,
+      "versionCode": 25,
       "softwareKeyboardLayoutMode": "resize",
       "blockedPermissions": [
         "android.permission.READ_EXTERNAL_STORAGE",

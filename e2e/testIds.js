@@ -69,6 +69,9 @@ module.exports = {
   crucifixModal: 'quiet-room.crucifix.modal',
   crucifixClose: 'quiet-room.crucifix.close',
   crucifixImage: 'quiet-room.crucifix.image',
+  sacredImageMain: 'quiet-room.sacred-image.main',
+  sacredImagePrevious: 'quiet-room.sacred-image.previous',
+  sacredImageNext: 'quiet-room.sacred-image.next',
   loginModal: 'quiet-room.login.modal',
   loginClose: 'quiet-room.login.close',
   loginAppleButton: 'quiet-room.login.apple',
@@ -84,6 +87,9 @@ module.exports = {
     },
     assistant(index) {
       return `quiet-room.message.assistant.${index}`;
+    },
+    content(role, index) {
+      return `quiet-room.message.${role}.${index}.content`;
     },
     voice(role, index) {
       return `quiet-room.message.${role}.${index}.voice`;

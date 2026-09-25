@@ -14,7 +14,7 @@ function getFrame(attributes) {
 
 describe('Quiet Room crucifix modal', () => {
   beforeEach(async () => {
-    await launchQuietRoom();
+    await launchQuietRoom({ delete: true });
     await waitFor(element(by.id(ids.screen))).toBeVisible().withTimeout(60000);
   });
 
@@ -47,5 +47,44 @@ describe('Quiet Room crucifix modal', () => {
     await device.takeScreenshot(`qr-mob-023-crucifix-close-safe-area-${device.getPlatform()}`);
     await closeButton.tap();
     await waitFor(modal).not.toExist().withTimeout(10000);
+  });
+
+  it('cycles through four sacred images, wraps, and persists the selection', async () => {
+    const mainImage = element(by.id(ids.sacredImageMain));
+    const modalImage = element(by.id(ids.crucifixImage));
+    const nextButton = element(by.id(ids.sacredImageNext));
+    const previousButton = element(by.id(ids.sacredImagePrevious));
+
+    await expect(mainImage).toHaveLabel('Crucifix');
+    await expect(nextButton).not.toExist();
+    await expect(previousButton).not.toExist();
+    await element(by.id(ids.crucifixButton)).tap();
+    await waitFor(nextButton).toBeVisible().withTimeout(10000);
+    await waitFor(previousButton).toBeVisible().withTimeout(10000);
+    await expect(modalImage).toHaveLabel('Crucifix');
+    await new Promise((resolve) => setTimeout(resolve, 750));
+
+    for (const label of [
+      'Mary in prayer',
+      'Christ in Gethsemane',
+      'Jesus stilling the tempest',
+      'Crucifix',
+    ]) {
+      await nextButton.tap();
+      await waitFor(element(by.label(label))).toBeVisible().withTimeout(5000);
+      await device.takeScreenshot(`sacred-image-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`);
+    }
+
+    await previousButton.tap();
+    await waitFor(element(by.label('Jesus stilling the tempest'))).toBeVisible().withTimeout(5000);
+    await element(by.id(ids.crucifixClose)).tap();
+    await waitFor(element(by.id(ids.crucifixModal))).not.toExist().withTimeout(10000);
+    await expect(nextButton).not.toExist();
+    await expect(previousButton).not.toExist();
+    await waitFor(element(by.label('Jesus stilling the tempest'))).toBeVisible().withTimeout(5000);
+
+    await launchQuietRoom();
+    await waitFor(element(by.id(ids.screen))).toBeVisible().withTimeout(60000);
+    await waitFor(element(by.label('Jesus stilling the tempest'))).toBeVisible().withTimeout(10000);
   });
 });

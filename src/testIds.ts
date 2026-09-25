@@ -32,6 +32,9 @@ export const testIds = {
   crucifixModal: "quiet-room.crucifix.modal",
   crucifixClose: "quiet-room.crucifix.close",
   crucifixImage: "quiet-room.crucifix.image",
+  sacredImageMain: "quiet-room.sacred-image.main",
+  sacredImagePrevious: "quiet-room.sacred-image.previous",
+  sacredImageNext: "quiet-room.sacred-image.next",
   messageList: "quiet-room.messages.list",
   openingMessage: "quiet-room.message.opening",
   thinkingRow: "quiet-room.messages.thinking",
@@ -91,6 +94,10 @@ export const testIds = {
 
 export function messageBubbleTestId(role: "assistant" | "user", index: number): string {
   return `quiet-room.message.${role}.${index}`;
+}
+
+export function messageContentTestId(role: "assistant" | "user", index: number): string {
+  return `quiet-room.message.${role}.${index}.content`;
 }
 
 export function messageCopyButtonTestId(index: number): string {

@@ -14,6 +14,12 @@ Source of truth: `src/testIds.ts`
 - `quiet-room.profile.open`
 - `quiet-room.crucifix.wrapper`
 - `quiet-room.crucifix.open`
+- `quiet-room.crucifix.modal`
+- `quiet-room.crucifix.close`
+- `quiet-room.crucifix.image`
+- `quiet-room.sacred-image.main`
+- `quiet-room.sacred-image.previous`
+- `quiet-room.sacred-image.next`
 
 ## Messages
 
